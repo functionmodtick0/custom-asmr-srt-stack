@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 import base64
+import atexit
 import json
+import os
 import re
+import shlex
+import subprocess
+import sys
+import threading
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from itertools import count
 from typing import Any, Callable
 
 from custom_asmr_srt_stack.models import Segment, make_segment_id, require_int, require_mapping, require_string
 
-ADAPTERS = {"openai-compatible", "gemini"}
+ADAPTERS = {"openai-compatible", "gemini", "local-transformers"}
+LOCAL_TRANSFORMERS_MAX_CHUNK_MS = 30_000
 
 
 TRANSCRIPTION_PROMPT = """Transcribe this Japanese audio for subtitle editing.
@@ -38,19 +46,20 @@ Rules:
 
 
 HttpPost = Callable[[str, dict[str, str], bytes], dict[str, Any]]
+LocalTranscribe = Callable[["ModelEndpoint", bytes, str, str, str], tuple[Segment, ...]]
 
 
 @dataclass(frozen=True)
 class ModelEndpoint:
     adapter: str
-    endpoint_url: str
+    endpoint_url: str | None
     model_id: str
     api_key: str | None = None
 
     def __post_init__(self) -> None:
         if self.adapter not in ADAPTERS:
             raise ValueError(f"unsupported model adapter {self.adapter!r}")
-        if not self.endpoint_url:
+        if self.adapter != "local-transformers" and not self.endpoint_url:
             raise ValueError("endpoint_url must not be empty")
         if not self.model_id:
             raise ValueError("model_id must not be empty")
@@ -58,9 +67,12 @@ class ModelEndpoint:
     @classmethod
     def from_json(cls, value: Any) -> ModelEndpoint:
         data = require_mapping(value, "model endpoint")
+        adapter = require_string(data.get("adapter", "openai-compatible"), "model.adapter")
+        raw_endpoint_url = data.get("endpoint_url")
+        endpoint_url = None if raw_endpoint_url in (None, "") else require_string(raw_endpoint_url, "model.endpoint_url")
         return cls(
-            adapter=require_string(data.get("adapter", "openai-compatible"), "model.adapter"),
-            endpoint_url=require_string(data.get("endpoint_url"), "model.endpoint_url"),
+            adapter=adapter,
+            endpoint_url=endpoint_url,
             model_id=require_string(data.get("model_id"), "model.model_id"),
             api_key=data.get("api_key") or None,
         )
@@ -88,15 +100,20 @@ def transcribe_audio(
     channel: str = "MIX",
     source_language: str = "ja",
     http_post: HttpPost = default_http_post,
+    local_transcribe_func: LocalTranscribe | None = None,
 ) -> tuple[Segment, ...]:
     if not audio_bytes:
         raise ValueError("audio_bytes must not be empty")
     if not mime_type:
         raise ValueError("mime_type must not be empty")
 
+    if endpoint.adapter == "local-transformers":
+        transcriber = local_transcribe_func or transcribe_with_local_transformers
+        return transcriber(endpoint, audio_bytes, mime_type, channel, source_language)
+
     if endpoint.adapter == "openai-compatible":
         response = http_post(
-            endpoint.endpoint_url.rstrip("/") + "/chat/completions",
+            require_endpoint_url(endpoint).rstrip("/") + "/chat/completions",
             openai_headers(endpoint),
             json.dumps(
                 build_openai_payload(endpoint, audio_bytes, mime_type, channel=channel, source_language=source_language)
@@ -195,10 +212,148 @@ def build_gemini_payload(
 
 
 def build_gemini_url(endpoint: ModelEndpoint) -> str:
-    base = endpoint.endpoint_url.rstrip("/")
+    base = require_endpoint_url(endpoint).rstrip("/")
     if ":generateContent" in base:
         return base
     return f"{base}/v1beta/models/{endpoint.model_id}:generateContent"
+
+
+def require_endpoint_url(endpoint: ModelEndpoint) -> str:
+    if not endpoint.endpoint_url:
+        raise ValueError("endpoint_url must not be empty")
+    return endpoint.endpoint_url
+
+
+def adapter_max_chunk_ms(endpoint: ModelEndpoint) -> int | None:
+    if endpoint.adapter == "local-transformers":
+        return LOCAL_TRANSFORMERS_MAX_CHUNK_MS
+    return None
+
+
+def transcribe_with_local_transformers(
+    endpoint: ModelEndpoint,
+    audio_bytes: bytes,
+    mime_type: str,
+    channel: str,
+    source_language: str,
+) -> tuple[Segment, ...]:
+    return get_transformers_worker_client().transcribe(endpoint, audio_bytes, mime_type, channel, source_language)
+
+
+class TransformersWorkerClient:
+    def __init__(self, command: tuple[str, ...]) -> None:
+        self.command = command
+        self._process: subprocess.Popen[str] | None = None
+        self._lock = threading.Lock()
+        self._request_ids = count(1)
+
+    def transcribe(
+        self,
+        endpoint: ModelEndpoint,
+        audio_bytes: bytes,
+        mime_type: str,
+        channel: str,
+        source_language: str,
+    ) -> tuple[Segment, ...]:
+        request = {
+            "request_id": next(self._request_ids),
+            "type": "transcribe",
+            "model_id": endpoint.model_id,
+            "audio_base64": base64.b64encode(audio_bytes).decode("ascii"),
+            "mime_type": mime_type,
+            "channel": channel,
+            "source_language": source_language,
+        }
+        with self._lock:
+            process = self._ensure_process()
+            if process.stdin is None or process.stdout is None:
+                raise ValueError("local transformers worker pipes are unavailable")
+            try:
+                process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
+                process.stdin.flush()
+                response_line = process.stdout.readline()
+            except OSError as error:
+                self.close()
+                raise ValueError(f"local transformers worker communication failed: {error}") from error
+
+        if not response_line:
+            self.close()
+            raise ValueError("local transformers worker exited without a response")
+        return parse_worker_response(response_line)
+
+    def _ensure_process(self) -> subprocess.Popen[str]:
+        if self._process is not None and self._process.poll() is None:
+            return self._process
+        self._process = subprocess.Popen(
+            self.command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+        )
+        return self._process
+
+    def close(self) -> None:
+        process = self._process
+        self._process = None
+        if process is None or process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+
+
+_WORKER_CLIENTS: dict[tuple[str, ...], TransformersWorkerClient] = {}
+_WORKER_CLIENTS_LOCK = threading.Lock()
+
+
+def get_transformers_worker_client() -> TransformersWorkerClient:
+    command = transformers_worker_command()
+    with _WORKER_CLIENTS_LOCK:
+        client = _WORKER_CLIENTS.get(command)
+        if client is None:
+            client = TransformersWorkerClient(command)
+            _WORKER_CLIENTS[command] = client
+        return client
+
+
+def transformers_worker_command() -> tuple[str, ...]:
+    raw_command = os.environ.get("CASRT_TRANSFORMERS_WORKER_COMMAND")
+    if raw_command:
+        command = tuple(shlex.split(raw_command))
+        if not command:
+            raise ValueError("CASRT_TRANSFORMERS_WORKER_COMMAND must not be empty")
+        return command
+    return (sys.executable, "-m", "custom_asmr_srt_stack.transformers_worker")
+
+
+def parse_worker_response(response_line: str) -> tuple[Segment, ...]:
+    try:
+        response = json.loads(response_line)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"local transformers worker returned invalid JSON: {error}") from error
+    data = require_mapping(response, "local transformers worker response")
+    if not data.get("ok"):
+        error = data.get("error") or "unknown worker error"
+        raise ValueError(f"local transformers worker failed: {error}")
+    segments = data.get("segments")
+    if not isinstance(segments, list):
+        raise ValueError("local transformers worker response segments must be an array")
+    return parse_model_segments(json.dumps({"segments": segments}, ensure_ascii=False))
+
+
+def close_transformers_worker_clients() -> None:
+    with _WORKER_CLIENTS_LOCK:
+        clients = tuple(_WORKER_CLIENTS.values())
+        _WORKER_CLIENTS.clear()
+    for client in clients:
+        client.close()
+
+
+atexit.register(close_transformers_worker_clients)
 
 
 def audio_format_from_mime_type(mime_type: str) -> str:

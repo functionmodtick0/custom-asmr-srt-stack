@@ -6,10 +6,11 @@ import wave
 from pathlib import Path
 
 from custom_asmr_srt_stack.audio import analyze_wav
-from custom_asmr_srt_stack.models import Segment
+from custom_asmr_srt_stack.models import MasterDocument, Segment
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.transcription import ModelEndpoint
 from custom_asmr_srt_stack.workflow import analyze_project, transcribe_project
+from custom_asmr_srt_stack.workflow import retranscribe_segment as retranscribe_workflow_segment
 
 
 def write_stereo_wav(path: Path, duration_ms: int) -> None:
@@ -74,6 +75,61 @@ class WorkflowTests(unittest.TestCase):
                 ],
             )
 
+    def test_local_transformers_transcribe_project_splits_chunks_to_audio_limit(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "local.wav"
+            write_stereo_wav(audio_path, duration_ms=65_000)
+            store = ProjectStore(root / "projects")
+            created = store.create_from_audio(
+                "local.wav",
+                "audio/wav",
+                base64.b64encode(audio_path.read_bytes()).decode("ascii"),
+            )
+            analyzed = analyze_project(store, created["project_id"])
+            calls = []
+
+            def fake_transcribe(endpoint, audio_bytes, *, mime_type, channel, source_language):
+                del endpoint, mime_type, source_language
+                duration_ms = analyze_wav(audio_bytes).duration_ms
+                calls.append((channel, duration_ms))
+                return (
+                    Segment(
+                        id="ignored",
+                        start_ms=0,
+                        end_ms=duration_ms,
+                        channel=channel,
+                        kind="speech",
+                        text=f"{channel}:{duration_ms}",
+                    ),
+                )
+
+            master = transcribe_project(
+                store,
+                created["project_id"],
+                ModelEndpoint(
+                    adapter="local-transformers",
+                    endpoint_url=None,
+                    model_id="google/gemma-4-E4B-it",
+                ),
+                analyzed["metadata"],
+                source_language="ja",
+                transcribe_audio_func=fake_transcribe,
+            )
+
+            self.assertEqual(calls, [("L", 30_000), ("L", 30_000), ("L", 5_000), ("R", 30_000), ("R", 30_000), ("R", 5_000)])
+            self.assertEqual(
+                [(segment.start_ms, segment.end_ms, segment.channel, segment.text) for segment in master.segments],
+                [
+                    (0, 30_000, "L", "L:30000"),
+                    (0, 30_000, "R", "R:30000"),
+                    (30_000, 60_000, "L", "L:30000"),
+                    (30_000, 60_000, "R", "R:30000"),
+                    (60_000, 65_000, "L", "L:5000"),
+                    (60_000, 65_000, "R", "R:5000"),
+                ],
+            )
+
     def test_transcribe_project_requires_analysis_chunks(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ProjectStore(Path(tmpdir))
@@ -91,6 +147,71 @@ class WorkflowTests(unittest.TestCase):
                     source_language="ja",
                     transcribe_audio_func=lambda *args, **kwargs: (),
                 )
+
+    def test_local_transformers_retranscribe_segment_splits_target_range(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "local.wav"
+            write_stereo_wav(audio_path, duration_ms=70_000)
+            store = ProjectStore(root / "projects")
+            created = store.create_from_audio(
+                "local.wav",
+                "audio/wav",
+                base64.b64encode(audio_path.read_bytes()).decode("ascii"),
+            )
+            analyzed = analyze_project(store, created["project_id"])
+            master = MasterDocument(
+                source_language="ja",
+                source_file="local.wav",
+                duration_ms=70_000,
+                segments=(
+                    Segment(
+                        id="seg_000001",
+                        start_ms=5_000,
+                        end_ms=70_000,
+                        channel="L",
+                        kind="speech",
+                        text="古い",
+                    ),
+                ),
+            )
+            calls = []
+
+            def fake_transcribe(endpoint, audio_bytes, *, mime_type, channel, source_language):
+                del endpoint, mime_type, source_language
+                duration_ms = analyze_wav(audio_bytes).duration_ms
+                calls.append((channel, duration_ms))
+                return (
+                    Segment(
+                        id="ignored",
+                        start_ms=0,
+                        end_ms=duration_ms,
+                        channel=channel,
+                        kind="speech",
+                        text=f"{duration_ms}",
+                    ),
+                )
+
+            updated = retranscribe_workflow_segment(
+                store,
+                created["project_id"],
+                master,
+                analyzed["metadata"],
+                segment_id="seg_000001",
+                model_endpoint=ModelEndpoint(
+                    adapter="local-transformers",
+                    endpoint_url=None,
+                    model_id="google/gemma-4-E4B-it",
+                ),
+                source_language="ja",
+                transcribe_audio_func=fake_transcribe,
+            )
+
+            self.assertEqual(calls, [("L", 30_000), ("L", 30_000), ("L", 5_000)])
+            self.assertEqual(
+                [(segment.start_ms, segment.end_ms, segment.text) for segment in updated.segments],
+                [(5_000, 35_000, "30000"), (35_000, 65_000, "30000"), (65_000, 70_000, "5000")],
+            )
 
 
 if __name__ == "__main__":

@@ -9,6 +9,15 @@ description = "Local WebUI stack for Japanese ASMR transcription JSON/SRT workfl
 requires-python = ">=3.11"
 dependencies = []
 
+[project.optional-dependencies]
+local = [
+    "accelerate",
+    "librosa",
+    "soundfile",
+    "torch",
+    "transformers",
+]
+
 [project.scripts]
 casrt = "custom_asmr_srt_stack.cli:main"
 

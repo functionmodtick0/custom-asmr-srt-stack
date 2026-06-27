@@ -80,7 +80,7 @@ WebUI/CLI -> local-transformers adapter -> transformers worker subprocess -> Gem
 
 worker는 첫 전사 요청 때 lazy start하며, 같은 애플리케이션 프로세스 안에서 모델을 메모리에 유지한다. worker가 죽거나 응답 계약을 어기면 fallback으로 조용히 넘기지 않고 오류를 표시한다.
 
-Gemma 4 E2B/E4B 계열처럼 audio clip 길이 제한이 있는 모델을 고려해, `local-transformers` adapter는 분석 단계의 chunk를 내부적으로 30초 이하 subchunk로 나눠 보낸다. worker가 세부 timestamp를 안정적으로 만들 수 없으면 clip 전체를 하나의 speech segment로 반환하고, 필요한 경우 고정 alignment 계층이 후속 timing을 정리한다.
+Gemma 4 E2B/E4B 계열처럼 audio clip 길이 제한이 있는 모델을 고려해, `local-transformers` adapter는 분석 단계의 chunk를 내부적으로 30초 이하 subchunk로 나눠 보낸다. worker가 세부 timestamp를 안정적으로 만들 수 없으면 clip 전체를 하나의 speech segment로 반환하고 `needs_review`를 표시한다. 필요한 경우 고정 alignment 계층이 후속 timing을 정리한다.
 
 ## Alignment 정책
 
