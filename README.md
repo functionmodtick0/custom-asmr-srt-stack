@@ -107,6 +107,13 @@ CASRT_VAD_COMMAND='python3 path/to/vad.py' \
   uv run casrt serve
 ```
 
+ASMR-trained Whisper ONNX VAD 후보는 내장 CLI command로도 실행할 수 있습니다. 이 모델은 ASR이 아니라 speech interval만 반환하며 WebUI 옵션으로 노출하지 않습니다.
+
+```bash
+CASRT_VAD_COMMAND='uv run casrt vad whisper-asmr-onnx --model /path/to/model.onnx --metadata /path/to/model_metadata.json' \
+  uv run casrt serve
+```
+
 내장 energy splitter는 `CASRT_QWEN_ENERGY_*` env로 내부 튜닝할 수 있지만 WebUI 옵션으로 노출하지 않습니다.
 
 고정 aligner command를 사용하려면 서버 실행 전에 `CASRT_ALIGNER_COMMAND`를 설정합니다. 이 명령은 stdin으로 `{ audio_file, master }` JSON을 받고 stdout으로 `{ segments: [{ id, start_ms, end_ms }] }` JSON을 반환해야 합니다.

@@ -124,8 +124,8 @@ ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한
 - `AutoArk-AI/ARK-ASR-3B`, `CohereLabs/cohere-transcribe-03-2026`: 최신 로컬 후보. model metadata상 custom code가 필요하고 Cohere는 gated 모델이라, 사용자 명시 승인 또는 first-party package 경로가 확인된 뒤 실제 benchmark 대상으로 삼는다.
 - stable-ts/Whisper계 산출물은 2026-06-28 01/04/07 front120 확장 gold에서 practical CER 16.1%, time-aligned 500ms ratio 56.7%였다. Qwen/Neosophie/Voxtral보다 text는 낫지만 기준을 만족하지 못하고 MIX-only라 channel 제품 요구사항도 충족하지 않는다. 제품 기본 경로가 아니라 비교 baseline으로만 유지한다.
 - `google/gemma-4-E4B-it`: 공식 오디오 입력을 지원하는 최신 로컬 multimodal 후보. 2026-06-28 smoke 전사는 성공했지만 01/04/07 front120 gold에서 4-bit practical CER 42.3%, 8-bit practical CER 46.1%라 기본 승격하지 않는다.
-- `zhifeixie/Mega-ASR`: Qwen3-ASR-1.7B 기반 robust ASR 후보. noisy, reverberant, clipped, band-limited, overlapping 등 real-world degraded audio를 목표로 하며 router로 base/robust path를 선택한다. ASMR 전용 모델은 아니지만, 현재 실패 케이스인 low-SNR whisper와 hallucination 문제에 가까운 목적이라 다음 우선 실험 후보로 둔다. 다만 공식 사용 경로가 `xzf-thu/Mega-ASR` 코드 실행을 요구하므로 격리 환경에서 점수화한다.
-- `TransWithAI/Whisper-Vad-EncDec-ASMR-onnx`: ASR 모델이 아니라 VAD 후보. 공개 discussion 기준 일본어 ASMR 약 500시간으로 학습된 Whisper encoder 기반 VAD다. WebUI 옵션으로 노출하지 않고 `CASRT_VAD_COMMAND` 뒤에 붙일 내부 후보로 둔다.
+- `zhifeixie/Mega-ASR`: Qwen3-ASR-1.7B 기반 robust ASR 후보. 2026-06-28 01/04/07 front120 gold에서 routed practical CER 30.9%, base-only threshold 1.1 practical CER 30.8%, forced LoRA practical CER 77.6%라 기본 승격하지 않는다.
+- `TransWithAI/Whisper-Vad-EncDec-ASMR-onnx`: ASR 모델이 아니라 VAD 후보. 공개 discussion 기준 일본어 ASMR 약 500시간으로 학습된 Whisper encoder 기반 VAD다. `casrt vad whisper-asmr-onnx` command로 붙이며, WebUI 옵션으로 노출하지 않고 `CASRT_VAD_COMMAND` 뒤에 붙일 내부 후보로 둔다.
 - `Qwen/Qwen3-ASR-0.6B`: 빠른 비교/저사양 후보
 - `Qwen/Qwen3-ForcedAligner-0.6B`: 고정 forced alignment 후보
 

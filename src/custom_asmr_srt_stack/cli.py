@@ -282,6 +282,32 @@ def model_validate(args: argparse.Namespace) -> None:
     )
 
 
+def vad_whisper_asmr_onnx(args: argparse.Namespace) -> None:
+    from custom_asmr_srt_stack.models import require_mapping
+    from custom_asmr_srt_stack.whisper_vad_onnx import WhisperVadOnnxSettings, detect_command_intervals
+
+    request = require_mapping(json.loads(sys.stdin.read()), "VAD request")
+    audio_file = request.get("audio_file")
+    if not isinstance(audio_file, str) or not audio_file:
+        raise ValueError("VAD request audio_file must be a non-empty string")
+    intervals = detect_command_intervals(
+        audio_file=Path(audio_file),
+        model=args.model,
+        metadata=args.metadata,
+        settings=WhisperVadOnnxSettings(
+            threshold=args.threshold,
+            neg_threshold=args.neg_threshold,
+            min_speech_ms=args.min_speech_ms,
+            min_silence_ms=args.min_silence_ms,
+            pad_ms=args.pad_ms,
+            output_activation=args.output_activation,
+            force_cpu=args.force_cpu,
+            num_threads=args.num_threads,
+        ),
+    )
+    print(json.dumps({"intervals": list(intervals)}, ensure_ascii=False))
+
+
 def project_transcribe(args: argparse.Namespace) -> None:
     store = store_from_args(args)
     project = store.load_project(args.project_id)
@@ -398,6 +424,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Validate model endpoint settings.",
     )
     validate_model.set_defaults(func=model_validate)
+
+    vad = subcommands.add_parser("vad", help="Run internal VAD command helpers.")
+    vad_subcommands = vad.add_subparsers(dest="vad_command", required=True)
+    whisper_asmr_onnx = vad_subcommands.add_parser(
+        "whisper-asmr-onnx",
+        help="Read a CASRT VAD request from stdin and run the ASMR Whisper ONNX VAD.",
+    )
+    whisper_asmr_onnx.add_argument("--model", type=Path, required=True)
+    whisper_asmr_onnx.add_argument("--metadata", type=Path)
+    whisper_asmr_onnx.add_argument("--threshold", type=float, default=0.5)
+    whisper_asmr_onnx.add_argument("--neg-threshold", type=float)
+    whisper_asmr_onnx.add_argument("--min-speech-ms", type=int, default=250)
+    whisper_asmr_onnx.add_argument("--min-silence-ms", type=int, default=100)
+    whisper_asmr_onnx.add_argument("--pad-ms", type=int, default=30)
+    whisper_asmr_onnx.add_argument("--output-activation", choices=["sigmoid", "identity"], default="sigmoid")
+    whisper_asmr_onnx.add_argument("--force-cpu", action="store_true")
+    whisper_asmr_onnx.add_argument("--num-threads", type=int, default=1)
+    whisper_asmr_onnx.set_defaults(func=vad_whisper_asmr_onnx)
 
     project = subcommands.add_parser("project", help="Manage transcript projects.")
     project_subcommands = project.add_subparsers(dest="project_command", required=True)
