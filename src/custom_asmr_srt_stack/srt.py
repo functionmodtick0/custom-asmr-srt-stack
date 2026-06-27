@@ -9,6 +9,7 @@ TIMESTAMP_RE = re.compile(
     r"^(?P<start>\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*"
     r"(?P<end>\d{2}:\d{2}:\d{2}[,.]\d{3})(?:\s+.*)?$"
 )
+CHANNEL_LABEL_RE = re.compile(r"^\[(?P<label>L|R|LR|MIX)\]\s*", re.IGNORECASE)
 
 
 def parse_timestamp(value: str) -> int:
@@ -52,13 +53,13 @@ def parse_srt(
         if not timing_match:
             raise ValueError(f"invalid SRT cue timing {lines[0]!r}")
 
-        text = "\n".join(line.rstrip() for line in lines[1:]).strip()
+        channel, text = parse_srt_text_metadata(lines[1:])
         segments.append(
             Segment(
                 id=make_segment_id(len(segments) + 1),
                 start_ms=parse_timestamp(timing_match.group("start")),
                 end_ms=parse_timestamp(timing_match.group("end")),
-                channel="MIX",
+                channel=channel,
                 kind="speech",
                 text=text,
             )
@@ -71,6 +72,19 @@ def parse_srt(
         duration_ms=duration_ms,
         segments=tuple(segments),
     )
+
+
+def parse_srt_text_metadata(lines: list[str]) -> tuple[str, str]:
+    text_lines = [line.rstrip() for line in lines]
+    channel = "MIX"
+    if text_lines:
+        match = CHANNEL_LABEL_RE.match(text_lines[0].strip())
+        if match:
+            label = match.group("label").upper()
+            if label in {"L", "R"}:
+                channel = label
+            text_lines[0] = CHANNEL_LABEL_RE.sub("", text_lines[0], count=1).strip()
+    return channel, "\n".join(text_lines).strip()
 
 
 def format_srt(

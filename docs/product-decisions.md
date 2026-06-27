@@ -384,6 +384,8 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 
 - chunk interval 기본 최대 길이는 180초다.
 - 오디오는 분석 전에 WAV로 정규화한다.
+- SRT import는 cue text 선두의 `[L]`, `[R]`, `[LR]`, `[MIX]`를 channel metadata로 읽고 본문 텍스트에서 제거한다.
+- `[LR]`은 현재 channel model에서 `MIX`로 저장한다.
 - WAV가 아닌 입력은 ffmpeg로 16-bit PCM WAV로 변환한다.
 - stereo WAV는 `L`, `R`, `MIX` 세 channel 파일로 분리한다.
 - mono WAV는 `MIX`만 만든다.

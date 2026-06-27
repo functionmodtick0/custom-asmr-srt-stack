@@ -222,6 +222,8 @@ SRT를 내부 기준 JSON으로 변환:
 uv run casrt srt-to-json input.srt -o master.json
 ```
 
+SRT cue 텍스트가 `[L]`, `[R]`, `[LR]`, `[MIX]`로 시작하면 변환 시 channel metadata로 읽고 본문 텍스트에서는 제거합니다. `[LR]`은 내부 데이터 모델에서 `MIX`로 저장합니다.
+
 번역 도구용 clean JSON 생성:
 
 ```bash
