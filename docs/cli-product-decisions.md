@@ -30,6 +30,7 @@ CLI는 다음 WebUI 기능과 동등해야 한다.
 - `translated.json`을 병합한 SRT 내보내기
 - 원문 SRT 내보내기
 - project 상태 확인
+- reference/candidate 전사 결과 평가
 
 번역 기능은 제공하지 않는다.
 
@@ -166,7 +167,25 @@ uv run casrt project transcribe PROJECT_ID \
 - worker와 JSON Lines로 통신한다.
 - worker는 모델을 lazy load하고 같은 CLI/WebUI 프로세스 안에서 재사용한다.
 - ASMR 품질 경로에서는 MIX 전사를 우선하고 L/R은 channel attribution 근거로 사용한다.
+- MIX energy 기반 speech chunking으로 발화 단위 전사를 시도한다.
+- L/R energy 차이가 충분할 때만 channel을 L 또는 R로 확정하고, 애매하면 MIX로 남긴다.
 - worker import, model load, inference, response contract 오류는 실패로 표시한다.
+
+Qwen ASR 파이프라인의 세부 값과 평가 결과는 `docs/local-asr-pipeline.md`에 기록한다.
+
+### 평가
+
+```bash
+uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
+```
+
+동작:
+
+- reference와 candidate는 SRT 또는 `master.json`을 받을 수 있다.
+- speech text CER를 계산한다.
+- segment index 기준 mean start/end/boundary error를 계산한다.
+- L/R channel accuracy와 `needs_review` 비율을 계산한다.
+- 평가는 모델 기본값 승격이나 threshold 변경 전에 실행한다.
 
 ### 선택 segment 재전사
 

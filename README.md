@@ -179,6 +179,8 @@ uv run casrt project transcribe PROJECT_ID \
 
 전사는 `project analyze`가 저장한 L/R 또는 MIX 채널을 chunk 단위로 잘라 모델에 보낸 뒤, 결과 타임스탬프를 원본 timeline으로 되돌려 저장합니다.
 
+`local-qwen-asr`는 일본 ASMR 고품질 경로로, MIX-first 전사, energy-based speech chunking, L/R energy 기반 channel attribution을 사용합니다. 세부 값과 실험 결과는 [docs/local-asr-pipeline.md](docs/local-asr-pipeline.md)에 기록합니다.
+
 선택 segment 재전사:
 
 ```bash
@@ -248,3 +250,5 @@ node --check web/app.js
 ## 제품 결정
 
 제품 범위와 데이터 계약은 [docs/product-decisions.md](docs/product-decisions.md)에 기록합니다.
+CLI 계약은 [docs/cli-product-decisions.md](docs/cli-product-decisions.md)에 기록합니다.
+로컬 ASR 파이프라인과 평가 계획은 [docs/local-asr-pipeline.md](docs/local-asr-pipeline.md)에 기록합니다.
