@@ -54,7 +54,7 @@ def transcribe_project(
     elif isinstance(channels, dict) and "MIX" in channels:
         channel_names = ["MIX"]
     else:
-        channel_names = ["MIX"]
+        raise ValueError("project must be analyzed before transcription")
 
     raw_segments: list[Segment] = []
     for channel in channel_names:

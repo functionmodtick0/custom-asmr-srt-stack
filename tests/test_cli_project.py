@@ -6,8 +6,10 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest import mock
 
 from custom_asmr_srt_stack.cli import main
+from custom_asmr_srt_stack.models import Segment
 
 
 def run_cli(argv):
@@ -107,6 +109,104 @@ class ProjectCliTests(unittest.TestCase):
             metadata = json.loads(analyze_output)["metadata"]
             self.assertEqual(set(metadata["channels"]), {"MIX"})
             self.assertEqual(metadata["audio_info"]["duration_ms"], 2)
+
+    def test_model_validate_outputs_contract(self):
+        result, output = run_cli(
+            [
+                "model",
+                "validate",
+                "--adapter",
+                "openai-compatible",
+                "--endpoint-url",
+                "http://localhost:8000/v1",
+                "--model-id",
+                "gemma-4-e4b",
+                "--json",
+            ]
+        )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(json.loads(output)["model_id"], "gemma-4-e4b")
+
+    def test_transcribe_and_retranscribe_project_cli(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "voice.wav"
+            project_root = root / "projects"
+            write_mono_wav(audio_path)
+
+            _, created_output = run_cli(
+                ["project", "create-audio", "--project-root", str(project_root), "--json", str(audio_path)]
+            )
+            project_id = json.loads(created_output)["project_id"]
+            run_cli(["project", "analyze", "--project-root", str(project_root), project_id])
+
+            def fake_transcribe(endpoint, audio_bytes, *, mime_type, channel, source_language):
+                return (
+                    Segment(
+                        id="ignored",
+                        start_ms=0,
+                        end_ms=1,
+                        channel=channel,
+                        kind="speech",
+                        text="初回",
+                    ),
+                )
+
+            with mock.patch("custom_asmr_srt_stack.cli.transcribe_audio", side_effect=fake_transcribe):
+                result, output = run_cli(
+                    [
+                        "project",
+                        "transcribe",
+                        "--project-root",
+                        str(project_root),
+                        "--adapter",
+                        "openai-compatible",
+                        "--endpoint-url",
+                        "http://localhost:8000/v1",
+                        "--model-id",
+                        "gemma-4-e4b",
+                        "--json",
+                        project_id,
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output)["master"]["segments"][0]["text"], "初回")
+
+            def fake_retranscribe(endpoint, audio_bytes, *, mime_type, channel, source_language):
+                return (
+                    Segment(
+                        id="ignored",
+                        start_ms=0,
+                        end_ms=1,
+                        channel=channel,
+                        kind="speech",
+                        text="再",
+                    ),
+                )
+
+            with mock.patch("custom_asmr_srt_stack.cli.transcribe_audio", side_effect=fake_retranscribe):
+                result, output = run_cli(
+                    [
+                        "project",
+                        "retranscribe",
+                        "--project-root",
+                        str(project_root),
+                        "--adapter",
+                        "openai-compatible",
+                        "--endpoint-url",
+                        "http://localhost:8000/v1",
+                        "--model-id",
+                        "gemma-4-e4b",
+                        "--json",
+                        project_id,
+                        "seg_000001",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output)["master"]["segments"][0]["text"], "再")
 
 
 if __name__ == "__main__":

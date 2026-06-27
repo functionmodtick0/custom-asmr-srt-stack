@@ -12,7 +12,10 @@ from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.server import run_server
 from custom_asmr_srt_stack.srt import format_srt, parse_srt
 from custom_asmr_srt_stack.translation import export_translation_json, parse_translated_texts
+from custom_asmr_srt_stack.transcription import ModelEndpoint, transcribe_audio
 from custom_asmr_srt_stack.workflow import analyze_project
+from custom_asmr_srt_stack.workflow import retranscribe_segment as retranscribe_project_segment
+from custom_asmr_srt_stack.workflow import transcribe_project
 
 
 def read_text(path: Path) -> str:
@@ -35,6 +38,15 @@ def emit(args: argparse.Namespace, payload: dict[str, Any], message: str) -> Non
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(message)
+
+
+def model_endpoint_from_args(args: argparse.Namespace) -> ModelEndpoint:
+    return ModelEndpoint(
+        adapter=args.adapter,
+        endpoint_url=args.endpoint_url,
+        model_id=args.model_id,
+        api_key=args.api_key,
+    )
 
 
 def project_summary(project: dict[str, Any]) -> dict[str, Any]:
@@ -164,6 +176,63 @@ def project_export_srt(args: argparse.Namespace) -> None:
     emit(args, {"project_id": args.project_id, "output": str(args.output)}, f"srt exported: {args.output}")
 
 
+def model_validate(args: argparse.Namespace) -> None:
+    endpoint = model_endpoint_from_args(args)
+    emit(
+        args,
+        {"ok": True, "adapter": endpoint.adapter, "model_id": endpoint.model_id},
+        f"model settings valid: {endpoint.adapter} / {endpoint.model_id}",
+    )
+
+
+def project_transcribe(args: argparse.Namespace) -> None:
+    store = store_from_args(args)
+    project = store.load_project(args.project_id)
+    metadata = project.get("metadata")
+    if not isinstance(metadata, dict):
+        raise ValueError("project metadata must be an object")
+    master = transcribe_project(
+        store,
+        args.project_id,
+        model_endpoint_from_args(args),
+        metadata,
+        source_language=args.source_language,
+        transcribe_audio_func=transcribe_audio,
+    )
+    saved = store.save_master(args.project_id, master)
+    review_count = sum(1 for segment in master.segments if segment.needs_review)
+    emit(
+        args,
+        saved,
+        f"project {args.project_id} transcribed: segments={len(master.segments)} review={review_count}",
+    )
+
+
+def project_retranscribe(args: argparse.Namespace) -> None:
+    store = store_from_args(args)
+    project = store.load_project(args.project_id)
+    metadata = project.get("metadata")
+    if not isinstance(metadata, dict):
+        raise ValueError("project metadata must be an object")
+    master = MasterDocument.from_json(project.get("master"))
+    updated = retranscribe_project_segment(
+        store,
+        args.project_id,
+        master,
+        metadata,
+        segment_id=args.segment_id,
+        model_endpoint=model_endpoint_from_args(args),
+        source_language=args.source_language,
+        transcribe_audio_func=transcribe_audio,
+    )
+    saved = store.save_master(args.project_id, updated)
+    emit(
+        args,
+        saved,
+        f"project {args.project_id} retranscribed: segment={args.segment_id} segments={len(updated.segments)}",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="casrt")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -171,6 +240,11 @@ def build_parser() -> argparse.ArgumentParser:
     project_parent.add_argument("--project-root", type=Path)
     output_parent = argparse.ArgumentParser(add_help=False)
     output_parent.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
+    model_parent = argparse.ArgumentParser(add_help=False)
+    model_parent.add_argument("--adapter", choices=["openai-compatible", "gemini"], required=True)
+    model_parent.add_argument("--endpoint-url", required=True)
+    model_parent.add_argument("--model-id", required=True)
+    model_parent.add_argument("--api-key")
 
     import_srt = subcommands.add_parser("srt-to-json", help="Convert SRT into master JSON.")
     import_srt.add_argument("input", type=Path)
@@ -197,6 +271,15 @@ def build_parser() -> argparse.ArgumentParser:
     serve_web.add_argument("--host", default="127.0.0.1")
     serve_web.add_argument("--port", type=int, default=5173)
     serve_web.set_defaults(func=serve)
+
+    model = subcommands.add_parser("model", help="Validate model endpoint settings.")
+    model_subcommands = model.add_subparsers(dest="model_command", required=True)
+    validate_model = model_subcommands.add_parser(
+        "validate",
+        parents=[model_parent, output_parent],
+        help="Validate model endpoint settings.",
+    )
+    validate_model.set_defaults(func=model_validate)
 
     project = subcommands.add_parser("project", help="Manage transcript projects.")
     project_subcommands = project.add_subparsers(dest="project_command", required=True)
@@ -242,6 +325,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analyze_audio.add_argument("project_id")
     analyze_audio.set_defaults(func=project_analyze)
+
+    transcribe_audio_project = project_subcommands.add_parser(
+        "transcribe",
+        parents=[project_parent, model_parent, output_parent],
+        help="Transcribe an analyzed project.",
+    )
+    transcribe_audio_project.add_argument("project_id")
+    transcribe_audio_project.add_argument("--source-language", default="ja")
+    transcribe_audio_project.set_defaults(func=project_transcribe)
+
+    retranscribe_audio_segment = project_subcommands.add_parser(
+        "retranscribe",
+        parents=[project_parent, model_parent, output_parent],
+        help="Retranscribe a selected segment.",
+    )
+    retranscribe_audio_segment.add_argument("project_id")
+    retranscribe_audio_segment.add_argument("segment_id")
+    retranscribe_audio_segment.add_argument("--source-language", default="ja")
+    retranscribe_audio_segment.set_defaults(func=project_retranscribe)
 
     export_master = project_subcommands.add_parser(
         "export-master",
