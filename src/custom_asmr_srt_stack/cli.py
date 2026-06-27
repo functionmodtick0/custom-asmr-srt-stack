@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from custom_asmr_srt_stack.models import MasterDocument
+from custom_asmr_srt_stack.server import run_server
 from custom_asmr_srt_stack.srt import format_srt, parse_srt
 from custom_asmr_srt_stack.translation import export_translation_json, parse_translated_texts
 
@@ -40,6 +41,10 @@ def export_translation(args: argparse.Namespace) -> None:
     write_text(args.output, json.dumps(export_translation_json(master), ensure_ascii=False, indent=2) + "\n")
 
 
+def serve(args: argparse.Namespace) -> None:
+    run_server(host=args.host, port=args.port)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="casrt")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -64,6 +69,11 @@ def build_parser() -> argparse.ArgumentParser:
     translation_export.add_argument("input", type=Path)
     translation_export.add_argument("-o", "--output", type=Path, required=True)
     translation_export.set_defaults(func=export_translation)
+
+    serve_web = subcommands.add_parser("serve", help="Run the local WebUI server.")
+    serve_web.add_argument("--host", default="127.0.0.1")
+    serve_web.add_argument("--port", type=int, default=5173)
+    serve_web.set_defaults(func=serve)
 
     return parser
 
