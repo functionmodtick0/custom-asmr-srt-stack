@@ -70,6 +70,29 @@ class ProjectStore:
         self.write_json(project_root / "master.json", master.to_json())
         return {"project_id": project_id, "master": master.to_json()}
 
+    def save_audio_analysis(
+        self,
+        project_id: str,
+        audio_info: dict[str, Any],
+        chunks: list[dict[str, int]],
+        channel_audio: dict[str, bytes],
+    ) -> dict[str, Any]:
+        project_root = self.require_project_root(project_id)
+        audio_root = project_root / "audio"
+        audio_root.mkdir(exist_ok=True)
+        channels: dict[str, str] = {}
+        for channel, audio_bytes in channel_audio.items():
+            path = audio_root / f"{channel.lower()}.wav"
+            path.write_bytes(audio_bytes)
+            channels[channel] = str(path.relative_to(project_root))
+
+        metadata = self.read_json(project_root / "project.json")
+        metadata["audio_info"] = audio_info
+        metadata["chunks"] = chunks
+        metadata["channels"] = channels
+        self.write_json(project_root / "project.json", metadata)
+        return {"project_id": project_id, "metadata": metadata}
+
     def load_project(self, project_id: str) -> dict[str, Any]:
         project_root = self.require_project_root(project_id)
         metadata = self.read_json(project_root / "project.json")

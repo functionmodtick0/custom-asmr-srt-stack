@@ -1,6 +1,9 @@
 import json
+import base64
+import io
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 
 from custom_asmr_srt_stack.projects import ProjectStore
@@ -87,6 +90,36 @@ class ServerApiTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(load_status, 200)
             self.assertEqual(loaded["master"]["segments"][0]["text"], "ねえ")
+
+    def test_analyze_audio_route_persists_wav_channels(self):
+        output = io.BytesIO()
+        with wave.open(output, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(1000)
+            wav.writeframes(b"\x00\x00\x01\x00")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ProjectStore(Path(tmpdir))
+            upload_status, upload = self.post_json(
+                "/api/projects/upload-audio",
+                {
+                    "file_name": "voice.wav",
+                    "mime_type": "audio/wav",
+                    "content_base64": base64.b64encode(output.getvalue()).decode("ascii"),
+                },
+                project_store=store,
+            )
+            analyze_status, analyzed = self.post_json(
+                "/api/projects/analyze-audio",
+                {"project_id": upload["project_id"]},
+                project_store=store,
+            )
+
+            self.assertEqual(upload_status, 200)
+            self.assertEqual(analyze_status, 200)
+            self.assertEqual(analyzed["metadata"]["audio_info"]["duration_ms"], 2)
+            self.assertEqual(set(analyzed["metadata"]["channels"]), {"MIX"})
 
 
 if __name__ == "__main__":
