@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from custom_asmr_srt_stack.models import MasterDocument
+from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.srt import format_srt, parse_srt
 from custom_asmr_srt_stack.translation import export_translation_json, parse_translated_texts
 
@@ -17,7 +18,13 @@ def json_response(status: HTTPStatus, payload: dict[str, Any]) -> tuple[int, str
     return status.value, "application/json; charset=utf-8", json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
 
-def handle_api_request(path: str, raw_body: bytes) -> tuple[int, str, bytes]:
+def handle_api_request(
+    path: str,
+    raw_body: bytes,
+    *,
+    project_store: ProjectStore | None = None,
+) -> tuple[int, str, bytes]:
+    store = project_store or ProjectStore.default()
     try:
         payload = json.loads(raw_body.decode("utf-8") or "{}")
         if not isinstance(payload, dict):
@@ -33,6 +40,40 @@ def handle_api_request(path: str, raw_body: bytes) -> tuple[int, str, bytes]:
                 source_file=payload.get("source_file"),
             )
             return json_response(HTTPStatus.OK, master.to_json())
+
+        if path == "/api/projects/import-srt":
+            content = payload.get("content")
+            if not isinstance(content, str):
+                raise ValueError("content must be a string")
+            master = parse_srt(
+                content,
+                source_language=str(payload.get("source_language") or "ja"),
+                source_file=payload.get("source_file"),
+            )
+            return json_response(HTTPStatus.OK, store.create_from_master(master))
+
+        if path == "/api/projects/import-master-json":
+            master = MasterDocument.from_json(payload.get("master"))
+            return json_response(HTTPStatus.OK, store.create_from_master(master))
+
+        if path == "/api/projects/upload-audio":
+            return json_response(
+                HTTPStatus.OK,
+                store.create_from_audio(
+                    file_name=str(payload.get("file_name") or ""),
+                    mime_type=str(payload.get("mime_type") or ""),
+                    content_base64=str(payload.get("content_base64") or ""),
+                ),
+            )
+
+        if path == "/api/projects/save-master":
+            project_id = str(payload.get("project_id") or "")
+            master = MasterDocument.from_json(payload.get("master"))
+            return json_response(HTTPStatus.OK, store.save_master(project_id, master))
+
+        if path == "/api/projects/load":
+            project_id = str(payload.get("project_id") or "")
+            return json_response(HTTPStatus.OK, store.load_project(project_id))
 
         if path == "/api/export-translation-json":
             master = MasterDocument.from_json(payload.get("master"))

@@ -1,12 +1,19 @@
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
+from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.server import handle_api_request
 
 
 class ServerApiTests(unittest.TestCase):
-    def post_json(self, path, payload):
-        status, content_type, body = handle_api_request(path, json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+    def post_json(self, path, payload, project_store=None):
+        status, content_type, body = handle_api_request(
+            path,
+            json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            project_store=project_store,
+        )
         self.assertEqual(content_type, "application/json; charset=utf-8")
         return status, json.loads(body.decode("utf-8"))
 
@@ -58,6 +65,28 @@ class ServerApiTests(unittest.TestCase):
 
         self.assertEqual(status, 400)
         self.assertIn("content must be a string", response["error"])
+
+    def test_import_srt_route_persists_project(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ProjectStore(Path(tmpdir))
+
+            status, response = self.post_json(
+                "/api/projects/import-srt",
+                {
+                    "content": "1\n00:00:01,000 --> 00:00:02,000\nねえ\n",
+                    "source_file": "voice.srt",
+                },
+                project_store=store,
+            )
+            load_status, loaded = self.post_json(
+                "/api/projects/load",
+                {"project_id": response["project_id"]},
+                project_store=store,
+            )
+
+            self.assertEqual(status, 200)
+            self.assertEqual(load_status, 200)
+            self.assertEqual(loaded["master"]["segments"][0]["text"], "ねえ")
 
 
 if __name__ == "__main__":
