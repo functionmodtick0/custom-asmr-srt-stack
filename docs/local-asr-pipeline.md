@@ -281,6 +281,15 @@ data/outputs/eval-csv-srt-01-full.srt에서 120초 crop
 - time-aligned 500ms boundary ratio: 90% 이상
 - 명확한 L/R 구간 channel accuracy: 85~90% 이상
 
+자동 gate 예시:
+
+```bash
+uv run casrt eval-transcript ref.master.json candidate.master.json \
+  --max-practical-cer 0.10 \
+  --min-time-aligned-500ms-ratio 0.90 \
+  --min-channel-time-aligned-accuracy 0.85
+```
+
 결과:
 
 | 후보 | segments | practical CER | time-aligned 500ms ratio | channel time-aligned accuracy | 판단 |

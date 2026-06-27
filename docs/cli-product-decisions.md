@@ -199,6 +199,7 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 - channel attribution 튜닝을 위해 index 기반 `channel`과 time-overlap 기반 `channel_time_aligned`의 L/R/MIX confusion, candidate MIX 유지 비율, L/R channel accuracy를 계산한다.
 - `needs_review` 비율을 계산한다.
 - 평가는 모델 기본값 승격이나 threshold 변경 전에 실행한다.
+- `--max-practical-cer`, `--min-time-aligned-500ms-ratio`, `--min-channel-time-aligned-accuracy`를 지정하면 품질 gate로 동작한다. gate 실패 시 report는 stdout/file에 남기고 exit code를 실패로 반환한다.
 
 여러 샘플을 한 번에 평가할 때는 gold set manifest를 사용한다.
 
@@ -227,6 +228,7 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 - summary CER는 case 평균이 아니라 전체 edit distance / 전체 reference characters로 계산한다.
 - summary timing/channel/review는 전체 paired/boundary/comparable/candidate segment 수 기준으로 가중 집계한다.
 - case `id`는 중복될 수 없다.
+- `eval-manifest`의 품질 gate는 summary metric 기준으로 판단한다.
 
 ### 선택 segment 재전사
 

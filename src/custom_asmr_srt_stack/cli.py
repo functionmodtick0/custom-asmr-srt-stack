@@ -103,6 +103,7 @@ def eval_transcript(args: argparse.Namespace) -> None:
             f"time_aligned_timing_ms={report['timing_time_aligned']['mean_boundary_error_ms']}"
         ),
     )
+    enforce_quality_gate(report, args)
 
 
 def eval_manifest(args: argparse.Namespace) -> None:
@@ -123,6 +124,50 @@ def eval_manifest(args: argparse.Namespace) -> None:
             f"channel_accuracy={channel_accuracy}"
         ),
     )
+    enforce_quality_gate(report["summary"], args)
+
+
+def enforce_quality_gate(metrics: dict[str, Any], args: argparse.Namespace) -> None:
+    failures: list[str] = []
+    max_practical_cer = ratio_arg(args.max_practical_cer, "--max-practical-cer")
+    min_time_aligned_500ms_ratio = ratio_arg(
+        args.min_time_aligned_500ms_ratio,
+        "--min-time-aligned-500ms-ratio",
+    )
+    min_channel_time_aligned_accuracy = ratio_arg(
+        args.min_channel_time_aligned_accuracy,
+        "--min-channel-time-aligned-accuracy",
+    )
+
+    if max_practical_cer is not None:
+        practical_cer = float(metrics["text_practical"]["cer"])
+        if practical_cer > max_practical_cer:
+            failures.append(f"practical CER {practical_cer:.4f} > {max_practical_cer:.4f}")
+
+    if min_time_aligned_500ms_ratio is not None:
+        ratio = float(metrics["timing_time_aligned"]["within_500ms_ratio"])
+        if ratio < min_time_aligned_500ms_ratio:
+            failures.append(f"time-aligned 500ms ratio {ratio:.4f} < {min_time_aligned_500ms_ratio:.4f}")
+
+    if min_channel_time_aligned_accuracy is not None:
+        accuracy = metrics["channel_time_aligned"]["accuracy"]
+        if accuracy is None:
+            failures.append("channel time-aligned accuracy is unavailable")
+        elif float(accuracy) < min_channel_time_aligned_accuracy:
+            failures.append(
+                f"channel time-aligned accuracy {float(accuracy):.4f} < {min_channel_time_aligned_accuracy:.4f}"
+            )
+
+    if failures:
+        raise ValueError("quality gate failed: " + "; ".join(failures))
+
+
+def ratio_arg(value: float | None, name: str) -> float | None:
+    if value is None:
+        return None
+    if value < 0 or value > 1:
+        raise ValueError(f"{name} must be between 0 and 1")
+    return value
 
 
 def serve(args: argparse.Namespace) -> None:
@@ -318,6 +363,7 @@ def build_parser() -> argparse.ArgumentParser:
     eval_transcript_parser.add_argument("-o", "--output", type=Path)
     eval_transcript_parser.add_argument("--source-language", default="ja")
     eval_transcript_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
+    add_quality_gate_args(eval_transcript_parser)
     eval_transcript_parser.set_defaults(func=eval_transcript)
 
     eval_manifest_parser = subcommands.add_parser("eval-manifest", help="Evaluate a transcript manifest.")
@@ -325,6 +371,7 @@ def build_parser() -> argparse.ArgumentParser:
     eval_manifest_parser.add_argument("-o", "--output", type=Path)
     eval_manifest_parser.add_argument("--source-language", default="ja")
     eval_manifest_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
+    add_quality_gate_args(eval_manifest_parser)
     eval_manifest_parser.set_defaults(func=eval_manifest)
 
     serve_web = subcommands.add_parser("serve", help="Run the local WebUI server.")
@@ -434,6 +481,24 @@ def build_parser() -> argparse.ArgumentParser:
     export_srt_project.set_defaults(func=project_export_srt)
 
     return parser
+
+
+def add_quality_gate_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--max-practical-cer",
+        type=float,
+        help="Fail if practical CER is above this 0..1 ratio.",
+    )
+    parser.add_argument(
+        "--min-time-aligned-500ms-ratio",
+        type=float,
+        help="Fail if time-aligned 500ms boundary ratio is below this 0..1 ratio.",
+    )
+    parser.add_argument(
+        "--min-channel-time-aligned-accuracy",
+        type=float,
+        help="Fail if time-aligned L/R channel accuracy is below this 0..1 ratio.",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

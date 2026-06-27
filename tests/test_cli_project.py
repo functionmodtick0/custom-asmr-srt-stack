@@ -179,6 +179,55 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["text_practical"]["mode"], "practical")
             self.assertTrue(report_path.exists())
 
+    def test_eval_transcript_quality_gate_fails_after_emitting_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            report_path = root / "report.json"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\nねえ\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:01,100 --> 00:00:02,200\nね\n", encoding="utf-8")
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "eval-transcript",
+                    "--json",
+                    "-o",
+                    str(report_path),
+                    "--max-practical-cer",
+                    "0.10",
+                    str(reference),
+                    str(candidate),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(json.loads(output)["text_practical"]["edit_distance"], 1)
+            self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["text_practical"]["edit_distance"], 1)
+            self.assertIn("quality gate failed", error)
+            self.assertIn("practical CER", error)
+
+    def test_eval_transcript_quality_gate_fails_when_channel_accuracy_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\nねえ\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:01,100 --> 00:00:02,200\nねえ\n", encoding="utf-8")
+
+            result, _, error = run_cli_with_stderr(
+                [
+                    "eval-transcript",
+                    "--min-channel-time-aligned-accuracy",
+                    "0.90",
+                    str(reference),
+                    str(candidate),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertIn("channel time-aligned accuracy is unavailable", error)
+
     def test_eval_manifest_outputs_aggregated_json_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -222,6 +271,40 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["summary"]["text"]["edit_distance"], 1)
             self.assertEqual(report["cases"][0]["candidate_id"], "qwen-energy")
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["summary"]["text"]["edit_distance"], 1)
+
+    def test_eval_manifest_quality_gate_passes_when_thresholds_are_met(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            manifest = root / "gold.json"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\nねえ\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:01,100 --> 00:00:02,200\nね\n", encoding="utf-8")
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-manifest-v1",
+                        "cases": [{"id": "sample", "reference": "reference.srt", "candidate": "candidate.srt"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "eval-manifest",
+                    "--json",
+                    "--max-practical-cer",
+                    "0.60",
+                    "--min-time-aligned-500ms-ratio",
+                    "1.0",
+                    str(manifest),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output)["summary"]["text_practical"]["edit_distance"], 1)
+            self.assertEqual(error, "")
 
     def test_transcribe_and_retranscribe_project_cli(self):
         with tempfile.TemporaryDirectory() as tmpdir:

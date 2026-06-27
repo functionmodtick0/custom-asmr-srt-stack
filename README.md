@@ -250,6 +250,15 @@ uv run casrt json-to-srt master.json --translated translated.json -o export.srt
 uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 ```
 
+품질 gate를 같이 걸면 기준 미달 시 report를 출력/저장한 뒤 실패 exit code를 반환합니다.
+
+```bash
+uv run casrt eval-transcript reference.srt candidate.json \
+  --max-practical-cer 0.10 \
+  --min-time-aligned-500ms-ratio 0.90 \
+  --min-channel-time-aligned-accuracy 0.85
+```
+
 gold set manifest 평가:
 
 ```json
@@ -270,7 +279,7 @@ gold set manifest 평가:
 uv run casrt eval-manifest gold.json --json -o eval-suite.json
 ```
 
-현재 평가는 strict CER, practical CER, segment index 기준 timing 오차, boundary threshold ratio, L/R/MIX channel confusion, L/R channel accuracy, review 비율을 계산합니다.
+현재 평가는 strict CER, practical CER, segment index 기준 timing 오차, time-overlap 기준 timing ratio, L/R/MIX channel confusion, L/R channel accuracy, review 비율을 계산합니다.
 
 ## 테스트
 
