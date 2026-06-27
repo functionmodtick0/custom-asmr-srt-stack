@@ -93,7 +93,7 @@ class WorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             audio_path = root / "local.wav"
-            write_stereo_wav(audio_path, duration_ms=65_000)
+            write_stereo_samples(audio_path, [(200, 200)] * 65_000)
             store = ProjectStore(root / "projects")
             created = store.create_from_audio(
                 "local.wav",
@@ -131,16 +131,13 @@ class WorkflowTests(unittest.TestCase):
                 transcribe_audio_func=fake_transcribe,
             )
 
-            self.assertEqual(calls, [("L", 30_000), ("L", 30_000), ("L", 5_000), ("R", 30_000), ("R", 30_000), ("R", 5_000)])
+            self.assertEqual(calls, [("MIX", 30_000), ("MIX", 30_000), ("MIX", 5_000)])
             self.assertEqual(
                 [(segment.start_ms, segment.end_ms, segment.channel, segment.text) for segment in master.segments],
                 [
-                    (0, 30_000, "L", "L:30000"),
-                    (0, 30_000, "R", "R:30000"),
-                    (30_000, 60_000, "L", "L:30000"),
-                    (30_000, 60_000, "R", "R:30000"),
-                    (60_000, 65_000, "L", "L:5000"),
-                    (60_000, 65_000, "R", "R:5000"),
+                    (0, 30_000, "MIX", "MIX:30000"),
+                    (30_000, 60_000, "MIX", "MIX:30000"),
+                    (60_000, 65_000, "MIX", "MIX:5000"),
                 ],
             )
 
@@ -401,6 +398,50 @@ class WorkflowTests(unittest.TestCase):
             )
 
             self.assertEqual([(segment.channel, segment.text) for segment in master.segments], [("L", "左")])
+
+    def test_local_transformers_attributes_mix_segment_to_louder_channel(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "gemma-right.wav"
+            write_stereo_samples(audio_path, [(100, 6000)] * 2000)
+            store = ProjectStore(root / "projects")
+            created = store.create_from_audio(
+                "gemma-right.wav",
+                "audio/wav",
+                base64.b64encode(audio_path.read_bytes()).decode("ascii"),
+            )
+            analyzed = analyze_project(store, created["project_id"])
+            calls = []
+
+            def fake_transcribe(endpoint, audio_bytes, *, mime_type, channel, source_language):
+                del endpoint, audio_bytes, mime_type, source_language
+                calls.append(channel)
+                return (
+                    Segment(
+                        id="ignored",
+                        start_ms=0,
+                        end_ms=2000,
+                        channel="MIX",
+                        kind="speech",
+                        text="右",
+                    ),
+                )
+
+            master = transcribe_project(
+                store,
+                created["project_id"],
+                ModelEndpoint(
+                    adapter="local-transformers",
+                    endpoint_url=None,
+                    model_id="google/gemma-4-E4B-it",
+                ),
+                analyzed["metadata"],
+                source_language="ja",
+                transcribe_audio_func=fake_transcribe,
+            )
+
+            self.assertEqual(calls, ["MIX"])
+            self.assertEqual([(segment.channel, segment.text) for segment in master.segments], [("R", "右")])
 
     def test_transcribe_project_requires_analysis_chunks(self):
         with tempfile.TemporaryDirectory() as tmpdir:

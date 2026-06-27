@@ -25,6 +25,7 @@ QWEN_ENERGY_WINDOW_MS = 100
 QWEN_ENERGY_MIN_SILENCE_MS = 500
 QWEN_ENERGY_MIN_SPEECH_MS = 200
 QWEN_ENERGY_PAD_MS = 200
+MIX_FIRST_LOCAL_ASR_ADAPTERS = {"local-transformers", "local-qwen-asr"}
 
 
 def analyze_project(store: ProjectStore, project_id: str) -> dict[str, Any]:
@@ -154,8 +155,8 @@ def transcription_chunks(
     model_endpoint: ModelEndpoint,
     audio_bytes: bytes | None = None,
 ) -> tuple[dict[str, int], ...]:
-    qwen_chunks = qwen_asr_chunks(model_endpoint, audio_bytes)
-    chunks = qwen_chunks if qwen_chunks is not None else analysis_chunks(metadata)
+    local_chunks = local_asr_chunks(model_endpoint, audio_bytes)
+    chunks = local_chunks if local_chunks is not None else analysis_chunks(metadata)
     max_chunk_ms = adapter_max_chunk_ms(model_endpoint)
     if max_chunk_ms is None:
         return chunks
@@ -165,8 +166,8 @@ def transcription_chunks(
     return tuple(split_chunks)
 
 
-def qwen_asr_chunks(model_endpoint: ModelEndpoint, audio_bytes: bytes | None) -> tuple[dict[str, int], ...] | None:
-    if model_endpoint.adapter != "local-qwen-asr" or audio_bytes is None:
+def local_asr_chunks(model_endpoint: ModelEndpoint, audio_bytes: bytes | None) -> tuple[dict[str, int], ...] | None:
+    if model_endpoint.adapter not in MIX_FIRST_LOCAL_ASR_ADAPTERS or audio_bytes is None:
         return None
     vad_command = os.environ.get("CASRT_VAD_COMMAND", "").strip()
     if vad_command:
@@ -189,7 +190,7 @@ def qwen_energy_chunk_kwargs() -> dict[str, float | int]:
 def transcription_channel_names(channels: Any, model_endpoint: ModelEndpoint) -> list[str]:
     if not isinstance(channels, dict):
         return []
-    if model_endpoint.adapter == "local-qwen-asr" and "MIX" in channels:
+    if model_endpoint.adapter in MIX_FIRST_LOCAL_ASR_ADAPTERS and "MIX" in channels:
         return ["MIX"]
     if {"L", "R"}.issubset(channels):
         return ["L", "R"]
@@ -206,7 +207,11 @@ def apply_channel_attribution(
     model_endpoint: ModelEndpoint,
 ) -> list[Segment]:
     channels = metadata.get("channels")
-    if model_endpoint.adapter != "local-qwen-asr" or not isinstance(channels, dict) or not {"L", "R"}.issubset(channels):
+    if (
+        model_endpoint.adapter not in MIX_FIRST_LOCAL_ASR_ADAPTERS
+        or not isinstance(channels, dict)
+        or not {"L", "R"}.issubset(channels)
+    ):
         return segments
 
     left_audio = store.read_channel_audio(project_id, "L")

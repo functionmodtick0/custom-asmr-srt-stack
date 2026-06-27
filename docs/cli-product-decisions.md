@@ -128,10 +128,11 @@ uv run casrt project transcribe PROJECT_ID \
 동작:
 
 - project가 아직 분석되지 않았다면 실패한다.
-- L/R 채널이 있으면 각각 전사한다.
-- mono/MIX만 있으면 MIX를 전사한다.
-- 분석 단계가 저장한 chunk interval별로 오디오를 잘라 모델에 보낸다.
+- OpenAI-compatible/Gemini endpoint는 L/R 채널이 있으면 각각 전사하고, mono/MIX만 있으면 MIX를 전사한다.
+- 로컬 ASR adapter인 `local-transformers`와 `local-qwen-asr`는 L/R이 있어도 MIX-first로 전사한다.
+- 로컬 ASR adapter는 silence/energy 기반 chunk interval별로 MIX 오디오를 잘라 모델에 보낸다.
 - `local-transformers` adapter는 worker 모델의 audio limit을 고려해 chunk를 30초 이하 subchunk로 다시 자른다.
+- 로컬 ASR adapter가 반환한 MIX segment는 L/R energy 기반 channel attribution을 적용한다.
 - 모델이 반환한 chunk-relative timing을 원본 timeline timing으로 offset한다.
 - 결과를 시간순으로 정렬하고 stable segment id를 다시 부여한다.
 - `master.json`을 project에 저장한다.

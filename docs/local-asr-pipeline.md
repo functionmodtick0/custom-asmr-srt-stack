@@ -388,7 +388,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
    - `Atotti/llm-jp-4-8b-speech-asr`는 ASR 특화 일본어 후보지만 third-party runtime package가 필요하므로 사용자 명시 승인 후 비교한다.
    - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 성능 후보로 남기되, custom code/gated 접근 조건을 먼저 해결해야 한다.
    - `Qwen/Qwen3-ASR-0.6B`는 속도/저사양 후보로 비교한다.
-   - Gemma 4 E4B는 general multimodal baseline으로만 유지한다.
+   - Gemma 4 E4B는 공식 오디오 입력을 지원하고 2026-06-28 smoke 전사에 성공했으므로 우선 평가 후보로 승격한다. 단, 기본 모델 승격은 01/04/07 front120 gold set 지표를 본 뒤 결정한다.
    - Whisper 계열 도메인 fine-tune은 제품 기본이 아니라 비교 baseline으로만 본다.
 
 ## 문서화 규칙
