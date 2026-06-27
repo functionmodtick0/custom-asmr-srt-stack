@@ -6,10 +6,36 @@ from dataclasses import replace
 from typing import Any
 
 from custom_asmr_srt_stack.alignment import apply_alignment_review_flags, run_alignment_command
-from custom_asmr_srt_stack.audio import normalize_audio_to_wav, slice_wav
+from custom_asmr_srt_stack.audio import chunk_intervals, normalize_audio_to_wav, slice_wav, split_wav_channels
 from custom_asmr_srt_stack.models import MasterDocument, Segment, make_segment_id
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.transcription import ModelEndpoint, transcribe_audio
+
+
+def analyze_project(store: ProjectStore, project_id: str) -> dict[str, Any]:
+    audio_bytes, mime_type = store.read_audio(project_id)
+    project = store.load_project(project_id)
+    metadata = project_metadata(project)
+    normalized_wav = normalize_audio_to_wav(
+        audio_bytes,
+        file_name=metadata.get("source_file"),
+        mime_type=mime_type,
+    )
+    audio_info, channel_audio = split_wav_channels(normalized_wav)
+    return store.save_audio_analysis(
+        project_id,
+        audio_info.to_json(),
+        chunk_intervals(audio_info.duration_ms),
+        channel_audio,
+        normalized_wav,
+    )
+
+
+def project_metadata(project: dict[str, Any]) -> dict[str, Any]:
+    metadata = project.get("metadata")
+    if not isinstance(metadata, dict):
+        raise ValueError("project metadata must be an object")
+    return metadata
 
 
 def transcribe_project(
