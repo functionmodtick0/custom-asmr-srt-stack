@@ -21,16 +21,16 @@
 
 ## 요구 사항
 
-- Python 3.11+
+- uv
 - Node.js: `web/app.js` 구문 검사용
 - ffmpeg: WAV가 아닌 오디오를 전사 전에 WAV로 정규화할 때 필요
 
 ## 실행
 
-설치 없이 실행:
+서버 실행:
 
 ```bash
-PYTHONPATH=src python3 -m custom_asmr_srt_stack.cli serve
+uv run casrt serve
 ```
 
 브라우저에서 엽니다.
@@ -65,13 +65,13 @@ API Key
 
 ```bash
 CASRT_ALIGNER_COMMAND='python3 path/to/aligner.py' \
-  PYTHONPATH=src python3 -m custom_asmr_srt_stack.cli serve
+  uv run casrt serve
 ```
 
 포트를 바꾸려면:
 
 ```bash
-PYTHONPATH=src python3 -m custom_asmr_srt_stack.cli serve --port 5174
+uv run casrt serve --port 5174
 ```
 
 ## CLI
@@ -79,31 +79,31 @@ PYTHONPATH=src python3 -m custom_asmr_srt_stack.cli serve --port 5174
 SRT를 내부 기준 JSON으로 변환:
 
 ```bash
-PYTHONPATH=src python3 -m custom_asmr_srt_stack.cli srt-to-json input.srt -o master.json
+uv run casrt srt-to-json input.srt -o master.json
 ```
 
 번역 도구용 clean JSON 생성:
 
 ```bash
-PYTHONPATH=src python3 -m custom_asmr_srt_stack.cli export-translation-json master.json -o translation.json
+uv run casrt export-translation-json master.json -o translation.json
 ```
 
 JSON에서 SRT 생성:
 
 ```bash
-PYTHONPATH=src python3 -m custom_asmr_srt_stack.cli json-to-srt master.json -o export.srt
+uv run casrt json-to-srt master.json -o export.srt
 ```
 
 외부 번역 결과를 병합해서 SRT 생성:
 
 ```bash
-PYTHONPATH=src python3 -m custom_asmr_srt_stack.cli json-to-srt master.json --translated translated.json -o export.srt
+uv run casrt json-to-srt master.json --translated translated.json -o export.srt
 ```
 
 ## 테스트
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests
+uv run python -m unittest discover -s tests
 node --check web/app.js
 ```
 
