@@ -319,10 +319,25 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - invalid JSON, missing id, duplicate id, invalid timestamp는 실패를 표시한다.
 - 텍스트나 timing 데이터를 조용히 버리지 않는다.
 
+## 구현된 정책
+
+현재 구현에서 확정된 정책은 다음이다.
+
+- chunk interval 기본 최대 길이는 180초다.
+- 오디오는 분석 전에 WAV로 정규화한다.
+- WAV가 아닌 입력은 ffmpeg로 16-bit PCM WAV로 변환한다.
+- stereo WAV는 `L`, `R`, `MIX` 세 channel 파일로 분리한다.
+- mono WAV는 `MIX`만 만든다.
+- 모델 endpoint adapter는 `openai-compatible`, `gemini` 두 가지다.
+- 모델 설정은 UI에서 사용자가 직접 입력한다.
+- alignment는 UI에서 선택하지 않는다.
+- `CASRT_ALIGNER_COMMAND`가 설정된 경우, 앱은 고정 aligner command를 실행한다.
+- aligner command는 stdin으로 `{ audio_file, master }` JSON을 받고 stdout으로 `{ segments: [{ id, start_ms, end_ms }] }` JSON을 반환한다.
+- aligner output이 id를 누락하거나 중복하면 실패한다.
+- `needs_review`는 WebUI segment row에 표시한다.
+
 ## 열린 결정
 
-- 정확한 chunking 정책.
-- 정확한 모델 request/response adapter 계약.
 - breath/SFX를 기본 export에 포함할지, 요청 시에만 포함할지.
 - 실제 파일 테스트 후 split/merge가 필요한지.
 - debug alignment output을 자동 보존할지, developer mode에서만 남길지.
