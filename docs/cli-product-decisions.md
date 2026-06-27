@@ -194,8 +194,9 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 - reference와 candidate는 SRT 또는 `master.json`을 받을 수 있다.
 - speech text strict CER와 practical CER를 계산한다.
 - segment index 기준 mean start/end/boundary error를 계산한다.
+- segment 수나 split이 다른 후보를 평가하기 위해 time-overlap 기반 `timing_time_aligned`를 계산한다.
 - forced alignment 재평가를 위해 boundary sample 수, max boundary error, 250ms/500ms 이내 boundary ratio를 계산한다.
-- channel attribution 튜닝을 위해 L/R/MIX confusion, candidate MIX 유지 비율, L/R channel accuracy를 계산한다.
+- channel attribution 튜닝을 위해 index 기반 `channel`과 time-overlap 기반 `channel_time_aligned`의 L/R/MIX confusion, candidate MIX 유지 비율, L/R channel accuracy를 계산한다.
 - `needs_review` 비율을 계산한다.
 - 평가는 모델 기본값 승격이나 threshold 변경 전에 실행한다.
 

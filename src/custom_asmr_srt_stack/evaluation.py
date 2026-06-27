@@ -30,8 +30,15 @@ def evaluate_transcripts(reference: MasterDocument, candidate: MasterDocument) -
     strict_text = text_error_summary(raw_reference_text, raw_candidate_text, mode="strict")
     practical_text = text_error_summary(raw_reference_text, raw_candidate_text, mode="practical")
     paired = list(zip(reference_speech, candidate_speech))
+    time_aligned_paired = time_aligned_segment_pairs(reference_speech, candidate_speech)
     timing_errors = timing_error_summary(paired)
+    time_aligned_timing_errors = time_aligned_timing_summary(
+        reference_speech,
+        candidate_speech,
+        time_aligned_paired,
+    )
     channel_summary = channel_accuracy_summary(paired)
+    time_aligned_channel_summary = channel_accuracy_summary(time_aligned_paired)
     review_count = sum(1 for segment in candidate.segments if segment.needs_review)
 
     return {
@@ -41,7 +48,9 @@ def evaluate_transcripts(reference: MasterDocument, candidate: MasterDocument) -
         "text": strict_text,
         "text_practical": practical_text,
         "timing": timing_errors,
+        "timing_time_aligned": time_aligned_timing_errors,
         "channel": channel_summary,
+        "channel_time_aligned": time_aligned_channel_summary,
         "review": {
             "candidate_review_count": review_count,
             "candidate_review_ratio": review_count / max(1, len(candidate.segments)),
@@ -136,8 +145,10 @@ def aggregate_eval_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
         "candidate_segments": sum(report["candidate_segments"] for report in reports),
         "text": aggregate_text_reports(reports, "text"),
         "text_practical": aggregate_text_reports(reports, "text_practical"),
-        "timing": aggregate_timing_reports(reports),
-        "channel": aggregate_channel_reports(reports),
+        "timing": aggregate_timing_reports(reports, "timing"),
+        "timing_time_aligned": aggregate_timing_reports(reports, "timing_time_aligned"),
+        "channel": aggregate_channel_reports(reports, "channel"),
+        "channel_time_aligned": aggregate_channel_reports(reports, "channel_time_aligned"),
         "review": aggregate_review_reports(reports),
     }
 
@@ -157,12 +168,14 @@ def aggregate_text_reports(reports: list[dict[str, Any]], key: str) -> dict[str,
     }
 
 
-def aggregate_timing_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
-    paired_segments = sum(report["timing"]["paired_segments"] for report in reports)
-    boundary_samples = sum(report["timing"]["boundary_samples"] for report in reports)
-    timed_reports = [report for report in reports if report["timing"]["paired_segments"] > 0]
+def aggregate_timing_reports(reports: list[dict[str, Any]], key: str) -> dict[str, Any]:
+    paired_segments = sum(report[key]["paired_segments"] for report in reports)
+    boundary_samples = sum(report[key]["boundary_samples"] for report in reports)
+    timed_reports = [report for report in reports if report[key]["paired_segments"] > 0]
+    reference_segments = sum(report[key].get("reference_segments", 0) for report in reports)
+    candidate_segments = sum(report[key].get("candidate_segments", 0) for report in reports)
     if paired_segments == 0:
-        return {
+        summary = {
             "paired_segments": 0,
             "boundary_samples": 0,
             "mean_start_error_ms": None,
@@ -174,40 +187,60 @@ def aggregate_timing_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
             "within_500ms_count": 0,
             "within_500ms_ratio": None,
         }
+        if key == "timing_time_aligned":
+            summary.update(
+                {
+                    "reference_segments": reference_segments,
+                    "candidate_segments": candidate_segments,
+                    "matched_reference_segments": 0,
+                    "reference_match_ratio": None if reference_segments == 0 else 0.0,
+                }
+            )
+        return summary
     start_error_sum = sum(
-        report["timing"]["mean_start_error_ms"] * report["timing"]["paired_segments"] for report in timed_reports
+        report[key]["mean_start_error_ms"] * report[key]["paired_segments"] for report in timed_reports
     )
     end_error_sum = sum(
-        report["timing"]["mean_end_error_ms"] * report["timing"]["paired_segments"] for report in timed_reports
+        report[key]["mean_end_error_ms"] * report[key]["paired_segments"] for report in timed_reports
     )
     boundary_error_sum = sum(
-        report["timing"]["mean_boundary_error_ms"] * report["timing"]["paired_segments"] for report in timed_reports
+        report[key]["mean_boundary_error_ms"] * report[key]["paired_segments"] for report in timed_reports
     )
-    within_250ms_count = sum(report["timing"]["within_250ms_count"] for report in reports)
-    within_500ms_count = sum(report["timing"]["within_500ms_count"] for report in reports)
-    return {
+    within_250ms_count = sum(report[key]["within_250ms_count"] for report in reports)
+    within_500ms_count = sum(report[key]["within_500ms_count"] for report in reports)
+    summary = {
         "paired_segments": paired_segments,
         "boundary_samples": boundary_samples,
         "mean_start_error_ms": start_error_sum / paired_segments,
         "mean_end_error_ms": end_error_sum / paired_segments,
         "mean_boundary_error_ms": boundary_error_sum / paired_segments,
-        "max_boundary_error_ms": max(report["timing"]["max_boundary_error_ms"] for report in timed_reports),
+        "max_boundary_error_ms": max(report[key]["max_boundary_error_ms"] for report in timed_reports),
         "within_250ms_count": within_250ms_count,
         "within_250ms_ratio": within_250ms_count / max(1, boundary_samples),
         "within_500ms_count": within_500ms_count,
         "within_500ms_ratio": within_500ms_count / max(1, boundary_samples),
     }
+    if key == "timing_time_aligned":
+        summary.update(
+            {
+                "reference_segments": reference_segments,
+                "candidate_segments": candidate_segments,
+                "matched_reference_segments": paired_segments,
+                "reference_match_ratio": paired_segments / max(1, reference_segments),
+            }
+        )
+    return summary
 
 
-def aggregate_channel_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
-    paired_segments = sum(report["channel"]["paired_segments"] for report in reports)
-    comparable_segments = sum(report["channel"]["comparable_segments"] for report in reports)
-    candidate_mix_segments = sum(report["channel"]["candidate_mix_segments"] for report in reports)
+def aggregate_channel_reports(reports: list[dict[str, Any]], key: str) -> dict[str, Any]:
+    paired_segments = sum(report[key]["paired_segments"] for report in reports)
+    comparable_segments = sum(report[key]["comparable_segments"] for report in reports)
+    candidate_mix_segments = sum(report[key]["candidate_mix_segments"] for report in reports)
     confusion = empty_channel_confusion()
     for report in reports:
         for reference_channel in EVAL_CHANNELS:
             for candidate_channel in EVAL_CHANNELS:
-                confusion[reference_channel][candidate_channel] += report["channel"]["confusion"][reference_channel][
+                confusion[reference_channel][candidate_channel] += report[key]["confusion"][reference_channel][
                     candidate_channel
                 ]
 
@@ -220,7 +253,7 @@ def aggregate_channel_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
             "candidate_mix_segments": candidate_mix_segments,
             "candidate_mix_ratio": candidate_mix_segments / max(1, paired_segments),
         }
-    correct_segments = sum(report["channel"]["accuracy"] * report["channel"]["comparable_segments"] for report in reports)
+    correct_segments = sum(report[key]["accuracy"] * report[key]["comparable_segments"] for report in reports)
     return {
         "paired_segments": paired_segments,
         "comparable_segments": comparable_segments,
@@ -242,6 +275,47 @@ def aggregate_review_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
 
 def speech_segments(master: MasterDocument) -> tuple[Segment, ...]:
     return tuple(segment for segment in master.segments if segment.kind == "speech" and segment.text)
+
+
+def time_aligned_segment_pairs(
+    reference_segments: tuple[Segment, ...],
+    candidate_segments: tuple[Segment, ...],
+) -> list[tuple[Segment, Segment]]:
+    pairs: list[tuple[Segment, Segment]] = []
+    for reference in reference_segments:
+        best_candidate = None
+        best_overlap = 0
+        for candidate in candidate_segments:
+            current_overlap = overlap_ms(reference, candidate)
+            if current_overlap > best_overlap:
+                best_overlap = current_overlap
+                best_candidate = candidate
+        if best_candidate is not None:
+            pairs.append((reference, best_candidate))
+    return pairs
+
+
+def overlap_ms(reference: Segment, candidate: Segment) -> int:
+    return max(0, min(reference.end_ms, candidate.end_ms) - max(reference.start_ms, candidate.start_ms))
+
+
+def time_aligned_timing_summary(
+    reference_segments: tuple[Segment, ...],
+    candidate_segments: tuple[Segment, ...],
+    paired_segments: list[tuple[Segment, Segment]],
+) -> dict[str, Any]:
+    summary = timing_error_summary(paired_segments)
+    summary.update(
+        {
+            "reference_segments": len(reference_segments),
+            "candidate_segments": len(candidate_segments),
+            "matched_reference_segments": len(paired_segments),
+            "reference_match_ratio": None
+            if not reference_segments
+            else len(paired_segments) / len(reference_segments),
+        }
+    )
+    return summary
 
 
 def text_error_summary(reference_text: str, candidate_text: str, *, mode: str) -> dict[str, Any]:

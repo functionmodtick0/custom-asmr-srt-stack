@@ -189,10 +189,11 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 - speech text strict CER
 - speech text practical CER
 - segment index 기준 mean start/end/boundary error
+- time-overlap 기준 `timing_time_aligned` mean start/end/boundary error
 - boundary sample 수, max boundary error, 250ms/500ms 이내 boundary ratio
 - L/R/MIX channel confusion
 - candidate MIX 유지 비율
-- L/R channel accuracy
+- index 기준 `channel` 및 time-overlap 기준 `channel_time_aligned` L/R channel accuracy
 - candidate `needs_review` 비율
 
 strict CER는 공백만 제거한다.
@@ -205,7 +206,7 @@ practical CER는 현재 다음을 정규화한다.
 
 practical CER는 자막 실용 비교용이다. 원문 보존 품질은 strict CER를 같이 본다.
 
-manifest summary는 case별 평균이 아니라 전체 edit distance/reference characters와 전체 paired/boundary/comparable segment 수 기준으로 가중 집계한다. 짧은 clip과 긴 clip이 같은 비중을 갖지 않게 하기 위한 결정이다.
+manifest summary는 case별 평균이 아니라 전체 edit distance/reference characters와 전체 paired/boundary/comparable segment 수 기준으로 가중 집계한다. 짧은 clip과 긴 clip이 같은 비중을 갖지 않게 하기 위한 결정이다. 품질 threshold 판단은 segment split 차이에 덜 취약한 `timing_time_aligned`와 `channel_time_aligned`를 우선 사용한다.
 
 ## 10초 실데이터 실험
 

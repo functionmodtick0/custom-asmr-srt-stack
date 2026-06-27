@@ -51,13 +51,40 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["timing"]["max_boundary_error_ms"], 100)
         self.assertEqual(report["timing"]["within_250ms_count"], 4)
         self.assertEqual(report["timing"]["within_250ms_ratio"], 1.0)
+        self.assertEqual(report["timing_time_aligned"]["matched_reference_segments"], 2)
+        self.assertEqual(report["timing_time_aligned"]["reference_match_ratio"], 1.0)
+        self.assertEqual(report["timing_time_aligned"]["mean_boundary_error_ms"], 80)
         self.assertEqual(report["channel"]["paired_segments"], 2)
         self.assertEqual(report["channel"]["comparable_segments"], 2)
         self.assertEqual(report["channel"]["accuracy"], 0.5)
         self.assertEqual(report["channel"]["confusion"]["L"]["L"], 1)
         self.assertEqual(report["channel"]["confusion"]["R"]["L"], 1)
         self.assertEqual(report["channel"]["candidate_mix_segments"], 0)
+        self.assertEqual(report["channel_time_aligned"]["accuracy"], 0.5)
         self.assertEqual(report["review"]["candidate_review_count"], 1)
+
+    def test_time_aligned_timing_ignores_non_overlapping_extra_candidate_segments(self):
+        reference = master_with_segments(
+            [
+                Segment("seg_000001", 1000, 2000, "L", "speech", "あ"),
+                Segment("seg_000002", 3000, 4000, "R", "speech", "い"),
+            ]
+        )
+        candidate = master_with_segments(
+            [
+                Segment("seg_000001", 0, 500, "MIX", "speech", "noise"),
+                Segment("seg_000002", 1100, 1900, "L", "speech", "あ"),
+                Segment("seg_000003", 3100, 3900, "R", "speech", "い"),
+            ]
+        )
+
+        report = evaluate_transcripts(reference, candidate)
+
+        self.assertGreater(report["timing"]["mean_boundary_error_ms"], 1000)
+        self.assertEqual(report["timing_time_aligned"]["matched_reference_segments"], 2)
+        self.assertEqual(report["timing_time_aligned"]["mean_boundary_error_ms"], 100)
+        self.assertEqual(report["channel_time_aligned"]["comparable_segments"], 2)
+        self.assertEqual(report["channel_time_aligned"]["accuracy"], 1.0)
 
     def test_practical_cer_normalizes_width_spacing_and_punctuation(self):
         self.assertEqual(normalize_for_cer("ね、 魔女ちゃん！？", mode="practical"), "ね魔女ちゃん")
@@ -108,9 +135,13 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["summary"]["timing"]["mean_boundary_error_ms"], 175)
         self.assertEqual(report["summary"]["timing"]["max_boundary_error_ms"], 200)
         self.assertEqual(report["summary"]["timing"]["within_250ms_ratio"], 1.0)
+        self.assertEqual(report["summary"]["timing_time_aligned"]["matched_reference_segments"], 2)
+        self.assertEqual(report["summary"]["timing_time_aligned"]["reference_match_ratio"], 1.0)
+        self.assertEqual(report["summary"]["timing_time_aligned"]["within_500ms_ratio"], 1.0)
         self.assertEqual(report["summary"]["channel"]["paired_segments"], 2)
         self.assertEqual(report["summary"]["channel"]["confusion"]["MIX"]["MIX"], 2)
         self.assertEqual(report["summary"]["channel"]["candidate_mix_ratio"], 1.0)
+        self.assertEqual(report["summary"]["channel_time_aligned"]["candidate_mix_ratio"], 1.0)
 
     def test_evaluate_manifest_rejects_duplicate_case_ids(self):
         with tempfile.TemporaryDirectory() as tmpdir:

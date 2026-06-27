@@ -99,7 +99,8 @@ def eval_transcript(args: argparse.Namespace) -> None:
             f"cer={report['text']['cer']:.4f} "
             f"practical_cer={report['text_practical']['cer']:.4f} "
             f"segments={report['candidate_segments']}/{report['reference_segments']} "
-            f"timing_ms={report['timing']['mean_boundary_error_ms']}"
+            f"timing_ms={report['timing']['mean_boundary_error_ms']} "
+            f"time_aligned_timing_ms={report['timing_time_aligned']['mean_boundary_error_ms']}"
         ),
     )
 
@@ -118,6 +119,7 @@ def eval_manifest(args: argparse.Namespace) -> None:
             f"cer={report['summary']['text']['cer']:.4f} "
             f"practical_cer={report['summary']['text_practical']['cer']:.4f} "
             f"timing_ms={timing} "
+            f"time_aligned_timing_ms={report['summary']['timing_time_aligned']['mean_boundary_error_ms']} "
             f"channel_accuracy={channel_accuracy}"
         ),
     )
