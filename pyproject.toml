@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "custom-asmr-srt-stack"
+version = "0.1.0"
+description = "Local WebUI stack for Japanese ASMR transcription JSON/SRT workflows."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+casrt = "custom_asmr_srt_stack.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
