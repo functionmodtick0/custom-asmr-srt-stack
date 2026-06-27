@@ -90,6 +90,21 @@ class ServerApiTests(unittest.TestCase):
         self.assertTrue(response["ok"])
         self.assertEqual(response["adapter"], "gemini")
 
+    def test_model_validate_route_accepts_local_transformers(self):
+        status, response = self.post_json(
+            "/api/model/validate",
+            {
+                "model": {
+                    "adapter": "local-transformers",
+                    "model_id": "google/gemma-4-E4B-it",
+                }
+            },
+        )
+
+        self.assertEqual(status, 200)
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["adapter"], "local-transformers")
+
     def test_import_srt_route_persists_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ProjectStore(Path(tmpdir))

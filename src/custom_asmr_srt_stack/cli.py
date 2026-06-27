@@ -242,8 +242,8 @@ def build_parser() -> argparse.ArgumentParser:
     output_parent = argparse.ArgumentParser(add_help=False)
     output_parent.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
     model_parent = argparse.ArgumentParser(add_help=False)
-    model_parent.add_argument("--adapter", choices=["openai-compatible", "gemini"], required=True)
-    model_parent.add_argument("--endpoint-url", required=True)
+    model_parent.add_argument("--adapter", choices=["openai-compatible", "gemini", "local-transformers"], required=True)
+    model_parent.add_argument("--endpoint-url")
     model_parent.add_argument("--model-id", required=True)
     model_parent.add_argument("--api-key")
 

@@ -366,6 +366,11 @@ dialog::backdrop {
   padding: 0 10px;
 }
 
+.model-form input:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
 .model-form input:focus,
 .model-form select:focus {
   outline: none;

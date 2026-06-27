@@ -136,6 +136,22 @@ class ProjectCliTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(json.loads(output)["model_id"], "gemma-4-e4b")
 
+    def test_model_validate_accepts_local_transformers_without_endpoint_url(self):
+        result, output = run_cli(
+            [
+                "model",
+                "validate",
+                "--adapter",
+                "local-transformers",
+                "--model-id",
+                "google/gemma-4-E4B-it",
+                "--json",
+            ]
+        )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(json.loads(output)["adapter"], "local-transformers")
+
     def test_transcribe_and_retranscribe_project_cli(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

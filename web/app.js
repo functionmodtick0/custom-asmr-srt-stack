@@ -79,15 +79,20 @@ function msToClock(ms) {
 
 function loadModelSettings() {
   const raw = localStorage.getItem("customAsmrModelSettings");
-  if (!raw) return;
+  if (!raw) {
+    syncModelFormForAdapter();
+    return;
+  }
   try {
     const settings = JSON.parse(raw);
     els.adapterInput.value = settings.adapter || "openai-compatible";
     els.endpointInput.value = settings.endpoint || "";
     els.modelInput.value = settings.model || "";
     els.apiKeyInput.value = settings.apiKey || "";
+    syncModelFormForAdapter();
   } catch {
     localStorage.removeItem("customAsmrModelSettings");
+    syncModelFormForAdapter();
   }
 }
 
@@ -118,6 +123,30 @@ function getModelSettings() {
     model_id: els.modelInput.value.trim(),
     api_key: els.apiKeyInput.value,
   };
+}
+
+function modelSettingsReady(model) {
+  if (!model.model_id) return false;
+  return model.adapter === "local-transformers" || Boolean(model.endpoint_url);
+}
+
+function modelSettingsRequirementText(model) {
+  if (model.adapter === "local-transformers") {
+    return "모델 설정에서 Model ID를 입력하세요.";
+  }
+  return "모델 설정에서 Endpoint URL과 Model ID를 입력하세요.";
+}
+
+function syncModelFormForAdapter() {
+  const isLocal = els.adapterInput.value === "local-transformers";
+  els.endpointInput.disabled = isLocal;
+  els.apiKeyInput.disabled = isLocal;
+  els.endpointInput.placeholder = isLocal ? "사용하지 않음" : "http://127.0.0.1:8000/v1";
+  els.modelInput.placeholder = isLocal ? "google/gemma-4-E4B-it" : "gemma-4-e4b";
+  if (isLocal) {
+    els.endpointInput.value = "";
+    els.apiKeyInput.value = "";
+  }
 }
 
 function setMaster(master, label, projectId = state.projectId) {
@@ -377,14 +406,14 @@ async function startTranscription() {
     return;
   }
   const model = getModelSettings();
-  if (!model.model_id || !model.endpoint_url) {
-    setStatus("모델 필요", "모델 설정에서 Endpoint URL과 Model ID를 입력하세요.", true);
+  if (!modelSettingsReady(model)) {
+    setStatus("모델 필요", modelSettingsRequirementText(model), true);
     return;
   }
 
   setStatus("분석 중", "오디오 채널과 chunk를 준비합니다.");
   await apiPost("/api/projects/analyze-audio", { project_id: state.projectId });
-  setStatus("전사 중", "모델 endpoint에 오디오를 보내고 있습니다.");
+  setStatus("전사 중", "모델에 오디오를 보내고 있습니다.");
   const result = await apiPost("/api/projects/transcribe", {
     project_id: state.projectId,
     source_language: "ja",
@@ -433,6 +462,7 @@ els.dropZone.addEventListener("drop", (event) => {
 });
 
 els.modelButton.addEventListener("click", () => els.modelDialog.showModal());
+els.adapterInput.addEventListener("change", syncModelFormForAdapter);
 els.validateModelButton.addEventListener("click", () => safeRun(validateModelSettings));
 els.saveModelButton.addEventListener("click", saveModelSettings);
 els.importTranslatedButton.addEventListener("click", () => els.translatedInput.click());
@@ -448,11 +478,11 @@ els.retranscribeButton.addEventListener("click", () => {
   if (!state.selectedId) return;
   safeRun(async () => {
     const model = getModelSettings();
-    if (!model.model_id || !model.endpoint_url) {
-      setStatus("모델 필요", "모델 설정에서 Endpoint URL과 Model ID를 입력하세요.", true);
+    if (!modelSettingsReady(model)) {
+      setStatus("모델 필요", modelSettingsRequirementText(model), true);
       return;
     }
-    setStatus("재전사 중", `${state.selectedId} segment를 모델 endpoint에 보내고 있습니다.`);
+    setStatus("재전사 중", `${state.selectedId} segment를 모델에 보내고 있습니다.`);
     const result = await apiPost("/api/projects/retranscribe-segment", {
       project_id: state.projectId,
       segment_id: state.selectedId,
