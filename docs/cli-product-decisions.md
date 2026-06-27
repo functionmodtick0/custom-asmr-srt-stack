@@ -105,6 +105,14 @@ uv run casrt model validate \
   --model-id google/gemma-4-E4B-it
 ```
 
+로컬 Qwen ASR worker를 사용할 때도 endpoint URL을 입력하지 않는다.
+
+```bash
+uv run casrt model validate \
+  --adapter local-qwen-asr \
+  --model-id Qwen/Qwen3-ASR-1.7B
+```
+
 ### 전체 전사
 
 ```bash
@@ -142,6 +150,22 @@ CASRT_TRANSFORMERS_QUANTIZATION=4bit \
 - worker와 JSON Lines로 통신한다.
 - worker는 모델을 lazy load하고 같은 CLI/WebUI 프로세스 안에서 재사용한다.
 - `CASRT_TRANSFORMERS_QUANTIZATION=4bit`가 설정되면 runtime 4-bit quantization을 사용하고, Gemma 4 audio path가 깨지지 않도록 `lm_head`와 `model.audio_tower`는 quantization에서 제외한다.
+- worker import, model load, inference, response contract 오류는 실패로 표시한다.
+
+로컬 Qwen ASR worker:
+
+```bash
+uv run casrt project transcribe PROJECT_ID \
+  --adapter local-qwen-asr \
+  --model-id Qwen/Qwen3-ASR-1.7B
+```
+
+동작:
+
+- `casrt`가 내부적으로 `python -m custom_asmr_srt_stack.qwen_asr_worker` subprocess를 시작한다.
+- worker와 JSON Lines로 통신한다.
+- worker는 모델을 lazy load하고 같은 CLI/WebUI 프로세스 안에서 재사용한다.
+- ASMR 품질 경로에서는 MIX 전사를 우선하고 L/R은 channel attribution 근거로 사용한다.
 - worker import, model load, inference, response contract 오류는 실패로 표시한다.
 
 ### 선택 segment 재전사

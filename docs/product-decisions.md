@@ -18,7 +18,8 @@
 - 범용 자막 편집기를 만들지 않는다.
 - 연구용 모델 튜닝 옵션을 기본 화면에 노출하지 않는다.
 - WhisperX를 핵심 파이프라인으로 쓰지 않는다.
-- 같은 목적에 사용할 수 있는 최신 프론티어 멀티모달 모델이 있다면 구형/소형 ASR 모델을 추천하지 않는다.
+- 외부 프론티어 API를 고품질 기본 경로로 사용하지 않는다.
+- 같은 목적에 사용할 수 있는 최신 로컬 ASR/aligner 모델이 있다면 구형/소형 ASR 모델을 추천하지 않는다.
 
 번역은 명시적으로 범위 밖이다. 번역은 외부 번역 도구가 담당한다.
 
@@ -49,7 +50,11 @@ export.srt           생성된 자막 출력
 
 ## 모델 정책
 
-메인 전사 모델은 사용자가 100% 직접 지정한다.
+고품질 제품 경로는 로컬 처리만 사용한다.
+
+외부 프론티어 API는 제품 방향이 아니다. OpenAI-compatible / Gemini 어댑터는 기존 호환성과 로컬 HTTP 서버 연동을 위해 남길 수 있지만, 제품 기본값과 품질 목표는 로컬 모델 파일 또는 로컬 런타임이다.
+
+메인 전사 모델은 사용자가 직접 지정한다.
 
 UI에는 직접 연결 필드를 노출한다.
 
@@ -67,8 +72,9 @@ API Key
 - OpenAI-compatible multimodal endpoint
 - Gemini API endpoint
 - Local Transformers worker
+- Local Qwen ASR worker
 
-vLLM, SGLang 등으로 서빙되는 로컬 모델은 가능하면 OpenAI-compatible 어댑터로 연결한다.
+vLLM, SGLang 등으로 서빙되는 로컬 모델은 가능하면 OpenAI-compatible 어댑터로 연결할 수 있다. 다만 고품질 일본 ASMR 경로는 HTTP API가 필수가 아니며, 애플리케이션이 직접 로컬 worker subprocess를 띄울 수 있어야 한다.
 
 전사 endpoint는 오디오 입력을 실제로 받아야 한다. vision-only 또는 text-only multimodal endpoint는 모델 이름이 최신이어도 ASR 경로로 사용할 수 없다.
 
@@ -85,6 +91,39 @@ Gemma 4 E2B/E4B 계열처럼 audio clip 길이 제한이 있는 모델을 고려
 `google/gemma-4-E4B-it`의 full HF `model.safetensors`는 약 16GB라 16GB VRAM 환경에서 full precision 로딩을 기본값으로 쓰기 부적절하다. Gemma 4 E4B 로컬 실행은 `CASRT_TRANSFORMERS_QUANTIZATION=4bit` runtime quantization을 권장한다.
 
 Gemma 4 audio path는 audio tower까지 pre-quantize된 bnb checkpoint에서 깨질 수 있다. 실제 smoke에서 `unsloth/gemma-4-E4B-it-unsloth-bnb-4bit`는 audio tower의 `bitsandbytes` `AssertionError`로 실패했다. 따라서 worker의 runtime 4-bit quantization은 `lm_head`와 `model.audio_tower`를 quantization에서 제외한다.
+
+## 일본 ASMR 고품질 로컬 파이프라인
+
+일본 ASMR/동인음성의 기본 파이프라인은 다음 순서를 목표로 한다.
+
+```text
+원본 오디오
+-> WAV 정규화
+-> L/R/MIX 생성
+-> VAD/silence 기반 chunking
+-> MIX-first ASR
+-> L/R channel attribution
+-> forced alignment
+-> master.json
+```
+
+ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한 ASMR 파일에서 L/R 단독 전사는 channel bleed, low SNR, whisper 때문에 더 쉽게 깨졌다. L/R은 텍스트 인식의 주 경로가 아니라 발화 위치와 겹침 판단을 위한 근거로 사용한다.
+
+우선 구현 대상은 다음이다.
+
+- `Qwen/Qwen3-ASR-1.7B`: 주력 로컬 ASR 후보
+- `Qwen/Qwen3-ASR-0.6B`: 빠른 비교/저사양 후보
+- `Qwen/Qwen3-ForcedAligner-0.6B`: 고정 forced alignment 후보
+
+Gemma 4 E4B 같은 general multimodal 모델은 실험/비교 대상으로 유지한다. 제품의 일본 ASMR 품질 기준 모델은 ASR 전용 로컬 모델이어야 한다.
+
+평가 없이 모델을 기본값으로 승격하지 않는다. 최소 평가 기준은 다음이다.
+
+- character error rate
+- segment boundary error
+- channel attribution accuracy
+- `needs_review` segment 비율
+- 사람이 실제로 고쳐야 하는 구간 수
 
 ## Alignment 정책
 
