@@ -138,6 +138,10 @@ def enforce_quality_gate(metrics: dict[str, Any], args: argparse.Namespace) -> N
         args.min_channel_time_aligned_accuracy,
         "--min-channel-time-aligned-accuracy",
     )
+    max_channel_time_aligned_mix_ratio = ratio_arg(
+        args.max_channel_time_aligned_mix_ratio,
+        "--max-channel-time-aligned-mix-ratio",
+    )
 
     if max_practical_cer is not None:
         practical_cer = float(metrics["text_practical"]["cer"])
@@ -156,6 +160,13 @@ def enforce_quality_gate(metrics: dict[str, Any], args: argparse.Namespace) -> N
         elif float(accuracy) < min_channel_time_aligned_accuracy:
             failures.append(
                 f"channel time-aligned accuracy {float(accuracy):.4f} < {min_channel_time_aligned_accuracy:.4f}"
+            )
+
+    if max_channel_time_aligned_mix_ratio is not None:
+        mix_ratio = float(metrics["channel_time_aligned"]["candidate_mix_ratio"])
+        if mix_ratio > max_channel_time_aligned_mix_ratio:
+            failures.append(
+                f"channel time-aligned MIX ratio {mix_ratio:.4f} > {max_channel_time_aligned_mix_ratio:.4f}"
             )
 
     if failures:
@@ -498,6 +509,11 @@ def add_quality_gate_args(parser: argparse.ArgumentParser) -> None:
         "--min-channel-time-aligned-accuracy",
         type=float,
         help="Fail if time-aligned L/R channel accuracy is below this 0..1 ratio.",
+    )
+    parser.add_argument(
+        "--max-channel-time-aligned-mix-ratio",
+        type=float,
+        help="Fail if time-aligned candidate MIX ratio is above this 0..1 ratio.",
     )
 
 

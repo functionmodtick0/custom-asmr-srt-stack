@@ -228,6 +228,27 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(result, 1)
             self.assertIn("channel time-aligned accuracy is unavailable", error)
 
+    def test_eval_transcript_quality_gate_fails_when_candidate_mix_ratio_is_too_high(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\n[L] ねえ\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:01,100 --> 00:00:02,200\n[LR] ねえ\n", encoding="utf-8")
+
+            result, _, error = run_cli_with_stderr(
+                [
+                    "eval-transcript",
+                    "--max-channel-time-aligned-mix-ratio",
+                    "0.50",
+                    str(reference),
+                    str(candidate),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertIn("channel time-aligned MIX ratio", error)
+
     def test_eval_manifest_outputs_aggregated_json_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

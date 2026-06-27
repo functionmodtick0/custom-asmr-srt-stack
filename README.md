@@ -256,7 +256,8 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 uv run casrt eval-transcript reference.srt candidate.json \
   --max-practical-cer 0.10 \
   --min-time-aligned-500ms-ratio 0.90 \
-  --min-channel-time-aligned-accuracy 0.85
+  --min-channel-time-aligned-accuracy 0.85 \
+  --max-channel-time-aligned-mix-ratio 0.50
 ```
 
 gold set manifest 평가:

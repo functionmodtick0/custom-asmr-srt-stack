@@ -287,7 +287,8 @@ data/outputs/eval-csv-srt-01-full.srt에서 120초 crop
 uv run casrt eval-transcript ref.master.json candidate.master.json \
   --max-practical-cer 0.10 \
   --min-time-aligned-500ms-ratio 0.90 \
-  --min-channel-time-aligned-accuracy 0.85
+  --min-channel-time-aligned-accuracy 0.85 \
+  --max-channel-time-aligned-mix-ratio 0.50
 ```
 
 결과:
