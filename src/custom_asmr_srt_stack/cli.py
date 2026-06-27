@@ -283,8 +283,14 @@ def model_validate(args: argparse.Namespace) -> None:
 
 
 def vad_whisper_asmr_onnx(args: argparse.Namespace) -> None:
+    from custom_asmr_srt_stack.audio import speech_intervals_by_energy
     from custom_asmr_srt_stack.models import require_mapping
-    from custom_asmr_srt_stack.whisper_vad_onnx import WhisperVadOnnxSettings, detect_command_intervals
+    from custom_asmr_srt_stack.whisper_vad_onnx import (
+        WhisperVadOnnxSettings,
+        add_rescue_intervals,
+        detect_command_intervals,
+    )
+    from custom_asmr_srt_stack.workflow import qwen_energy_chunk_kwargs
 
     request = require_mapping(json.loads(sys.stdin.read()), "VAD request")
     audio_file = request.get("audio_file")
@@ -305,6 +311,13 @@ def vad_whisper_asmr_onnx(args: argparse.Namespace) -> None:
             num_threads=args.num_threads,
         ),
     )
+    if args.energy_rescue_min_ms is not None:
+        energy_intervals = speech_intervals_by_energy(Path(audio_file).read_bytes(), **qwen_energy_chunk_kwargs())
+        intervals = add_rescue_intervals(
+            energy_intervals,
+            intervals,
+            min_rescue_ms=args.energy_rescue_min_ms,
+        )
     print(json.dumps({"intervals": list(intervals)}, ensure_ascii=False))
 
 
@@ -441,6 +454,11 @@ def build_parser() -> argparse.ArgumentParser:
     whisper_asmr_onnx.add_argument("--output-activation", choices=["sigmoid", "identity"], default="sigmoid")
     whisper_asmr_onnx.add_argument("--force-cpu", action="store_true", default=True)
     whisper_asmr_onnx.add_argument("--num-threads", type=int, default=1)
+    whisper_asmr_onnx.add_argument(
+        "--energy-rescue-min-ms",
+        type=int,
+        help="Add ONNX-only gaps at least this long to the internal energy intervals.",
+    )
     whisper_asmr_onnx.set_defaults(func=vad_whisper_asmr_onnx)
 
     project = subcommands.add_parser("project", help="Manage transcript projects.")

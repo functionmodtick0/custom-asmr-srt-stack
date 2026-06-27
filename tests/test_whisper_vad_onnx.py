@@ -6,6 +6,7 @@ from pathlib import Path
 from custom_asmr_srt_stack.whisper_vad_onnx import (
     EXPECTED_METADATA,
     WhisperVadOnnxSettings,
+    add_rescue_intervals,
     activate_outputs,
     load_metadata,
     probabilities_to_intervals,
@@ -128,6 +129,29 @@ class WhisperVadOnnxTests(unittest.TestCase):
                     providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
                 )
             )
+
+    def test_add_rescue_intervals_keeps_base_granularity(self):
+        intervals = add_rescue_intervals(
+            [
+                {"index": 0, "start_ms": 1000, "end_ms": 2000},
+                {"index": 1, "start_ms": 4000, "end_ms": 5000},
+            ],
+            [
+                {"index": 0, "start_ms": 500, "end_ms": 2500},
+                {"index": 1, "start_ms": 3600, "end_ms": 5200},
+            ],
+            min_rescue_ms=500,
+        )
+
+        self.assertEqual(
+            intervals,
+            (
+                {"index": 0, "start_ms": 500, "end_ms": 1000},
+                {"index": 1, "start_ms": 1000, "end_ms": 2000},
+                {"index": 2, "start_ms": 2000, "end_ms": 2500},
+                {"index": 3, "start_ms": 4000, "end_ms": 5000},
+            ),
+        )
 
 
 if __name__ == "__main__":

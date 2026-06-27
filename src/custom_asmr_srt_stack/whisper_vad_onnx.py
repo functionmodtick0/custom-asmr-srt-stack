@@ -297,6 +297,56 @@ def probabilities_to_intervals(
     return tuple(padded)
 
 
+def add_rescue_intervals(
+    base_intervals: Sequence[dict[str, int]],
+    rescue_intervals: Sequence[dict[str, int]],
+    *,
+    min_rescue_ms: int,
+) -> tuple[dict[str, int], ...]:
+    if min_rescue_ms < 0:
+        raise ValueError("min_rescue_ms must be non-negative")
+    base_ranges = [(item["start_ms"], item["end_ms"]) for item in base_intervals]
+    rescue_ranges = [(item["start_ms"], item["end_ms"]) for item in rescue_intervals]
+    extras: list[tuple[int, int]] = []
+    for rescue_range in merge_ranges(rescue_ranges):
+        for gap in subtract_ranges(rescue_range, base_ranges):
+            if gap[1] - gap[0] >= min_rescue_ms:
+                extras.append(gap)
+    return indexed_intervals(sorted(base_ranges + extras))
+
+
+def subtract_ranges(target: tuple[int, int], blockers: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:
+    pieces = [target]
+    for blocker_start, blocker_end in merge_ranges(blockers):
+        next_pieces: list[tuple[int, int]] = []
+        for start, end in pieces:
+            if blocker_end <= start or blocker_start >= end:
+                next_pieces.append((start, end))
+                continue
+            if blocker_start > start:
+                next_pieces.append((start, blocker_start))
+            if blocker_end < end:
+                next_pieces.append((blocker_end, end))
+        pieces = next_pieces
+    return pieces
+
+
+def merge_ranges(ranges: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(ranges):
+        if end <= start:
+            continue
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def indexed_intervals(ranges: Sequence[tuple[int, int]]) -> tuple[dict[str, int], ...]:
+    return tuple({"index": index, "start_ms": start, "end_ms": end} for index, (start, end) in enumerate(ranges))
+
+
 def validate_postprocess_args(
     *,
     duration_ms: int,

@@ -312,6 +312,7 @@ uv run casrt eval-transcript ref.master.json candidate.master.json \
 | neosophie/Qwen3-ASR-1.7B-JA, 01/04/07 front120 | 3 | 74 | 81 | 29.6% | 29.5% | 73.1% | 불합격 |
 | neosophie/Qwen3-ASR-1.7B-JA + ASMR ONNX VAD default, 01/04/07 front120 | 3 | 74 | 47 | 30.2% | 17.6% | 73.7% | 불합격: timing 악화 |
 | neosophie/Qwen3-ASR-1.7B-JA + ASMR ONNX VAD t035-pad400-sil400, 01/04/07 front120 | 3 | 74 | 16 | 33.4% | 7.0% | 76.9% | 불합격: 과도한 병합 |
+| neosophie/Qwen3-ASR-1.7B-JA + ASMR ONNX VAD hybrid rescue500, 01/04/07 front120 | 3 | 74 | 109 | 31.0% | 31.1% | 73.1% | 불합격: text 악화 |
 | mistralai/Voxtral-Mini-4B-Realtime-2602, 01/04/07 front120 | 3 | 74 | 44 | 40.0% | 28.7% | 63.6% | 불합격 |
 | google/gemma-4-E4B-it, 4-bit local-transformers, MIX-first, 01/04/07 front120 | 3 | 74 | 81 | 42.3% | 29.5% | 73.1% | 불합격 |
 | google/gemma-4-E4B-it, 8-bit local-transformers, MIX-first, 01/04/07 front120 | 3 | 74 | 81 | 46.1% | 29.5% | 73.1% | 불합격 |
@@ -333,6 +334,9 @@ case별 practical CER:
 | Neosophie + ASMR ONNX VAD t035-pad400-sil400 | 01-front120 | 28.2% | 8.3% | n/a |
 | Neosophie + ASMR ONNX VAD t035-pad400-sil400 | 04-front120 | 20.4% | 4.3% | n/a |
 | Neosophie + ASMR ONNX VAD t035-pad400-sil400 | 07-front120 | 57.6% | 8.3% | 76.9% |
+| Neosophie + ASMR ONNX VAD hybrid rescue500 | 01-front120 | 22.1% | 28.0% | 57.1% |
+| Neosophie + ASMR ONNX VAD hybrid rescue500 | 04-front120 | 21.8% | 39.1% | 75.0% |
+| Neosophie + ASMR ONNX VAD hybrid rescue500 | 07-front120 | 55.2% | 26.9% | 80.0% |
 | Voxtral Mini Realtime | 01-front120 | 22.4% | 22.7% | 66.7% |
 | Voxtral Mini Realtime | 04-front120 | 20.8% | 37.0% | 60.0% |
 | Voxtral Mini Realtime | 07-front120 | 89.0% | 0.0% | n/a |
@@ -395,9 +399,10 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - ONNX Runtime session metadata는 input shape를 `['s6', 80, 3000]`, output shape를 `[1, 1500]`, provider를 `CPUExecutionProvider`로 노출했다. `s6`는 symbolic batch dim으로 보고 이 축만 허용하며, feature/time/output shape는 metadata 계약 그대로 고정 검증한다.
 - ASMR Whisper ONNX VAD 파일은 `/tmp/casrt-quality/whisper-vad-asmr-onnx-model-v1`에 두 파일만 저장했고 SHA-256은 `/tmp/casrt-quality/whisper-vad-asmr-onnx-model-v1.sha256`에 있다. `model.onnx`는 `cd47513515766d57f740e3094440dbbca9ab87e026b9cf21540d7ad588c0e047`, `model_metadata.json`은 `aeb23b4d032b38e8fe36d6eb350c91f1ae751e0ce11813633ab9533ada4c55b3`다.
 - VAD coverage 단독 비교에서 default ONNX VAD는 recall 87.5%, precision 87.2%, interval 47개였고, tuned `threshold=0.35,pad=400,min_silence=400`는 recall 93.6%, precision 83.0%, interval 16개였다. Energy 500/200 baseline은 recall 91.3%, precision 85.0%, interval 69개다. Tuned VAD는 coverage만 보면 좋아 보이지만 실제 ASR에서는 chunk가 과도하게 병합되어 timing과 text가 악화됐다.
-- Neosophie/Qwen3-ASR-JA에 ONNX VAD를 붙인 실제 ASR 산출물은 `/tmp/casrt-quality/projects-neosophie-onnx-vad-default`, `/tmp/casrt-quality/projects-neosophie-onnx-vad-t035-pad400`에 있다. Report는 `/tmp/casrt-quality/neosophie-onnx-vad-default-3case-report.json`, `/tmp/casrt-quality/neosophie-onnx-vad-t035-pad400-3case-report.json`이다. 결론은 ASMR ONNX VAD를 단독 chunker로 기본 교체하지 않는 것이다. 후속 후보는 VAD 단독이 아니라 `VAD mask + energy micro-split`처럼 whisper speech recall을 보완하면서 chunk granularity를 유지하는 방식이다.
+- Neosophie/Qwen3-ASR-JA에 ONNX VAD를 붙인 실제 ASR 산출물은 `/tmp/casrt-quality/projects-neosophie-onnx-vad-default`, `/tmp/casrt-quality/projects-neosophie-onnx-vad-t035-pad400`, `/tmp/casrt-quality/projects-neosophie-onnx-vad-hybrid-rescue500`에 있다. Report는 `/tmp/casrt-quality/neosophie-onnx-vad-default-3case-report.json`, `/tmp/casrt-quality/neosophie-onnx-vad-t035-pad400-3case-report.json`, `/tmp/casrt-quality/neosophie-onnx-vad-hybrid-rescue500-3case-report.json`이다. 결론은 ASMR ONNX VAD를 단독 chunker로 기본 교체하지 않는 것이다.
+- `--energy-rescue-min-ms 500` hybrid는 coverage recall 95.5%와 time-aligned 500ms 31.1%로 energy baseline보다 timing은 조금 높였지만 practical CER가 31.0%로 악화됐다. 따라서 hybrid도 기본 승격하지 않는다.
 - vocal separation은 무조건 적용하지 않는다. WhisperJAV README는 blanket denoise/vocal separation이 Whisper log-Mel feature를 망가뜨릴 수 있다고 경고한다. 반면 WhisperJAV issue에서는 강한 BGM/환경음이 있을 때 UVR/MDX/Demucs류 분리의 필요성이 제기됐다. 따라서 BGM/SFX가 강한 case에서만 별도 실험으로 둔다.
-- 다음 개선은 VAD mask + energy micro-split, scene-aware chunking, forced alignment 재평가 순서로 검증한다.
+- 다음 개선은 scene-aware chunking, forced alignment 재평가 순서로 검증한다.
 
 ## 다음 작업 계획
 
@@ -415,7 +420,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
    - `casrt vad whisper-asmr-onnx` command는 추가됐다.
    - 현재 energy splitter 500/200은 fallback-free baseline이다.
    - `TransWithAI/Whisper-Vad-EncDec-ASMR-onnx`는 단독 chunker로 비교했고 기본 교체하지 않는다.
-   - 다음 VAD 실험은 VAD mask로 low-energy speech 구간을 보강하되 energy split granularity를 유지하는 hybrid command다.
+   - `--energy-rescue-min-ms 500` hybrid도 비교했고 기본 교체하지 않는다.
    - Silero VAD, TEN VAD wrapper는 ASMR ONNX VAD보다 후순위로 둔다.
    - VAD도 WebUI 옵션으로 노출하지 않고 고정/내부 설정으로 둔다.
 
