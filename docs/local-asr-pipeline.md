@@ -149,12 +149,21 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 
 현재 측정값:
 
-- speech text CER
+- speech text strict CER
+- speech text practical CER
 - segment index 기준 mean start/end/boundary error
 - L/R channel accuracy
 - candidate `needs_review` 비율
 
-현재 CER는 공백만 제거하고 punctuation/kana 표기 차이를 대부분 그대로 본다. 일본어 ASMR 비교에는 별도 정규화가 필요하다.
+strict CER는 공백만 제거한다.
+
+practical CER는 현재 다음을 정규화한다.
+
+- Unicode NFKC
+- 공백 제거
+- punctuation/symbol 제거
+
+practical CER는 자막 실용 비교용이다. 원문 보존 품질은 strict CER를 같이 본다.
 
 ## 10초 실데이터 실험
 
@@ -203,9 +212,9 @@ energy chunking + channel attribution 출력:
    - `/data/uploads`, `/data/outputs`에서 30초~2분 단위 reference set을 만든다.
    - CER, timing error, channel accuracy, human edit count를 기록한다.
 
-2. 일본어 평가 정규화
-   - 공백 제거 외에 punctuation, 장음/감탄, 전각/반각 차이를 별도 metric으로 분리한다.
-   - 원문 보존 metric과 자막 실용 metric을 나눈다.
+2. 일본어 평가 정규화 확장
+   - strict/practical CER는 분리됐다.
+   - 다음 단계에서는 장음/감탄/소형 kana 차이를 별도 옵션으로 추가할지 평가한다.
 
 3. VAD 후보 추가
    - 현재 energy splitter는 baseline이다.

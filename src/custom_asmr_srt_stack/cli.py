@@ -97,6 +97,7 @@ def eval_transcript(args: argparse.Namespace) -> None:
         report,
         (
             f"cer={report['text']['cer']:.4f} "
+            f"practical_cer={report['text_practical']['cer']:.4f} "
             f"segments={report['candidate_segments']}/{report['reference_segments']} "
             f"timing_ms={report['timing']['mean_boundary_error_ms']}"
         ),

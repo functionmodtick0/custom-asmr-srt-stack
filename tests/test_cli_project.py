@@ -176,6 +176,7 @@ class ProjectCliTests(unittest.TestCase):
             report = json.loads(output)
             self.assertEqual(report["format"], "custom-asmr-eval-v1")
             self.assertEqual(report["text"]["edit_distance"], 1)
+            self.assertEqual(report["text_practical"]["mode"], "practical")
             self.assertTrue(report_path.exists())
 
     def test_transcribe_and_retranscribe_project_cli(self):

@@ -2,7 +2,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from custom_asmr_srt_stack.evaluation import evaluate_transcripts, levenshtein_distance, load_transcript_document
+from custom_asmr_srt_stack.evaluation import (
+    evaluate_transcripts,
+    levenshtein_distance,
+    load_transcript_document,
+    normalize_for_cer,
+)
 from custom_asmr_srt_stack.models import MasterDocument, Segment
 
 
@@ -34,12 +39,17 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["format"], "custom-asmr-eval-v1")
         self.assertEqual(report["text"]["edit_distance"], 2)
         self.assertAlmostEqual(report["text"]["cer"], 2 / 7)
+        self.assertEqual(report["text_practical"]["mode"], "practical")
         self.assertEqual(report["timing"]["paired_segments"], 2)
         self.assertEqual(report["timing"]["mean_start_error_ms"], 60)
         self.assertEqual(report["timing"]["mean_end_error_ms"], 100)
         self.assertEqual(report["channel"]["comparable_segments"], 2)
         self.assertEqual(report["channel"]["accuracy"], 0.5)
         self.assertEqual(report["review"]["candidate_review_count"], 1)
+
+    def test_practical_cer_normalizes_width_spacing_and_punctuation(self):
+        self.assertEqual(normalize_for_cer("ね、 魔女ちゃん！？", mode="practical"), "ね魔女ちゃん")
+        self.assertEqual(normalize_for_cer("ABC１２３", mode="practical"), "ABC123")
 
     def test_load_transcript_document_accepts_srt(self):
         with tempfile.TemporaryDirectory() as tmpdir:

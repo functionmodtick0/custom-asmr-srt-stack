@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -21,10 +22,10 @@ def load_transcript_document(path: Path, *, source_language: str = "ja") -> Mast
 def evaluate_transcripts(reference: MasterDocument, candidate: MasterDocument) -> dict[str, Any]:
     reference_speech = speech_segments(reference)
     candidate_speech = speech_segments(candidate)
-    reference_text = normalize_for_cer("".join(segment.text for segment in reference_speech))
-    candidate_text = normalize_for_cer("".join(segment.text for segment in candidate_speech))
-    distance = levenshtein_distance(reference_text, candidate_text)
-    reference_chars = len(reference_text)
+    raw_reference_text = "".join(segment.text for segment in reference_speech)
+    raw_candidate_text = "".join(segment.text for segment in candidate_speech)
+    strict_text = text_error_summary(raw_reference_text, raw_candidate_text, mode="strict")
+    practical_text = text_error_summary(raw_reference_text, raw_candidate_text, mode="practical")
     paired = list(zip(reference_speech, candidate_speech))
     timing_errors = timing_error_summary(paired)
     channel_summary = channel_accuracy_summary(paired)
@@ -34,12 +35,8 @@ def evaluate_transcripts(reference: MasterDocument, candidate: MasterDocument) -
         "format": EVAL_FORMAT,
         "reference_segments": len(reference_speech),
         "candidate_segments": len(candidate_speech),
-        "text": {
-            "cer": 0.0 if reference_chars == 0 and len(candidate_text) == 0 else distance / max(1, reference_chars),
-            "edit_distance": distance,
-            "reference_characters": reference_chars,
-            "candidate_characters": len(candidate_text),
-        },
+        "text": strict_text,
+        "text_practical": practical_text,
         "timing": timing_errors,
         "channel": channel_summary,
         "review": {
@@ -53,8 +50,36 @@ def speech_segments(master: MasterDocument) -> tuple[Segment, ...]:
     return tuple(segment for segment in master.segments if segment.kind == "speech" and segment.text)
 
 
-def normalize_for_cer(text: str) -> str:
-    return re.sub(r"\s+", "", text)
+def text_error_summary(reference_text: str, candidate_text: str, *, mode: str) -> dict[str, Any]:
+    normalized_reference = normalize_for_cer(reference_text, mode=mode)
+    normalized_candidate = normalize_for_cer(candidate_text, mode=mode)
+    distance = levenshtein_distance(normalized_reference, normalized_candidate)
+    reference_chars = len(normalized_reference)
+    return {
+        "mode": mode,
+        "cer": 0.0 if reference_chars == 0 and len(normalized_candidate) == 0 else distance / max(1, reference_chars),
+        "edit_distance": distance,
+        "reference_characters": reference_chars,
+        "candidate_characters": len(normalized_candidate),
+    }
+
+
+def normalize_for_cer(text: str, *, mode: str = "strict") -> str:
+    if mode == "strict":
+        return re.sub(r"\s+", "", text)
+    if mode != "practical":
+        raise ValueError("CER normalization mode must be strict or practical")
+
+    normalized = unicodedata.normalize("NFKC", text)
+    normalized = re.sub(r"\s+", "", normalized)
+    return "".join(character for character in normalized if is_practical_cer_character(character))
+
+
+def is_practical_cer_character(character: str) -> bool:
+    category = unicodedata.category(character)
+    if category.startswith("P") or category.startswith("S"):
+        return False
+    return True
 
 
 def levenshtein_distance(left: str, right: str) -> int:
