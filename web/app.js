@@ -446,7 +446,21 @@ els.startButton.addEventListener("click", () => {
 });
 els.retranscribeButton.addEventListener("click", () => {
   if (!state.selectedId) return;
-  setStatus("대기", `${state.selectedId} 재전사는 다음 개발 단위에서 연결됩니다.`);
+  safeRun(async () => {
+    const model = getModelSettings();
+    if (!model.model_id || !model.endpoint_url) {
+      setStatus("모델 필요", "모델 설정에서 Endpoint URL과 Model ID를 입력하세요.", true);
+      return;
+    }
+    setStatus("재전사 중", `${state.selectedId} segment를 모델 endpoint에 보내고 있습니다.`);
+    const result = await apiPost("/api/projects/retranscribe-segment", {
+      project_id: state.projectId,
+      segment_id: state.selectedId,
+      source_language: "ja",
+      model,
+    });
+    setMaster(result.master, "선택 segment를 재전사했습니다.", state.projectId);
+  });
 });
 
 window.addEventListener("resize", drawWaveform);

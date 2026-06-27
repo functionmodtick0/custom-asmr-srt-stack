@@ -80,6 +80,26 @@ def split_wav_channels(audio_bytes: bytes) -> tuple[AudioInfo, dict[str, bytes]]
     }
 
 
+def slice_wav(audio_bytes: bytes, *, start_ms: int, end_ms: int) -> bytes:
+    if start_ms < 0:
+        raise ValueError("start_ms must be non-negative")
+    if end_ms <= start_ms:
+        raise ValueError("end_ms must be greater than start_ms")
+
+    with open_wave(audio_bytes) as wav:
+        channels = wav.getnchannels()
+        sample_width = wav.getsampwidth()
+        sample_rate = wav.getframerate()
+        frame_count = wav.getnframes()
+        start_frame = min(frame_count, round((start_ms / 1000) * sample_rate))
+        end_frame = min(frame_count, round((end_ms / 1000) * sample_rate))
+        if end_frame <= start_frame:
+            raise ValueError("selected audio range is empty")
+        wav.setpos(start_frame)
+        frames = wav.readframes(end_frame - start_frame)
+    return write_wav(frames, channels=channels, sample_width=sample_width, sample_rate=sample_rate)
+
+
 def normalize_audio_to_wav(audio_bytes: bytes, *, file_name: str | None = None, mime_type: str | None = None) -> bytes:
     if not audio_bytes:
         raise ValueError("audio_bytes must not be empty")

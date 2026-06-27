@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from custom_asmr_srt_stack.alignment import apply_alignment_review_flags, run_alignment_command
-from custom_asmr_srt_stack.audio import chunk_intervals, normalize_audio_to_wav, split_wav_channels
+from custom_asmr_srt_stack.audio import chunk_intervals, normalize_audio_to_wav, slice_wav, split_wav_channels
 from custom_asmr_srt_stack.models import MasterDocument, Segment, make_segment_id, require_mapping, require_string
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.srt import format_srt, parse_srt
@@ -120,6 +120,26 @@ def handle_api_request(
             )
             return json_response(HTTPStatus.OK, store.save_master(project_id, master))
 
+        if path == "/api/projects/retranscribe-segment":
+            project_id = str(payload.get("project_id") or "")
+            segment_id = str(payload.get("segment_id") or "")
+            model_endpoint = ModelEndpoint.from_json(payload.get("model"))
+            source_language = str(payload.get("source_language") or "ja")
+            project = store.load_project(project_id)
+            metadata = require_mapping(project.get("metadata"), "metadata")
+            master = MasterDocument.from_json(project.get("master"))
+            updated = retranscribe_segment(
+                store,
+                project_id,
+                master,
+                metadata,
+                segment_id=segment_id,
+                model_endpoint=model_endpoint,
+                source_language=source_language,
+                transcribe_audio_func=transcribe_audio_func,
+            )
+            return json_response(HTTPStatus.OK, store.save_master(project_id, updated))
+
         if path == "/api/export-translation-json":
             master = MasterDocument.from_json(payload.get("master"))
             return json_response(HTTPStatus.OK, export_translation_json(master))
@@ -213,6 +233,73 @@ def transcribe_project(
         master,
         audio_file=store.require_project_root(project_id) / normalized_audio_file,
         command=shlex.split(aligner_command),
+    )
+
+
+def retranscribe_segment(
+    store: ProjectStore,
+    project_id: str,
+    master: MasterDocument,
+    metadata: dict[str, Any],
+    *,
+    segment_id: str,
+    model_endpoint: ModelEndpoint,
+    source_language: str,
+    transcribe_audio_func,
+) -> MasterDocument:
+    target = next((segment for segment in master.segments if segment.id == segment_id), None)
+    if target is None:
+        raise ValueError("segment not found")
+
+    channels = metadata.get("channels")
+    if isinstance(channels, dict) and target.channel in channels:
+        channel_audio = store.read_channel_audio(project_id, target.channel)
+        mime_type = "audio/wav"
+    else:
+        audio_bytes, mime_type = store.read_audio(project_id)
+        channel_audio = normalize_audio_to_wav(
+            audio_bytes,
+            file_name=metadata.get("source_file"),
+            mime_type=mime_type,
+        )
+        mime_type = "audio/wav"
+
+    clip = slice_wav(channel_audio, start_ms=target.start_ms, end_ms=target.end_ms)
+    replacement = tuple(
+        replace(
+            segment,
+            channel=target.channel,
+            start_ms=target.start_ms + segment.start_ms,
+            end_ms=target.start_ms + segment.end_ms,
+        )
+        for segment in transcribe_audio_func(
+            model_endpoint,
+            clip,
+            mime_type=mime_type,
+            channel=target.channel,
+            source_language=source_language,
+        )
+    )
+    if not replacement:
+        raise ValueError("retranscription returned no segments")
+
+    merged: list[Segment] = []
+    for segment in master.segments:
+        if segment.id == segment_id:
+            merged.extend(replacement)
+        else:
+            merged.append(segment)
+
+    return apply_alignment_review_flags(
+        replace(
+            master,
+            segments=tuple(
+                replace(segment, id=make_segment_id(index + 1))
+                for index, segment in enumerate(
+                    sorted(merged, key=lambda segment: (segment.start_ms, segment.end_ms, segment.channel, segment.text))
+                )
+            ),
+        )
     )
 
 

@@ -205,6 +205,82 @@ class ServerApiTests(unittest.TestCase):
                 [("seg_000001", "L", "左"), ("seg_000002", "R", "右")],
             )
 
+    def test_retranscribe_segment_replaces_selected_timeline_range(self):
+        output = io.BytesIO()
+        with wave.open(output, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(1000)
+            wav.writeframes(struct.pack("<hhhh", 100, 200, 300, 400))
+
+        def fake_transcribe(endpoint, audio_bytes, *, mime_type, channel, source_language):
+            self.assertEqual(channel, "MIX")
+            return (
+                Segment(
+                    id="ignored",
+                    start_ms=0,
+                    end_ms=1,
+                    channel="MIX",
+                    kind="speech",
+                    text="再",
+                ),
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ProjectStore(Path(tmpdir))
+            _, upload = self.post_json(
+                "/api/projects/upload-audio",
+                {
+                    "file_name": "voice.wav",
+                    "mime_type": "audio/wav",
+                    "content_base64": base64.b64encode(output.getvalue()).decode("ascii"),
+                },
+                project_store=store,
+            )
+            self.post_json("/api/projects/analyze-audio", {"project_id": upload["project_id"]}, project_store=store)
+            master = {
+                "format": "custom-asmr-master-v1",
+                "source_language": "ja",
+                "audio": {"source_file": "voice.wav", "duration_ms": 4},
+                "segments": [
+                    {
+                        "id": "seg_000001",
+                        "start_ms": 1,
+                        "end_ms": 3,
+                        "channel": "MIX",
+                        "kind": "speech",
+                        "text": "古い",
+                        "needs_review": False,
+                    }
+                ],
+            }
+            self.post_json(
+                "/api/projects/save-master",
+                {"project_id": upload["project_id"], "master": master},
+                project_store=store,
+            )
+
+            status, response = self.post_json(
+                "/api/projects/retranscribe-segment",
+                {
+                    "project_id": upload["project_id"],
+                    "segment_id": "seg_000001",
+                    "source_language": "ja",
+                    "model": {
+                        "adapter": "openai-compatible",
+                        "endpoint_url": "http://localhost:8000/v1",
+                        "model_id": "gemma-4-e4b",
+                    },
+                },
+                project_store=store,
+                transcribe_audio_func=fake_transcribe,
+            )
+
+            self.assertEqual(status, 200)
+            self.assertEqual(response["master"]["segments"][0]["start_ms"], 1)
+            self.assertEqual(response["master"]["segments"][0]["end_ms"], 2)
+            self.assertEqual(response["master"]["segments"][0]["text"], "再")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,7 +3,7 @@ import struct
 import unittest
 import wave
 
-from custom_asmr_srt_stack.audio import analyze_wav, chunk_intervals, normalize_audio_to_wav, split_wav_channels
+from custom_asmr_srt_stack.audio import analyze_wav, chunk_intervals, normalize_audio_to_wav, slice_wav, split_wav_channels
 
 
 def make_stereo_wav(samples):
@@ -62,6 +62,16 @@ class AudioPipelineTests(unittest.TestCase):
     def test_normalize_audio_fails_visibly_for_invalid_audio(self):
         with self.assertRaisesRegex(ValueError, "ffmpeg could not decode audio|audio is not WAV"):
             normalize_audio_to_wav(b"not audio", file_name="voice.mp3", mime_type="audio/mpeg")
+
+    def test_slice_wav_returns_selected_time_range(self):
+        audio = make_stereo_wav([(100, 300), (200, 400), (500, 700)])
+
+        sliced = slice_wav(audio, start_ms=1, end_ms=3)
+
+        info = analyze_wav(sliced)
+        self.assertEqual(info.duration_ms, 2)
+        _, channels = split_wav_channels(sliced)
+        self.assertEqual(read_mono_samples(channels["L"]), [200, 500])
 
 
 if __name__ == "__main__":
