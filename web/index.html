@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ASMR JSON Studio</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">custom-asmr-srt-stack</p>
+          <h1>ASMR JSON Studio</h1>
+        </div>
+        <div class="topbar-actions">
+          <button id="modelButton" type="button" class="secondary">모델</button>
+          <button id="startButton" type="button" class="primary">전사 시작</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="sidebar">
+          <label id="dropZone" class="drop-zone" for="fileInput">
+            <span>오디오 / SRT / JSON</span>
+            <strong>드롭 또는 선택</strong>
+          </label>
+          <input id="fileInput" type="file" hidden accept="audio/*,.srt,.json" />
+
+          <audio id="audioPlayer" controls></audio>
+
+          <div class="action-stack">
+            <button id="exportMasterButton" type="button">master.json</button>
+            <button id="exportTranslationButton" type="button">translation.json</button>
+            <button id="importTranslatedButton" type="button">translated.json</button>
+            <button id="exportSrtButton" type="button">export.srt</button>
+          </div>
+          <input id="translatedInput" type="file" hidden accept=".json,application/json" />
+
+          <div class="status-block">
+            <span id="statusLabel">대기</span>
+            <output id="statusText">파일을 불러오세요.</output>
+          </div>
+        </aside>
+
+        <section class="main-panel" aria-label="transcript workspace">
+          <div class="waveform-strip">
+            <canvas id="waveformCanvas" width="1200" height="220"></canvas>
+          </div>
+
+          <div class="segment-toolbar">
+            <div>
+              <span id="segmentCount">0 segments</span>
+              <span id="selectedLabel">선택 없음</span>
+            </div>
+            <button id="retranscribeButton" type="button" class="secondary">선택 재전사</button>
+          </div>
+
+          <div id="segmentList" class="segment-list" aria-live="polite"></div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="modelDialog">
+      <form method="dialog" class="model-form">
+        <header>
+          <h2>모델 설정</h2>
+          <button type="submit" value="cancel" class="icon-button" aria-label="닫기">×</button>
+        </header>
+        <label>
+          <span>Endpoint URL</span>
+          <input id="endpointInput" name="endpoint" autocomplete="off" placeholder="http://127.0.0.1:8000/v1" />
+        </label>
+        <label>
+          <span>Model ID</span>
+          <input id="modelInput" name="model" autocomplete="off" placeholder="gemma-4-e4b" />
+        </label>
+        <label>
+          <span>API Key</span>
+          <input id="apiKeyInput" name="apiKey" type="password" autocomplete="off" />
+        </label>
+        <footer>
+          <button id="saveModelButton" type="button" class="primary">저장</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
