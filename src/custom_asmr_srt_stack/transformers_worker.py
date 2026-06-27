@@ -17,6 +17,7 @@ LOCAL_TRANSCRIPTION_PROMPT = (
     "Return Japanese text only. Do not translate. "
     "Do not add timestamps, channel labels, explanations, or markdown."
 )
+QUANTIZATION_SKIP_MODULES = ["lm_head", "model.audio_tower"]
 
 
 class TransformersRuntime:
@@ -98,15 +99,10 @@ class TransformersRuntime:
             "torch_dtype": "auto",
             "trust_remote_code": True,
         }
-        if quantization_mode() == "4bit":
-            log("using 4-bit runtime quantization; skipping lm_head and audio tower")
-            model_kwargs["quantization_config"] = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.bfloat16,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_use_double_quant=True,
-                llm_int8_skip_modules=["lm_head", "model.audio_tower"],
-            )
+        quantization = quantization_mode()
+        if quantization:
+            log(f"using {quantization} runtime quantization; skipping lm_head and audio tower")
+            model_kwargs["quantization_config"] = quantization_config(quantization, torch, BitsAndBytesConfig)
         model = model_class.from_pretrained(
             model_id,
             **model_kwargs,
@@ -117,6 +113,23 @@ class TransformersRuntime:
         self._loaded[model_id] = loaded
         log("model loaded")
         return loaded
+
+
+def quantization_config(mode: str, torch: Any, bits_and_bytes_config: Any) -> Any:
+    if mode == "4bit":
+        return bits_and_bytes_config(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+            llm_int8_skip_modules=QUANTIZATION_SKIP_MODULES,
+        )
+    if mode == "8bit":
+        return bits_and_bytes_config(
+            load_in_8bit=True,
+            llm_int8_skip_modules=QUANTIZATION_SKIP_MODULES,
+        )
+    raise ValueError("CASRT_TRANSFORMERS_QUANTIZATION must be one of: 4bit, 8bit")
 
 
 def import_model_class() -> Any:

@@ -90,7 +90,7 @@ Gemma 4 E2B/E4B 계열처럼 audio clip 길이 제한이 있는 모델을 고려
 
 로컬 ASR adapter인 `local-transformers`와 `local-qwen-asr`는 모두 MIX-first로 전사한다. L/R 단독 전사는 조용한 ASMR에서 bleed와 low-SNR 문제를 키우므로, L/R은 텍스트 입력이 아니라 channel attribution 근거로 사용한다.
 
-`google/gemma-4-E4B-it`의 full HF `model.safetensors`는 약 16GB라 16GB VRAM 환경에서 full precision 로딩을 기본값으로 쓰기 부적절하다. Gemma 4 E4B 로컬 실행은 `CASRT_TRANSFORMERS_QUANTIZATION=4bit` runtime quantization을 권장한다.
+`google/gemma-4-E4B-it`의 full HF `model.safetensors`는 약 16GB라 16GB VRAM 환경에서 full precision 로딩을 기본값으로 쓰기 부적절하다. Gemma 4 E4B 로컬 실행은 `CASRT_TRANSFORMERS_QUANTIZATION=4bit` runtime quantization을 권장한다. VRAM 여유가 있으면 `8bit`도 품질 비교 대상으로 사용한다.
 
 Gemma 4 audio path는 audio tower까지 pre-quantize된 bnb checkpoint에서 깨질 수 있다. 실제 smoke에서 `unsloth/gemma-4-E4B-it-unsloth-bnb-4bit`는 audio tower의 `bitsandbytes` `AssertionError`로 실패했다. 따라서 worker의 runtime 4-bit quantization은 `lm_head`와 `model.audio_tower`를 quantization에서 제외한다.
 

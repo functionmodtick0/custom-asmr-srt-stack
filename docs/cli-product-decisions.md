@@ -152,7 +152,8 @@ CASRT_TRANSFORMERS_QUANTIZATION=4bit \
 - `casrt`가 내부적으로 `python -m custom_asmr_srt_stack.transformers_worker` subprocess를 시작한다.
 - worker와 JSON Lines로 통신한다.
 - worker는 모델을 lazy load하고 같은 CLI/WebUI 프로세스 안에서 재사용한다.
-- `CASRT_TRANSFORMERS_QUANTIZATION=4bit`가 설정되면 runtime 4-bit quantization을 사용하고, Gemma 4 audio path가 깨지지 않도록 `lm_head`와 `model.audio_tower`는 quantization에서 제외한다.
+- `CASRT_TRANSFORMERS_QUANTIZATION=4bit` 또는 `8bit`가 설정되면 runtime quantization을 사용하고, Gemma 4 audio path가 깨지지 않도록 `lm_head`와 `model.audio_tower`는 quantization에서 제외한다.
+- 잘못된 quantization 값은 full precision fallback으로 넘기지 않고 오류로 표시한다.
 - worker import, model load, inference, response contract 오류는 실패로 표시한다.
 
 로컬 Qwen ASR worker:

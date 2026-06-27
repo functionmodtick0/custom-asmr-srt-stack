@@ -1,14 +1,18 @@
 import base64
 import io
 import json
+import os
 import struct
 import unittest
 import wave
+from unittest import mock
 
 from custom_asmr_srt_stack.transformers_worker import (
     TransformersRuntime,
     clean_transcription_text,
     prepare_audio_for_asr,
+    quantization_config,
+    quantization_mode,
     response_for_line,
 )
 
@@ -41,6 +45,15 @@ class FakeRuntime(TransformersRuntime):
     def generate_text(self, model_id, audio_bytes):
         del model_id, audio_bytes
         return self.text
+
+
+class FakeBitsAndBytesConfig:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+
+class FakeTorch:
+    bfloat16 = "bf16"
 
 
 class TransformersWorkerTests(unittest.TestCase):
@@ -107,6 +120,36 @@ class TransformersWorkerTests(unittest.TestCase):
         samples = read_mono_samples(prepared)
         self.assertGreater(samples[0], 10)
         self.assertLessEqual(max(abs(sample) for sample in samples), 23200)
+
+    def test_quantization_config_supports_4bit_and_8bit_without_quantizing_audio_tower(self):
+        four_bit = quantization_config("4bit", FakeTorch, FakeBitsAndBytesConfig)
+        eight_bit = quantization_config("8bit", FakeTorch, FakeBitsAndBytesConfig)
+
+        self.assertEqual(
+            four_bit.kwargs,
+            {
+                "load_in_4bit": True,
+                "bnb_4bit_compute_dtype": "bf16",
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_use_double_quant": True,
+                "llm_int8_skip_modules": ["lm_head", "model.audio_tower"],
+            },
+        )
+        self.assertEqual(
+            eight_bit.kwargs,
+            {
+                "load_in_8bit": True,
+                "llm_int8_skip_modules": ["lm_head", "model.audio_tower"],
+            },
+        )
+
+    def test_quantization_config_rejects_unknown_modes(self):
+        with self.assertRaisesRegex(ValueError, "CASRT_TRANSFORMERS_QUANTIZATION"):
+            quantization_config("int2", FakeTorch, FakeBitsAndBytesConfig)
+
+    def test_quantization_mode_reads_normalized_environment_value(self):
+        with mock.patch.dict(os.environ, {"CASRT_TRANSFORMERS_QUANTIZATION": " 8BIT "}):
+            self.assertEqual(quantization_mode(), "8bit")
 
 
 if __name__ == "__main__":
