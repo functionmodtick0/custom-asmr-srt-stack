@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import subprocess
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 from custom_asmr_srt_stack.models import MasterDocument, Segment, require_int, require_mapping, require_string
@@ -65,3 +68,29 @@ def merge_alignment_output(master: MasterDocument, value: Any) -> MasterDocument
             ),
         )
     )
+
+
+def run_alignment_command(master: MasterDocument, *, audio_file: Path, command: list[str]) -> MasterDocument:
+    if not command:
+        raise ValueError("alignment command must not be empty")
+    if not audio_file.exists():
+        raise ValueError("alignment audio file is missing")
+    request = {
+        "audio_file": str(audio_file),
+        "master": master.to_json(),
+    }
+    result = subprocess.run(
+        command,
+        input=json.dumps(request, ensure_ascii=False),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "unknown aligner error"
+        raise ValueError(f"alignment command failed: {detail}")
+    try:
+        output = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"alignment command returned invalid JSON: {error}") from error
+    return merge_alignment_output(master, output)

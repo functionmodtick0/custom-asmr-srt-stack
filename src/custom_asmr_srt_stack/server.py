@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
+import shlex
 from dataclasses import replace
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from custom_asmr_srt_stack.alignment import apply_alignment_review_flags
+from custom_asmr_srt_stack.alignment import apply_alignment_review_flags, run_alignment_command
 from custom_asmr_srt_stack.audio import chunk_intervals, normalize_audio_to_wav, split_wav_channels
 from custom_asmr_srt_stack.models import MasterDocument, Segment, make_segment_id, require_mapping, require_string
 from custom_asmr_srt_stack.projects import ProjectStore
@@ -192,13 +194,25 @@ def transcribe_project(
     duration_ms = None
     if isinstance(audio_info, dict) and audio_info.get("duration_ms") is not None:
         duration_ms = int(audio_info["duration_ms"])
-    return apply_alignment_review_flags(
+    master = apply_alignment_review_flags(
         MasterDocument(
             source_language=source_language,
             source_file=metadata.get("source_file"),
             duration_ms=duration_ms,
             segments=segments,
         )
+    )
+    aligner_command = os.environ.get("CASRT_ALIGNER_COMMAND")
+    if not aligner_command:
+        return master
+
+    normalized_audio_file = metadata.get("normalized_audio_file")
+    if not isinstance(normalized_audio_file, str):
+        raise ValueError("alignment requires analyzed audio with normalized_audio_file")
+    return run_alignment_command(
+        master,
+        audio_file=store.require_project_root(project_id) / normalized_audio_file,
+        command=shlex.split(aligner_command),
     )
 
 

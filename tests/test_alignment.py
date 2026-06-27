@@ -1,6 +1,9 @@
 import unittest
+import sys
+import tempfile
+from pathlib import Path
 
-from custom_asmr_srt_stack.alignment import apply_alignment_review_flags, merge_alignment_output
+from custom_asmr_srt_stack.alignment import apply_alignment_review_flags, merge_alignment_output, run_alignment_command
 from custom_asmr_srt_stack.models import MasterDocument, Segment
 
 
@@ -83,6 +86,28 @@ class AlignmentTests(unittest.TestCase):
 
         self.assertTrue(reviewed.segments[0].needs_review)
         self.assertTrue(reviewed.segments[1].needs_review)
+
+    def test_run_alignment_command_merges_stdout_json(self):
+        script = (
+            "import json,sys;"
+            "json.load(sys.stdin);"
+            "print(json.dumps({'segments':["
+            "{'id':'seg_000001','start_ms':10,'end_ms':1010},"
+            "{'id':'seg_000002','start_ms':2010,'end_ms':3010}"
+            "]}))"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audio_path = Path(tmpdir) / "audio.wav"
+            audio_path.write_bytes(b"audio")
+
+            aligned = run_alignment_command(
+                sample_master(),
+                audio_file=audio_path,
+                command=[sys.executable, "-c", script],
+            )
+
+        self.assertEqual(aligned.segments[0].start_ms, 10)
+        self.assertEqual(aligned.segments[1].end_ms, 3010)
 
 
 if __name__ == "__main__":
