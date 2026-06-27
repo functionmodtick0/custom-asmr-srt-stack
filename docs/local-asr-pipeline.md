@@ -291,7 +291,9 @@ data/outputs/eval-csv-srt-01-full.srt에서 120초 crop
 | Qwen3-ASR 1.7B, energy 500/200 + context | 26 | 46.5% | 25.0% | 66.7% | 불합격: context hallucination |
 | Qwen3-ASR 1.7B, energy 500/200 + ForcedAligner | 26 | 21.7% | 31.2% | 83.3% | 불합격: timing/text 부족 |
 | stable-ts baseline | 25 | 7.8% | 56.5% | n/a | text 합격, timing 불합격 |
-| neosophie/Qwen3-ASR-1.7B-JA | n/a | n/a | n/a | n/a | 미측정: HF weight 다운로드 정지 |
+| neosophie/Qwen3-ASR-1.7B-JA, energy 500/200 | 26 | 20.4% | 25.0% | 66.7% | 불합격 |
+| neosophie/Qwen3-ASR-1.7B-JA, full 120s | 1 | 28.6% | 4.0% | n/a | 불합격: 과도한 병합 |
+| neosophie/Qwen3-ASR-1.7B-JA, energy 1500/200 | 1 | 27.3% | 4.0% | n/a | 불합격: 과도한 병합 |
 
 결정:
 
@@ -299,8 +301,11 @@ data/outputs/eval-csv-srt-01-full.srt에서 120초 crop
 - `CASRT_QWEN_ASR_CONTEXT`에 긴 glossary를 그대로 넣는 방식은 기본값으로 쓰지 않는다. 짧은 구간에서 glossary 전체를 출력하는 hallucination이 발생했다.
 - Qwen3-ForcedAligner는 channel/timing을 일부 개선했지만 120초 gold 기준으로 기본 승격하지 않는다.
 - 현재 Qwen3-ASR 1.7B 경로만으로는 품질 기준을 만족하지 못한다.
-- `neosophie/Qwen3-ASR-1.7B-JA`는 Qwen3-ASR-1.7B 기반 일본어 fine-tune이라 다음 로컬 주력 후보로 적합하지만, 2026-06-28 실험에서는 `model.safetensors` 다운로드가 57% 부근에서 정지해 점수화하지 못했다.
-- 다음 개선은 Silero/TEN VAD wrapper, 더 강한 로컬 ASR 후보, 또는 사용자 glossary 기반 후처리를 별도 실험으로 검증한다.
+- `neosophie/Qwen3-ASR-1.7B-JA`는 다운로드 재시도 후 점수화했다. 120초 gold 기준 Qwen3-ASR 1.7B보다 약간 낫지만 practical CER 20.4%라 기본 승격하지 않는다.
+- Neosophie full-window와 1.5초 silence 병합 실험은 text와 timing이 모두 악화됐다. 이 샘플에서는 chunk를 길게 잡는 것이 해결책이 아니다.
+- `Qwen/Qwen3-ASR-1.7B-hf`는 Hugging Face metadata상 `automatic-speech-recognition`, `ja` 지원, `transformers` 모델이지만 현재 설치된 Transformers가 `qwen3_asr` 아키텍처를 인식하지 못해 remote code 없이 로딩되지 않았다.
+- `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 최신 로컬 후보지만 model card metadata에 `custom_code`가 있다. Cohere는 gated 모델이다. 외부 모델 저장소 코드를 실행하는 `trust_remote_code=True`는 기본 실험 경로로 쓰지 않고, 사용자 명시 승인이나 first-party package 지원이 있을 때만 검증한다.
+- 다음 개선은 더 강한 로컬 ASR 후보를 안전하게 로딩하는 경로, Silero/TEN VAD wrapper, 또는 사용자 glossary 기반 후처리를 별도 실험으로 검증한다.
 
 ## 다음 작업 계획
 
@@ -316,7 +321,7 @@ data/outputs/eval-csv-srt-01-full.srt에서 120초 crop
 3. VAD 후보 추가
    - VAD command hook은 추가됐다.
    - 현재 energy splitter 500/200은 fallback-free baseline이다.
-   - Silero VAD 또는 TEN VAD wrapper를 command로 붙여 gold set에서 비교한다.
+   - Silero VAD 또는 TEN VAD wrapper를 command로 붙여 gold set에서 비교한다. 단, 현재 120초 결과는 VAD만으로 품질 기준을 만족할 가능성이 낮으므로 text ASR 후보 검증을 우선한다.
    - VAD도 WebUI 옵션으로 노출하지 않고 고정/내부 설정으로 둔다.
 
 4. Channel attribution 튜닝
@@ -330,6 +335,9 @@ data/outputs/eval-csv-srt-01-full.srt에서 120초 crop
 
 6. 모델 비교
    - `Qwen/Qwen3-ASR-1.7B`를 주력으로 둔다.
+   - `neosophie/Qwen3-ASR-1.7B-JA`는 검증 완료 후보지만 기본 승격하지 않는다.
+   - `Qwen/Qwen3-ASR-1.7B-hf`는 remote code 없이 로딩 가능한 Transformers 버전 또는 first-party package가 확인되면 다시 비교한다.
+   - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 성능 후보로 남기되, custom code/gated 접근 조건을 먼저 해결해야 한다.
    - `Qwen/Qwen3-ASR-0.6B`는 속도/저사양 후보로 비교한다.
    - Gemma 4 E4B는 general multimodal baseline으로만 유지한다.
    - Whisper 계열 도메인 fine-tune은 제품 기본이 아니라 비교 baseline으로만 본다.
