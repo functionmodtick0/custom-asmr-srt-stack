@@ -338,6 +338,9 @@ def parse_worker_response(response_line: str) -> tuple[Segment, ...]:
     data = require_mapping(response, "local transformers worker response")
     if not data.get("ok"):
         error = data.get("error") or "unknown worker error"
+        traceback_text = data.get("traceback")
+        if isinstance(traceback_text, str) and traceback_text.strip():
+            error = f"{error}\n{traceback_text.strip()}"
         raise ValueError(f"local transformers worker failed: {error}")
     segments = data.get("segments")
     if not isinstance(segments, list):

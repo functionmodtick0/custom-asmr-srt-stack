@@ -33,6 +33,12 @@
 uv sync --extra local
 ```
 
+Gemma 4 E4B는 full checkpoint를 다운로드하더라도 로딩은 4-bit runtime quantization을 켜는 구성을 권장합니다.
+
+```bash
+CASRT_TRANSFORMERS_QUANTIZATION=4bit uv run casrt serve
+```
+
 ## 실행
 
 서버 실행:
@@ -141,7 +147,8 @@ uv run casrt project transcribe PROJECT_ID \
 로컬 Transformers worker로 전사:
 
 ```bash
-uv run casrt project transcribe PROJECT_ID \
+CASRT_TRANSFORMERS_QUANTIZATION=4bit \
+  uv run casrt project transcribe PROJECT_ID \
   --adapter local-transformers \
   --model-id google/gemma-4-E4B-it
 ```

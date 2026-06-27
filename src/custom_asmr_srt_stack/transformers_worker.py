@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -76,26 +78,43 @@ class TransformersRuntime:
         if loaded is not None:
             return loaded
 
+        log(f"loading local Transformers model: {model_id}")
         try:
             import torch
             from transformers import AutoProcessor
+            from transformers import BitsAndBytesConfig
         except ImportError as error:
             raise ValueError(
                 "local Transformers worker requires the local extra: uv sync --extra local"
             ) from error
 
         model_class = import_model_class()
+        log("loading processor")
         processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+        log("loading model weights")
+        model_kwargs = {
+            "device_map": "auto",
+            "torch_dtype": "auto",
+            "trust_remote_code": True,
+        }
+        if quantization_mode() == "4bit":
+            log("using 4-bit runtime quantization; skipping lm_head and audio tower")
+            model_kwargs["quantization_config"] = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+                llm_int8_skip_modules=["lm_head", "model.audio_tower"],
+            )
         model = model_class.from_pretrained(
             model_id,
-            device_map="auto",
-            torch_dtype="auto",
-            trust_remote_code=True,
+            **model_kwargs,
         ).eval()
         del torch
 
         loaded = (processor, model)
         self._loaded[model_id] = loaded
+        log("model loaded")
         return loaded
 
 
@@ -145,6 +164,15 @@ def require_string(value: Any, name: str) -> str:
     return value
 
 
+def log(message: str) -> None:
+    print(f"[casrt-worker] {message}", file=sys.stderr, flush=True)
+
+
+def quantization_mode() -> str | None:
+    value = os.environ.get("CASRT_TRANSFORMERS_QUANTIZATION", "").strip().lower()
+    return value or None
+
+
 def handle_request(runtime: TransformersRuntime, request: dict[str, Any]) -> dict[str, Any]:
     request_type = request.get("type")
     if request_type != "transcribe":
@@ -159,7 +187,8 @@ def response_for_line(runtime: TransformersRuntime, line: str) -> dict[str, Any]
             raise ValueError("request must be a JSON object")
         response = handle_request(runtime, request)
     except Exception as error:
-        response = {"ok": False, "error": str(error)}
+        detail = str(error) or error.__class__.__name__
+        response = {"ok": False, "error": detail, "traceback": traceback.format_exc()}
     return response
 
 

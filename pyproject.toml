@@ -12,9 +12,12 @@ dependencies = []
 [project.optional-dependencies]
 local = [
     "accelerate",
+    "bitsandbytes",
     "librosa",
+    "pillow",
     "soundfile",
     "torch",
+    "torchvision",
     "transformers",
 ]
 
