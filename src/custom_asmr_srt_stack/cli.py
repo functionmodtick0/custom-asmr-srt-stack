@@ -439,7 +439,7 @@ def build_parser() -> argparse.ArgumentParser:
     whisper_asmr_onnx.add_argument("--min-silence-ms", type=int, default=100)
     whisper_asmr_onnx.add_argument("--pad-ms", type=int, default=30)
     whisper_asmr_onnx.add_argument("--output-activation", choices=["sigmoid", "identity"], default="sigmoid")
-    whisper_asmr_onnx.add_argument("--force-cpu", action="store_true")
+    whisper_asmr_onnx.add_argument("--force-cpu", action="store_true", default=True)
     whisper_asmr_onnx.add_argument("--num-threads", type=int, default=1)
     whisper_asmr_onnx.set_defaults(func=vad_whisper_asmr_onnx)
 

@@ -110,9 +110,11 @@ CASRT_VAD_COMMAND='python3 path/to/vad.py' \
 ASMR-trained Whisper ONNX VAD 후보는 내장 CLI command로도 실행할 수 있습니다. 이 모델은 ASR이 아니라 speech interval만 반환하며 WebUI 옵션으로 노출하지 않습니다.
 
 ```bash
-CASRT_VAD_COMMAND='uv run casrt vad whisper-asmr-onnx --model /path/to/model.onnx --metadata /path/to/model_metadata.json' \
+CASRT_VAD_COMMAND='/tmp/casrt-vad-venv/bin/casrt vad whisper-asmr-onnx --model /path/to/model.onnx --metadata /path/to/model_metadata.json --force-cpu --num-threads 1' \
   uv run casrt serve
 ```
+
+이 command는 전용 venv에 `.[vad-onnx]`만 설치해서 사용합니다. 모델 디렉터리는 `model.onnx`와 `model_metadata.json` 두 파일만 포함해야 하며, subprocess는 timeout과 최소 환경 변수로 실행됩니다.
 
 내장 energy splitter는 `CASRT_QWEN_ENERGY_*` env로 내부 튜닝할 수 있지만 WebUI 옵션으로 노출하지 않습니다.
 

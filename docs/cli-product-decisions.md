@@ -185,8 +185,10 @@ Qwen ASR 파이프라인의 세부 값과 평가 결과는 `docs/local-asr-pipel
 - interval은 정렬되어야 하고 서로 겹치면 안 된다.
 - interval이 음수이거나 audio duration을 넘으면 실패한다.
 - 이 옵션은 WebUI/CLI 모델 선택 UI에 노출하지 않는다.
-- ASMR Whisper ONNX VAD 후보는 `casrt vad whisper-asmr-onnx --model /path/to/model.onnx --metadata /path/to/model_metadata.json`로 제공한다.
+- ASMR Whisper ONNX VAD 후보는 전용 venv의 절대 실행 파일로 `casrt vad whisper-asmr-onnx --model /path/to/model.onnx --metadata /path/to/model_metadata.json --force-cpu --num-threads 1`를 실행한다.
 - 이 command는 외부 model repository의 `inference.py`를 실행하지 않고, 16kHz mono 변환, 30초 chunk, ONNX Runtime, hysteresis postprocess만 수행한다.
+- 모델 디렉터리는 `model.onnx`와 `model_metadata.json` 두 파일만 허용한다. wrapper는 metadata/shape/provider 계약이 맞지 않으면 실패한다.
+- VAD subprocess는 timeout과 최소 env로 실행하며 HF/API/W&B token을 상속하지 않는다.
 
 ### 평가
 

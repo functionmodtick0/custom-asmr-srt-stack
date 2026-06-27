@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -9,11 +10,14 @@ from typing import Any
 from custom_asmr_srt_stack.audio import analyze_wav
 from custom_asmr_srt_stack.models import require_int, require_mapping
 
+DEFAULT_VAD_TIMEOUT_SECONDS = 300.0
+
 
 def run_vad_command(audio_bytes: bytes, *, command: list[str]) -> tuple[dict[str, int], ...]:
     if not command:
         raise ValueError("VAD command must not be empty")
     audio_info = analyze_wav(audio_bytes)
+    timeout_seconds = vad_timeout_seconds()
     with tempfile.TemporaryDirectory() as tmpdir:
         audio_file = Path(tmpdir) / "audio.wav"
         audio_file.write_bytes(audio_bytes)
@@ -21,13 +25,18 @@ def run_vad_command(audio_bytes: bytes, *, command: list[str]) -> tuple[dict[str
             "audio_file": str(audio_file),
             "audio_info": audio_info.to_json(),
         }
-        result = subprocess.run(
-            command,
-            input=json.dumps(request, ensure_ascii=False),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                command,
+                input=json.dumps(request, ensure_ascii=False),
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=timeout_seconds,
+                env=vad_subprocess_env(tmpdir),
+            )
+        except subprocess.TimeoutExpired as error:
+            raise ValueError(f"VAD command timed out after {timeout_seconds:g}s") from error
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "unknown VAD error"
         raise ValueError(f"VAD command failed: {detail}")
@@ -36,6 +45,37 @@ def run_vad_command(audio_bytes: bytes, *, command: list[str]) -> tuple[dict[str
     except json.JSONDecodeError as error:
         raise ValueError(f"VAD command returned invalid JSON: {error}") from error
     return parse_vad_intervals(output, duration_ms=audio_info.duration_ms)
+
+
+def vad_timeout_seconds() -> float:
+    raw_timeout = os.environ.get("CASRT_VAD_TIMEOUT_SECONDS")
+    if raw_timeout is None:
+        return DEFAULT_VAD_TIMEOUT_SECONDS
+    try:
+        timeout = float(raw_timeout)
+    except ValueError as error:
+        raise ValueError("CASRT_VAD_TIMEOUT_SECONDS must be a number") from error
+    if timeout <= 0:
+        raise ValueError("CASRT_VAD_TIMEOUT_SECONDS must be positive")
+    return timeout
+
+
+def vad_subprocess_env(tmpdir: str) -> dict[str, str]:
+    env = {
+        "CUDA_VISIBLE_DEVICES": "",
+        "HF_DATASETS_OFFLINE": "1",
+        "HF_HUB_OFFLINE": "1",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PYTHONNOUSERSITE": "1",
+        "TMPDIR": tmpdir,
+        "TRANSFORMERS_OFFLINE": "1",
+        "WANDB_MODE": "disabled",
+    }
+    path = os.environ.get("PATH")
+    if path is not None:
+        env["PATH"] = path
+    return env
 
 
 def parse_vad_intervals(value: Any, *, duration_ms: int) -> tuple[dict[str, int], ...]:

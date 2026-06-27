@@ -399,12 +399,17 @@ local = [
     { name = "accelerate" },
     { name = "bitsandbytes" },
     { name = "librosa" },
-    { name = "numpy" },
-    { name = "onnxruntime" },
     { name = "pillow" },
     { name = "soundfile" },
     { name = "torch" },
     { name = "torchvision" },
+    { name = "transformers" },
+]
+vad-onnx = [
+    { name = "librosa" },
+    { name = "numpy" },
+    { name = "onnxruntime" },
+    { name = "soundfile" },
     { name = "transformers" },
 ]
 
@@ -413,15 +418,18 @@ requires-dist = [
     { name = "accelerate", marker = "extra == 'local'" },
     { name = "bitsandbytes", marker = "extra == 'local'" },
     { name = "librosa", marker = "extra == 'local'" },
-    { name = "numpy", marker = "extra == 'local'" },
-    { name = "onnxruntime", marker = "extra == 'local'" },
+    { name = "librosa", marker = "extra == 'vad-onnx'" },
+    { name = "numpy", marker = "extra == 'vad-onnx'" },
+    { name = "onnxruntime", marker = "extra == 'vad-onnx'" },
     { name = "pillow", marker = "extra == 'local'" },
     { name = "soundfile", marker = "extra == 'local'" },
+    { name = "soundfile", marker = "extra == 'vad-onnx'" },
     { name = "torch", marker = "extra == 'local'" },
     { name = "torchvision", marker = "extra == 'local'" },
     { name = "transformers", marker = "extra == 'local'" },
+    { name = "transformers", marker = "extra == 'vad-onnx'" },
 ]
-provides-extras = ["local"]
+provides-extras = ["vad-onnx", "local"]
 
 [[package]]
 name = "decorator"

@@ -10,6 +10,16 @@ from typing import Any, Sequence
 TARGET_SAMPLE_RATE = 16_000
 DEFAULT_FRAME_MS = 20
 DEFAULT_CHUNK_MS = 30_000
+EXPECTED_INPUT_SHAPE = [1, 80, 3000]
+EXPECTED_OUTPUT_SHAPE = [1, 1500]
+EXPECTED_METADATA = {
+    "whisper_model_name": "openai/whisper-base",
+    "frame_duration_ms": DEFAULT_FRAME_MS,
+    "total_duration_ms": DEFAULT_CHUNK_MS,
+    "input_shape": EXPECTED_INPUT_SHAPE,
+    "output_shape": EXPECTED_OUTPUT_SHAPE,
+    "export_batch_size": 1,
+}
 
 
 @dataclass(frozen=True)
@@ -20,7 +30,7 @@ class WhisperVadOnnxSettings:
     min_silence_ms: int = 100
     pad_ms: int = 30
     output_activation: str = "sigmoid"
-    force_cpu: bool = False
+    force_cpu: bool = True
     num_threads: int = 1
 
 
@@ -92,7 +102,10 @@ def run_onnx_frame_probabilities(
 
     if not model.exists():
         raise ValueError(f"ONNX VAD model does not exist: {model}")
-    model_metadata = load_metadata(metadata or model.with_name("model_metadata.json"))
+    metadata_path = metadata or model.with_name("model_metadata.json")
+    validate_model_files(model, metadata_path)
+    model_metadata = load_metadata(metadata_path)
+    validate_model_metadata(model_metadata)
     frame_ms = require_positive_int(model_metadata.get("frame_duration_ms", DEFAULT_FRAME_MS), "frame_duration_ms")
     chunk_ms = require_positive_int(model_metadata.get("total_duration_ms", DEFAULT_CHUNK_MS), "total_duration_ms")
     chunk_samples = round(TARGET_SAMPLE_RATE * (chunk_ms / 1000))
@@ -101,12 +114,11 @@ def run_onnx_frame_probabilities(
         raise ValueError("ONNX VAD metadata produced an invalid chunk shape")
 
     providers = ["CPUExecutionProvider"]
-    if not settings.force_cpu and "CUDAExecutionProvider" in ort.get_available_providers():
-        providers.insert(0, "CUDAExecutionProvider")
     options = ort.SessionOptions()
     options.inter_op_num_threads = settings.num_threads
     options.intra_op_num_threads = settings.num_threads
     session = ort.InferenceSession(str(model), providers=providers, sess_options=options)
+    validate_session_contract(session)
     input_name = session.get_inputs()[0].name
     output_names = [output.name for output in session.get_outputs()]
     feature_extractor = WhisperFeatureExtractor()
@@ -126,10 +138,7 @@ def run_onnx_frame_probabilities(
 
 def load_metadata(path: Path) -> dict[str, Any]:
     if not path.exists():
-        return {
-            "frame_duration_ms": DEFAULT_FRAME_MS,
-            "total_duration_ms": DEFAULT_CHUNK_MS,
-        }
+        raise ValueError(f"ONNX VAD metadata does not exist: {path}")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
@@ -137,6 +146,51 @@ def load_metadata(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("ONNX VAD metadata must be an object")
     return data
+
+
+def validate_model_files(model: Path, metadata: Path) -> None:
+    if model.name != "model.onnx":
+        raise ValueError("ONNX VAD model file must be named model.onnx")
+    if metadata.name != "model_metadata.json":
+        raise ValueError("ONNX VAD metadata file must be named model_metadata.json")
+    model_path = model.resolve()
+    metadata_path = metadata.resolve()
+    if model_path.parent != metadata_path.parent:
+        raise ValueError("ONNX VAD model and metadata must be in the same directory")
+    if not model_path.parent.exists():
+        raise ValueError(f"ONNX VAD model directory does not exist: {model_path.parent}")
+    allowed = {model_path, metadata_path}
+    unexpected = sorted(
+        path.name
+        for path in model_path.parent.iterdir()
+        if path.resolve() not in allowed
+    )
+    if unexpected:
+        raise ValueError("ONNX VAD model directory contains unexpected files: " + ", ".join(unexpected))
+
+
+def validate_model_metadata(data: dict[str, Any]) -> None:
+    for name, expected in EXPECTED_METADATA.items():
+        if data.get(name) != expected:
+            raise ValueError(f"ONNX VAD metadata {name} must be {expected!r}")
+    opset_version = data.get("opset_version")
+    if opset_version is not None and opset_version != 17:
+        raise ValueError("ONNX VAD metadata opset_version must be 17")
+
+
+def validate_session_contract(session: Any) -> None:
+    if session.get_providers() != ["CPUExecutionProvider"]:
+        raise ValueError("ONNX VAD must use CPUExecutionProvider only")
+    inputs = session.get_inputs()
+    outputs = session.get_outputs()
+    if len(inputs) != 1:
+        raise ValueError("ONNX VAD model must have exactly one input")
+    if len(outputs) != 1:
+        raise ValueError("ONNX VAD model must have exactly one output")
+    if list(inputs[0].shape) != EXPECTED_INPUT_SHAPE:
+        raise ValueError(f"ONNX VAD input shape must be {EXPECTED_INPUT_SHAPE!r}")
+    if list(outputs[0].shape) != EXPECTED_OUTPUT_SHAPE:
+        raise ValueError(f"ONNX VAD output shape must be {EXPECTED_OUTPUT_SHAPE!r}")
 
 
 def require_positive_int(value: Any, name: str) -> int:
@@ -280,5 +334,7 @@ def validate_settings(settings: WhisperVadOnnxSettings) -> None:
     )
     if settings.output_activation not in {"sigmoid", "identity"}:
         raise ValueError("output activation must be one of: sigmoid, identity")
+    if not settings.force_cpu:
+        raise ValueError("ONNX VAD must run with force_cpu enabled")
     if settings.num_threads <= 0:
         raise ValueError("num_threads must be positive")

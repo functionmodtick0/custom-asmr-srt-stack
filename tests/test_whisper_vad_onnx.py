@@ -1,6 +1,18 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
-from custom_asmr_srt_stack.whisper_vad_onnx import activate_outputs, probabilities_to_intervals
+from custom_asmr_srt_stack.whisper_vad_onnx import (
+    EXPECTED_METADATA,
+    WhisperVadOnnxSettings,
+    activate_outputs,
+    load_metadata,
+    probabilities_to_intervals,
+    validate_model_files,
+    validate_model_metadata,
+    validate_settings,
+)
 
 
 class WhisperVadOnnxTests(unittest.TestCase):
@@ -50,6 +62,35 @@ class WhisperVadOnnxTests(unittest.TestCase):
     def test_activate_outputs_supports_sigmoid_and_identity(self):
         self.assertEqual(activate_outputs([0.0], "sigmoid"), [0.5])
         self.assertEqual(activate_outputs([0.25], "identity"), [0.25])
+
+    def test_model_files_must_be_dedicated_pair(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            model = root / "model.onnx"
+            metadata = root / "model_metadata.json"
+            model.write_bytes(b"")
+            metadata.write_text(json.dumps(EXPECTED_METADATA), encoding="utf-8")
+            validate_model_files(model, metadata)
+
+            (root / "README.md").write_text("extra", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "unexpected files"):
+                validate_model_files(model, metadata)
+
+    def test_metadata_must_exist_and_match_reviewed_contract(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            metadata = Path(tmpdir) / "model_metadata.json"
+            with self.assertRaisesRegex(ValueError, "does not exist"):
+                load_metadata(metadata)
+
+            invalid = dict(EXPECTED_METADATA)
+            invalid["total_duration_ms"] = 10_000
+            metadata.write_text(json.dumps(invalid), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "total_duration_ms"):
+                validate_model_metadata(load_metadata(metadata))
+
+    def test_settings_require_cpu(self):
+        with self.assertRaisesRegex(ValueError, "force_cpu"):
+            validate_settings(WhisperVadOnnxSettings(force_cpu=False))
 
 
 if __name__ == "__main__":
