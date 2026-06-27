@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import math
 import shutil
 import struct
 import subprocess
@@ -226,6 +227,22 @@ def speech_intervals_by_energy(
             }
         )
     return padded or [{"index": 0, "start_ms": 0, "end_ms": info.duration_ms}]
+
+
+def wav_rms_dbfs(audio_bytes: bytes, *, start_ms: int | None = None, end_ms: int | None = None) -> float:
+    if start_ms is not None or end_ms is not None:
+        info = analyze_wav(audio_bytes)
+        start = 0 if start_ms is None else start_ms
+        end = info.duration_ms if end_ms is None else end_ms
+        audio_bytes = slice_wav(audio_bytes, start_ms=start, end_ms=end)
+
+    with open_wave(audio_bytes) as wav:
+        sample_width = wav.getsampwidth()
+        frames = wav.readframes(wav.getnframes())
+    if sample_width != 2:
+        raise ValueError("rms dBFS calculation currently requires 16-bit PCM WAV")
+    rms = pcm16_rms(frames)
+    return 20 * math.log10(max(rms, 1.0) / (2**15 - 1))
 
 
 def pcm16_rms(frames: bytes) -> float:

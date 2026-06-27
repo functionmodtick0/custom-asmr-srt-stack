@@ -145,7 +145,7 @@ class WorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             audio_path = root / "qwen.wav"
-            write_stereo_wav(audio_path, duration_ms=10_000)
+            write_stereo_samples(audio_path, [(200, 200)] * 10_000)
             store = ProjectStore(root / "projects")
             created = store.create_from_audio(
                 "qwen.wav",
@@ -235,6 +235,47 @@ class WorkflowTests(unittest.TestCase):
                 [(segment.start_ms, segment.end_ms, segment.text) for segment in master.segments],
                 [(0, 1400, "1400"), (1600, 3000, "1400")],
             )
+
+    def test_local_qwen_asr_attributes_mix_segment_to_louder_channel(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "qwen-left.wav"
+            write_stereo_samples(audio_path, [(6000, 100)] * 2000)
+            store = ProjectStore(root / "projects")
+            created = store.create_from_audio(
+                "qwen-left.wav",
+                "audio/wav",
+                base64.b64encode(audio_path.read_bytes()).decode("ascii"),
+            )
+            analyzed = analyze_project(store, created["project_id"])
+
+            def fake_transcribe(endpoint, audio_bytes, *, mime_type, channel, source_language):
+                del endpoint, audio_bytes, mime_type, channel, source_language
+                return (
+                    Segment(
+                        id="ignored",
+                        start_ms=0,
+                        end_ms=2000,
+                        channel="MIX",
+                        kind="speech",
+                        text="左",
+                    ),
+                )
+
+            master = transcribe_project(
+                store,
+                created["project_id"],
+                ModelEndpoint(
+                    adapter="local-qwen-asr",
+                    endpoint_url=None,
+                    model_id="Qwen/Qwen3-ASR-1.7B",
+                ),
+                analyzed["metadata"],
+                source_language="ja",
+                transcribe_audio_func=fake_transcribe,
+            )
+
+            self.assertEqual([(segment.channel, segment.text) for segment in master.segments], [("L", "左")])
 
     def test_transcribe_project_requires_analysis_chunks(self):
         with tempfile.TemporaryDirectory() as tmpdir:

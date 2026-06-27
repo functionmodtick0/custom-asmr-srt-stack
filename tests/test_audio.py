@@ -10,6 +10,7 @@ from custom_asmr_srt_stack.audio import (
     slice_wav,
     speech_intervals_by_energy,
     split_wav_channels,
+    wav_rms_dbfs,
 )
 
 
@@ -83,6 +84,14 @@ class AudioPipelineTests(unittest.TestCase):
         )
 
         self.assertEqual(intervals, [{"index": 0, "start_ms": 0, "end_ms": 1100}, {"index": 1, "start_ms": 1900, "end_ms": 3000}])
+
+    def test_wav_rms_dbfs_reports_selected_range(self):
+        audio = make_mono_wav([1000, 1000, 0, 0])
+
+        loud = wav_rms_dbfs(audio, start_ms=0, end_ms=2)
+        quiet = wav_rms_dbfs(audio, start_ms=2, end_ms=4)
+
+        self.assertGreater(loud, quiet)
 
     def test_normalize_audio_keeps_valid_wav(self):
         audio = make_stereo_wav([(100, 300)])

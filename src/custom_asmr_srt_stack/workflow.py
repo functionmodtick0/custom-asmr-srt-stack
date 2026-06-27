@@ -12,10 +12,13 @@ from custom_asmr_srt_stack.audio import (
     slice_wav,
     speech_intervals_by_energy,
     split_wav_channels,
+    wav_rms_dbfs,
 )
 from custom_asmr_srt_stack.models import MasterDocument, Segment, make_segment_id, require_int, require_mapping
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.transcription import ModelEndpoint, adapter_max_chunk_ms, transcribe_audio
+
+CHANNEL_ATTRIBUTION_THRESHOLD_DB = 6.0
 
 
 def analyze_project(store: ProjectStore, project_id: str) -> dict[str, Any]:
@@ -86,10 +89,14 @@ def transcribe_project(
                 )
             )
 
+    attributed_segments = apply_channel_attribution(raw_segments, store, project_id, metadata, model_endpoint)
     segments = tuple(
         replace(segment, id=make_segment_id(index + 1))
         for index, segment in enumerate(
-            sorted(raw_segments, key=lambda segment: (segment.start_ms, segment.end_ms, segment.channel, segment.text))
+            sorted(
+                attributed_segments,
+                key=lambda segment: (segment.start_ms, segment.end_ms, segment.channel, segment.text),
+            )
         )
     )
     audio_info = metadata.get("audio_info")
@@ -168,6 +175,35 @@ def transcription_channel_names(channels: Any, model_endpoint: ModelEndpoint) ->
     if "MIX" in channels:
         return ["MIX"]
     return []
+
+
+def apply_channel_attribution(
+    segments: list[Segment],
+    store: ProjectStore,
+    project_id: str,
+    metadata: dict[str, Any],
+    model_endpoint: ModelEndpoint,
+) -> list[Segment]:
+    channels = metadata.get("channels")
+    if model_endpoint.adapter != "local-qwen-asr" or not isinstance(channels, dict) or not {"L", "R"}.issubset(channels):
+        return segments
+
+    left_audio = store.read_channel_audio(project_id, "L")
+    right_audio = store.read_channel_audio(project_id, "R")
+    attributed: list[Segment] = []
+    for segment in segments:
+        if segment.channel != "MIX" or segment.kind != "speech":
+            attributed.append(segment)
+            continue
+        left_db = wav_rms_dbfs(left_audio, start_ms=segment.start_ms, end_ms=segment.end_ms)
+        right_db = wav_rms_dbfs(right_audio, start_ms=segment.start_ms, end_ms=segment.end_ms)
+        if left_db - right_db >= CHANNEL_ATTRIBUTION_THRESHOLD_DB:
+            attributed.append(replace(segment, channel="L"))
+        elif right_db - left_db >= CHANNEL_ATTRIBUTION_THRESHOLD_DB:
+            attributed.append(replace(segment, channel="R"))
+        else:
+            attributed.append(segment)
+    return attributed
 
 
 def split_interval(start_ms: int, end_ms: int, max_chunk_ms: int) -> tuple[dict[str, int], ...]:
