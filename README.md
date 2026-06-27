@@ -18,6 +18,7 @@
 - local Qwen ASR subprocess worker adapter
 - 고정 aligner command hook
 - 선택 segment 재전사
+- 단일 transcript 및 gold set manifest 평가
 - 로컬 WebUI 서버
 
 번역 기능은 제공하지 않습니다.
@@ -238,7 +239,27 @@ uv run casrt json-to-srt master.json --translated translated.json -o export.srt
 uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 ```
 
-현재 평가는 speech 텍스트 CER, segment index 기준 timing 오차, L/R channel accuracy, review 비율을 계산합니다.
+gold set manifest 평가:
+
+```json
+{
+  "format": "custom-asmr-eval-manifest-v1",
+  "cases": [
+    {
+      "id": "front10",
+      "reference": "refs/front10.srt",
+      "candidate": "outputs/qwen-front10.json",
+      "candidate_id": "qwen-energy"
+    }
+  ]
+}
+```
+
+```bash
+uv run casrt eval-manifest gold.json --json -o eval-suite.json
+```
+
+현재 평가는 strict CER, practical CER, segment index 기준 timing 오차, L/R channel accuracy, review 비율을 계산합니다.
 
 ## 테스트
 

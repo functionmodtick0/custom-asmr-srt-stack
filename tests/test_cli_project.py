@@ -179,6 +179,50 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["text_practical"]["mode"], "practical")
             self.assertTrue(report_path.exists())
 
+    def test_eval_manifest_outputs_aggregated_json_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            manifest = root / "gold.json"
+            report_path = root / "report.json"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\nねえ\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:01,100 --> 00:00:02,200\nね\n", encoding="utf-8")
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-manifest-v1",
+                        "cases": [
+                            {
+                                "id": "sample",
+                                "reference": "reference.srt",
+                                "candidate": "candidate.srt",
+                                "candidate_id": "qwen-energy",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "eval-manifest",
+                    "--json",
+                    "-o",
+                    str(report_path),
+                    str(manifest),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["format"], "custom-asmr-eval-suite-v1")
+            self.assertEqual(report["case_count"], 1)
+            self.assertEqual(report["summary"]["text"]["edit_distance"], 1)
+            self.assertEqual(report["cases"][0]["candidate_id"], "qwen-energy")
+            self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["summary"]["text"]["edit_distance"], 1)
+
     def test_transcribe_and_retranscribe_project_cli(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

@@ -31,6 +31,7 @@ CLI는 다음 WebUI 기능과 동등해야 한다.
 - 원문 SRT 내보내기
 - project 상태 확인
 - reference/candidate 전사 결과 평가
+- gold set manifest 기준 batch 평가
 
 번역 기능은 제공하지 않는다.
 
@@ -182,10 +183,38 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 동작:
 
 - reference와 candidate는 SRT 또는 `master.json`을 받을 수 있다.
-- speech text CER를 계산한다.
+- speech text strict CER와 practical CER를 계산한다.
 - segment index 기준 mean start/end/boundary error를 계산한다.
 - L/R channel accuracy와 `needs_review` 비율을 계산한다.
 - 평가는 모델 기본값 승격이나 threshold 변경 전에 실행한다.
+
+여러 샘플을 한 번에 평가할 때는 gold set manifest를 사용한다.
+
+```json
+{
+  "format": "custom-asmr-eval-manifest-v1",
+  "cases": [
+    {
+      "id": "front10",
+      "reference": "refs/front10.srt",
+      "candidate": "outputs/qwen-front10.json",
+      "candidate_id": "qwen-energy"
+    }
+  ]
+}
+```
+
+```bash
+uv run casrt eval-manifest gold.json --json -o eval-suite.json
+```
+
+동작:
+
+- `reference`와 `candidate` 경로는 manifest 파일 위치 기준 상대 경로 또는 absolute path를 받는다.
+- 각 case는 기존 `eval-transcript`와 동일한 리포트를 보존한다.
+- summary CER는 case 평균이 아니라 전체 edit distance / 전체 reference characters로 계산한다.
+- summary timing/channel/review는 전체 paired/comparable/candidate segment 수 기준으로 가중 집계한다.
+- case `id`는 중복될 수 없다.
 
 ### 선택 segment 재전사
 
@@ -258,6 +287,7 @@ CLI는 실패 시 non-zero exit code로 종료한다.
 - missing/duplicate translated id
 - invalid timestamp
 - project not found
+- invalid eval manifest
 - unanalyzed project transcribe
 - missing model endpoint fields
 - unsupported adapter

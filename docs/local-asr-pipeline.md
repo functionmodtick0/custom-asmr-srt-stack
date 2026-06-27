@@ -147,6 +147,26 @@ CLI:
 uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 ```
 
+여러 샘플은 gold set manifest로 묶어서 평가한다.
+
+```json
+{
+  "format": "custom-asmr-eval-manifest-v1",
+  "cases": [
+    {
+      "id": "front10",
+      "reference": "refs/front10.srt",
+      "candidate": "outputs/qwen-front10.json",
+      "candidate_id": "qwen-energy"
+    }
+  ]
+}
+```
+
+```bash
+uv run casrt eval-manifest gold.json --json -o eval-suite.json
+```
+
 현재 측정값:
 
 - speech text strict CER
@@ -164,6 +184,8 @@ practical CER는 현재 다음을 정규화한다.
 - punctuation/symbol 제거
 
 practical CER는 자막 실용 비교용이다. 원문 보존 품질은 strict CER를 같이 본다.
+
+manifest summary는 case별 평균이 아니라 전체 edit distance/reference characters와 전체 paired/comparable segment 수 기준으로 가중 집계한다. 짧은 clip과 긴 clip이 같은 비중을 갖지 않게 하기 위한 결정이다.
 
 ## 10초 실데이터 실험
 
@@ -208,9 +230,10 @@ energy chunking + channel attribution 출력:
 
 ## 다음 작업 계획
 
-1. Gold set 구축
-   - `/data/uploads`, `/data/outputs`에서 30초~2분 단위 reference set을 만든다.
-   - CER, timing error, channel accuracy, human edit count를 기록한다.
+1. Gold set 운영
+   - gold set manifest CLI는 추가됐다.
+   - `/data/uploads`, `/data/outputs`에서 30초~2분 단위 reference case를 늘린다.
+   - CER, timing error, channel accuracy, human edit count를 manifest report로 기록한다.
 
 2. 일본어 평가 정규화 확장
    - strict/practical CER는 분리됐다.

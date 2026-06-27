@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from custom_asmr_srt_stack.evaluation import evaluate_transcripts, load_transcript_document
+from custom_asmr_srt_stack.evaluation import evaluate_manifest, evaluate_transcripts, load_transcript_document
 from custom_asmr_srt_stack.models import MasterDocument
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.server import run_server
@@ -100,6 +100,25 @@ def eval_transcript(args: argparse.Namespace) -> None:
             f"practical_cer={report['text_practical']['cer']:.4f} "
             f"segments={report['candidate_segments']}/{report['reference_segments']} "
             f"timing_ms={report['timing']['mean_boundary_error_ms']}"
+        ),
+    )
+
+
+def eval_manifest(args: argparse.Namespace) -> None:
+    report = evaluate_manifest(args.manifest, source_language=args.source_language)
+    if args.output is not None:
+        write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    timing = report["summary"]["timing"]["mean_boundary_error_ms"]
+    channel_accuracy = report["summary"]["channel"]["accuracy"]
+    emit(
+        args,
+        report,
+        (
+            f"cases={report['case_count']} "
+            f"cer={report['summary']['text']['cer']:.4f} "
+            f"practical_cer={report['summary']['text_practical']['cer']:.4f} "
+            f"timing_ms={timing} "
+            f"channel_accuracy={channel_accuracy}"
         ),
     )
 
@@ -298,6 +317,13 @@ def build_parser() -> argparse.ArgumentParser:
     eval_transcript_parser.add_argument("--source-language", default="ja")
     eval_transcript_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
     eval_transcript_parser.set_defaults(func=eval_transcript)
+
+    eval_manifest_parser = subcommands.add_parser("eval-manifest", help="Evaluate a transcript manifest.")
+    eval_manifest_parser.add_argument("manifest", type=Path)
+    eval_manifest_parser.add_argument("-o", "--output", type=Path)
+    eval_manifest_parser.add_argument("--source-language", default="ja")
+    eval_manifest_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
+    eval_manifest_parser.set_defaults(func=eval_manifest)
 
     serve_web = subcommands.add_parser("serve", help="Run the local WebUI server.")
     serve_web.add_argument("--host", default="127.0.0.1")
