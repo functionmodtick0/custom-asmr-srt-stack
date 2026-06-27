@@ -1,9 +1,12 @@
 import base64
+import os
 import struct
+import sys
 import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest import mock
 
 from custom_asmr_srt_stack.audio import analyze_wav
 from custom_asmr_srt_stack.models import MasterDocument, Segment
@@ -234,6 +237,70 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(
                 [(segment.start_ms, segment.end_ms, segment.text) for segment in master.segments],
                 [(0, 1400, "1400"), (1600, 3000, "1400")],
+            )
+
+    def test_local_qwen_asr_transcribe_project_uses_vad_command_when_configured(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "qwen-vad.wav"
+            vad_script = root / "vad.py"
+            write_stereo_samples(audio_path, [(2000, 2000)] * 3000)
+            vad_script.write_text(
+                "\n".join(
+                    [
+                        "import json",
+                        "import pathlib",
+                        "import sys",
+                        "request = json.loads(sys.stdin.read())",
+                        "assert pathlib.Path(request['audio_file']).exists()",
+                        "assert request['audio_info']['duration_ms'] == 3000",
+                        "print(json.dumps({'intervals': [{'start_ms': 500, 'end_ms': 1500}]}))",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            store = ProjectStore(root / "projects")
+            created = store.create_from_audio(
+                "qwen-vad.wav",
+                "audio/wav",
+                base64.b64encode(audio_path.read_bytes()).decode("ascii"),
+            )
+            analyzed = analyze_project(store, created["project_id"])
+            calls = []
+
+            def fake_transcribe(endpoint, audio_bytes, *, mime_type, channel, source_language):
+                del endpoint, mime_type, source_language
+                duration_ms = analyze_wav(audio_bytes).duration_ms
+                calls.append((channel, duration_ms))
+                return (
+                    Segment(
+                        id="ignored",
+                        start_ms=0,
+                        end_ms=duration_ms,
+                        channel=channel,
+                        kind="speech",
+                        text=str(duration_ms),
+                    ),
+                )
+
+            with mock.patch.dict(os.environ, {"CASRT_VAD_COMMAND": f"{sys.executable} {vad_script}"}):
+                master = transcribe_project(
+                    store,
+                    created["project_id"],
+                    ModelEndpoint(
+                        adapter="local-qwen-asr",
+                        endpoint_url=None,
+                        model_id="Qwen/Qwen3-ASR-1.7B",
+                    ),
+                    analyzed["metadata"],
+                    source_language="ja",
+                    transcribe_audio_func=fake_transcribe,
+                )
+
+            self.assertEqual(calls, [("MIX", 1000)])
+            self.assertEqual(
+                [(segment.start_ms, segment.end_ms, segment.text) for segment in master.segments],
+                [(500, 1500, "1000")],
             )
 
     def test_local_qwen_asr_attributes_mix_segment_to_louder_channel(self):

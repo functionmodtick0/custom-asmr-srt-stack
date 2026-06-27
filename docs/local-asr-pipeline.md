@@ -95,6 +95,23 @@ min_speech_ms: 200
 pad_ms: 400
 ```
 
+`CASRT_VAD_COMMAND`가 설정되어 있으면 energy splitter 대신 고정 VAD command의 interval을 사용한다.
+
+```bash
+CASRT_VAD_COMMAND='python3 path/to/vad.py' \
+  uv run casrt project transcribe PROJECT_ID \
+  --adapter local-qwen-asr \
+  --model-id Qwen/Qwen3-ASR-1.7B
+```
+
+VAD command contract:
+
+- stdin: `{ audio_file, audio_info }`
+- stdout: `{ intervals: [{ start_ms, end_ms }] }`
+- interval은 정렬되어야 하고 서로 겹치면 안 된다.
+- interval이 audio duration을 넘거나 malformed이면 fallback하지 않고 실패한다.
+- WebUI/CLI 옵션으로 노출하지 않는다.
+
 이 결정의 이유:
 
 - 10초 통째 입력은 텍스트는 어느 정도 맞아도 segment timing이 거칠다.
@@ -240,8 +257,9 @@ energy chunking + channel attribution 출력:
    - 다음 단계에서는 장음/감탄/소형 kana 차이를 별도 옵션으로 추가할지 평가한다.
 
 3. VAD 후보 추가
-   - 현재 energy splitter는 baseline이다.
-   - Silero VAD 또는 TEN VAD를 비교 후보로 붙인다.
+   - VAD command hook은 추가됐다.
+   - 현재 energy splitter는 fallback-free baseline이다.
+   - Silero VAD 또는 TEN VAD wrapper를 command로 붙여 gold set에서 비교한다.
    - VAD도 WebUI 옵션으로 노출하지 않고 고정/내부 설정으로 둔다.
 
 4. Channel attribution 튜닝

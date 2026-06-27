@@ -389,8 +389,11 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - 모델 adapter는 `openai-compatible`, `gemini`, `local-transformers`, `local-qwen-asr`다.
 - 모델 설정은 UI에서 사용자가 직접 입력한다.
 - `local-qwen-asr`는 stereo 입력에서도 `MIX`를 먼저 전사한다.
-- `local-qwen-asr`는 MIX energy 기반 speech chunking을 사용한다.
+- `local-qwen-asr`는 `CASRT_VAD_COMMAND`가 있으면 고정 VAD command interval을 사용하고, 없으면 MIX energy 기반 speech chunking을 사용한다.
 - `local-qwen-asr`는 L/R energy 차이로 channel attribution을 수행한다.
+- VAD는 UI에서 선택하지 않는다.
+- VAD command는 stdin으로 `{ audio_file, audio_info }` JSON을 받고 stdout으로 `{ intervals: [{ start_ms, end_ms }] }` JSON을 반환한다.
+- VAD interval이 정렬되지 않았거나 겹치거나 audio duration을 넘으면 실패한다.
 - alignment는 UI에서 선택하지 않는다.
 - `CASRT_ALIGNER_COMMAND`가 설정된 경우, 앱은 고정 aligner command를 실행한다.
 - aligner command는 stdin으로 `{ audio_file, master }` JSON을 받고 stdout으로 `{ segments: [{ id, start_ms, end_ms }] }` JSON을 반환한다.
@@ -403,4 +406,4 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - 실제 파일 테스트 후 split/merge가 필요한지.
 - debug alignment output을 자동 보존할지, developer mode에서만 남길지.
 - Qwen3-ForcedAligner를 기본 timing 보정 경로로 승격할지.
-- energy splitter를 Silero/TEN VAD로 교체하거나 조합할지.
+- Silero/TEN VAD 중 어떤 로컬 VAD 구현을 기본 command로 고정할지.

@@ -17,6 +17,7 @@ from custom_asmr_srt_stack.audio import (
 from custom_asmr_srt_stack.models import MasterDocument, Segment, make_segment_id, require_int, require_mapping
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.transcription import ModelEndpoint, adapter_max_chunk_ms, transcribe_audio
+from custom_asmr_srt_stack.vad import run_vad_command
 
 CHANNEL_ATTRIBUTION_THRESHOLD_DB = 6.0
 
@@ -148,7 +149,8 @@ def transcription_chunks(
     model_endpoint: ModelEndpoint,
     audio_bytes: bytes | None = None,
 ) -> tuple[dict[str, int], ...]:
-    chunks = qwen_asr_chunks(model_endpoint, audio_bytes) or analysis_chunks(metadata)
+    qwen_chunks = qwen_asr_chunks(model_endpoint, audio_bytes)
+    chunks = qwen_chunks if qwen_chunks is not None else analysis_chunks(metadata)
     max_chunk_ms = adapter_max_chunk_ms(model_endpoint)
     if max_chunk_ms is None:
         return chunks
@@ -158,10 +160,14 @@ def transcription_chunks(
     return tuple(split_chunks)
 
 
-def qwen_asr_chunks(model_endpoint: ModelEndpoint, audio_bytes: bytes | None) -> tuple[dict[str, int], ...]:
+def qwen_asr_chunks(model_endpoint: ModelEndpoint, audio_bytes: bytes | None) -> tuple[dict[str, int], ...] | None:
     if model_endpoint.adapter != "local-qwen-asr" or audio_bytes is None:
-        return ()
-    chunks = speech_intervals_by_energy(audio_bytes)
+        return None
+    vad_command = os.environ.get("CASRT_VAD_COMMAND", "").strip()
+    if vad_command:
+        chunks = run_vad_command(audio_bytes, command=shlex.split(vad_command))
+    else:
+        chunks = speech_intervals_by_energy(audio_bytes)
     return tuple({"start_ms": chunk["start_ms"], "end_ms": chunk["end_ms"]} for chunk in chunks)
 
 

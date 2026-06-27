@@ -168,11 +168,20 @@ uv run casrt project transcribe PROJECT_ID \
 - worker와 JSON Lines로 통신한다.
 - worker는 모델을 lazy load하고 같은 CLI/WebUI 프로세스 안에서 재사용한다.
 - ASMR 품질 경로에서는 MIX 전사를 우선하고 L/R은 channel attribution 근거로 사용한다.
-- MIX energy 기반 speech chunking으로 발화 단위 전사를 시도한다.
+- `CASRT_VAD_COMMAND`가 설정되어 있으면 고정 VAD command의 interval을 사용한다.
+- `CASRT_VAD_COMMAND`가 설정되어 있지 않으면 MIX energy 기반 speech chunking으로 발화 단위 전사를 시도한다.
 - L/R energy 차이가 충분할 때만 channel을 L 또는 R로 확정하고, 애매하면 MIX로 남긴다.
 - worker import, model load, inference, response contract 오류는 실패로 표시한다.
 
 Qwen ASR 파이프라인의 세부 값과 평가 결과는 `docs/local-asr-pipeline.md`에 기록한다.
+
+고정 VAD command contract:
+
+- stdin: `{ audio_file, audio_info }`
+- stdout: `{ intervals: [{ start_ms, end_ms }] }`
+- interval은 정렬되어야 하고 서로 겹치면 안 된다.
+- interval이 음수이거나 audio duration을 넘으면 실패한다.
+- 이 옵션은 WebUI/CLI 모델 선택 UI에 노출하지 않는다.
 
 ### 평가
 
