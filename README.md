@@ -34,6 +34,21 @@
 uv sync --extra local
 ```
 
+로컬 Qwen ASR worker는 `qwen-asr`가 Transformers 버전을 강하게 고정하므로 별도 uv venv로 격리합니다.
+
+```bash
+uv venv .casrt/qwen-asr-venv --python 3.12
+uv pip install --python .casrt/qwen-asr-venv/bin/python -e .
+uv pip install --python .casrt/qwen-asr-venv/bin/python qwen-asr
+```
+
+실행 시 `CASRT_QWEN_ASR_WORKER_COMMAND`로 Qwen venv의 Python을 지정합니다.
+
+```bash
+CASRT_QWEN_ASR_WORKER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.qwen_asr_worker' \
+  uv run casrt serve
+```
+
 Gemma 4 E4B는 full checkpoint를 다운로드하더라도 로딩은 4-bit runtime quantization을 켜는 구성을 권장합니다.
 
 ```bash

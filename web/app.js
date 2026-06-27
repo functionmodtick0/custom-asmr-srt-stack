@@ -125,24 +125,29 @@ function getModelSettings() {
   };
 }
 
+function isLocalAdapter(adapter) {
+  return adapter === "local-transformers" || adapter === "local-qwen-asr";
+}
+
 function modelSettingsReady(model) {
   if (!model.model_id) return false;
-  return model.adapter === "local-transformers" || Boolean(model.endpoint_url);
+  return isLocalAdapter(model.adapter) || Boolean(model.endpoint_url);
 }
 
 function modelSettingsRequirementText(model) {
-  if (model.adapter === "local-transformers") {
+  if (isLocalAdapter(model.adapter)) {
     return "모델 설정에서 Model ID를 입력하세요.";
   }
   return "모델 설정에서 Endpoint URL과 Model ID를 입력하세요.";
 }
 
 function syncModelFormForAdapter() {
-  const isLocal = els.adapterInput.value === "local-transformers";
+  const isLocal = isLocalAdapter(els.adapterInput.value);
   els.endpointInput.disabled = isLocal;
   els.apiKeyInput.disabled = isLocal;
   els.endpointInput.placeholder = isLocal ? "사용하지 않음" : "http://127.0.0.1:8000/v1";
-  els.modelInput.placeholder = isLocal ? "google/gemma-4-E4B-it" : "gemma-4-e4b";
+  els.modelInput.placeholder =
+    els.adapterInput.value === "local-qwen-asr" ? "Qwen/Qwen3-ASR-1.7B" : isLocal ? "google/gemma-4-E4B-it" : "gemma-4-e4b";
   if (isLocal) {
     els.endpointInput.value = "";
     els.apiKeyInput.value = "";

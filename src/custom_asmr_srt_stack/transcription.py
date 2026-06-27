@@ -17,7 +17,8 @@ from typing import Any, Callable
 
 from custom_asmr_srt_stack.models import Segment, make_segment_id, require_int, require_mapping, require_string
 
-ADAPTERS = {"openai-compatible", "gemini", "local-transformers"}
+ADAPTERS = {"openai-compatible", "gemini", "local-transformers", "local-qwen-asr"}
+LOCAL_ADAPTERS = {"local-transformers", "local-qwen-asr"}
 LOCAL_TRANSFORMERS_MAX_CHUNK_MS = 30_000
 
 
@@ -59,7 +60,7 @@ class ModelEndpoint:
     def __post_init__(self) -> None:
         if self.adapter not in ADAPTERS:
             raise ValueError(f"unsupported model adapter {self.adapter!r}")
-        if self.adapter != "local-transformers" and not self.endpoint_url:
+        if self.adapter not in LOCAL_ADAPTERS and not self.endpoint_url:
             raise ValueError("endpoint_url must not be empty")
         if not self.model_id:
             raise ValueError("model_id must not be empty")
@@ -109,6 +110,9 @@ def transcribe_audio(
 
     if endpoint.adapter == "local-transformers":
         transcriber = local_transcribe_func or transcribe_with_local_transformers
+        return transcriber(endpoint, audio_bytes, mime_type, channel, source_language)
+    if endpoint.adapter == "local-qwen-asr":
+        transcriber = local_transcribe_func or transcribe_with_local_qwen_asr
         return transcriber(endpoint, audio_bytes, mime_type, channel, source_language)
 
     if endpoint.adapter == "openai-compatible":
@@ -240,9 +244,20 @@ def transcribe_with_local_transformers(
     return get_transformers_worker_client().transcribe(endpoint, audio_bytes, mime_type, channel, source_language)
 
 
+def transcribe_with_local_qwen_asr(
+    endpoint: ModelEndpoint,
+    audio_bytes: bytes,
+    mime_type: str,
+    channel: str,
+    source_language: str,
+) -> tuple[Segment, ...]:
+    return get_qwen_asr_worker_client().transcribe(endpoint, audio_bytes, mime_type, channel, source_language)
+
+
 class TransformersWorkerClient:
-    def __init__(self, command: tuple[str, ...]) -> None:
+    def __init__(self, command: tuple[str, ...], *, worker_name: str = "local transformers worker") -> None:
         self.command = command
+        self.worker_name = worker_name
         self._process: subprocess.Popen[str] | None = None
         self._lock = threading.Lock()
         self._request_ids = count(1)
@@ -278,8 +293,8 @@ class TransformersWorkerClient:
 
         if not response_line:
             self.close()
-            raise ValueError("local transformers worker exited without a response")
-        return parse_worker_response(response_line)
+            raise ValueError(f"{self.worker_name} exited without a response")
+        return parse_worker_response(response_line, worker_name=self.worker_name)
 
     def _ensure_process(self) -> subprocess.Popen[str]:
         if self._process is not None and self._process.poll() is None:
@@ -306,17 +321,29 @@ class TransformersWorkerClient:
             process.wait(timeout=5)
 
 
-_WORKER_CLIENTS: dict[tuple[str, ...], TransformersWorkerClient] = {}
+_WORKER_CLIENTS: dict[tuple[str, tuple[str, ...]], TransformersWorkerClient] = {}
 _WORKER_CLIENTS_LOCK = threading.Lock()
 
 
 def get_transformers_worker_client() -> TransformersWorkerClient:
     command = transformers_worker_command()
     with _WORKER_CLIENTS_LOCK:
-        client = _WORKER_CLIENTS.get(command)
+        key = ("local transformers worker", command)
+        client = _WORKER_CLIENTS.get(key)
         if client is None:
-            client = TransformersWorkerClient(command)
-            _WORKER_CLIENTS[command] = client
+            client = TransformersWorkerClient(command, worker_name="local transformers worker")
+            _WORKER_CLIENTS[key] = client
+        return client
+
+
+def get_qwen_asr_worker_client() -> TransformersWorkerClient:
+    command = qwen_asr_worker_command()
+    with _WORKER_CLIENTS_LOCK:
+        key = ("local Qwen ASR worker", command)
+        client = _WORKER_CLIENTS.get(key)
+        if client is None:
+            client = TransformersWorkerClient(command, worker_name="local Qwen ASR worker")
+            _WORKER_CLIENTS[key] = client
         return client
 
 
@@ -330,7 +357,17 @@ def transformers_worker_command() -> tuple[str, ...]:
     return (sys.executable, "-m", "custom_asmr_srt_stack.transformers_worker")
 
 
-def parse_worker_response(response_line: str) -> tuple[Segment, ...]:
+def qwen_asr_worker_command() -> tuple[str, ...]:
+    raw_command = os.environ.get("CASRT_QWEN_ASR_WORKER_COMMAND")
+    if raw_command:
+        command = tuple(shlex.split(raw_command))
+        if not command:
+            raise ValueError("CASRT_QWEN_ASR_WORKER_COMMAND must not be empty")
+        return command
+    return (sys.executable, "-m", "custom_asmr_srt_stack.qwen_asr_worker")
+
+
+def parse_worker_response(response_line: str, *, worker_name: str = "local transformers worker") -> tuple[Segment, ...]:
     try:
         response = json.loads(response_line)
     except json.JSONDecodeError as error:
@@ -341,7 +378,7 @@ def parse_worker_response(response_line: str) -> tuple[Segment, ...]:
         traceback_text = data.get("traceback")
         if isinstance(traceback_text, str) and traceback_text.strip():
             error = f"{error}\n{traceback_text.strip()}"
-        raise ValueError(f"local transformers worker failed: {error}")
+        raise ValueError(f"{worker_name} failed: {error}")
     segments = data.get("segments")
     if not isinstance(segments, list):
         raise ValueError("local transformers worker response segments must be an array")

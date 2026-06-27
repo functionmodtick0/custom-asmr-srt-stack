@@ -126,6 +126,17 @@ class TranscriptionAdapterTests(unittest.TestCase):
         self.assertIsNone(endpoint.endpoint_url)
         self.assertEqual(adapter_max_chunk_ms(endpoint), 30_000)
 
+    def test_local_qwen_asr_adapter_does_not_require_endpoint_url(self):
+        endpoint = ModelEndpoint.from_json(
+            {
+                "adapter": "local-qwen-asr",
+                "model_id": "Qwen/Qwen3-ASR-1.7B",
+            }
+        )
+
+        self.assertIsNone(endpoint.endpoint_url)
+        self.assertIsNone(adapter_max_chunk_ms(endpoint))
+
     def test_endpoint_adapter_requires_endpoint_url(self):
         with self.assertRaisesRegex(ValueError, "endpoint_url must not be empty"):
             ModelEndpoint.from_json(
@@ -175,6 +186,44 @@ class TranscriptionAdapterTests(unittest.TestCase):
         self.assertEqual(calls, [("google/gemma-4-E4B-it", b"audio", "audio/wav", "L", "ja")])
         self.assertEqual(segments[0].text, "ねえ")
 
+    def test_local_qwen_asr_adapter_uses_local_transcriber_boundary(self):
+        calls = []
+
+        def fake_local(endpoint, audio_bytes, mime_type, channel, source_language):
+            calls.append((endpoint.model_id, audio_bytes, mime_type, channel, source_language))
+            return parse_model_segments(
+                json.dumps(
+                    {
+                        "segments": [
+                            {
+                                "start_ms": 0,
+                                "end_ms": 10,
+                                "channel": channel,
+                                "kind": "speech",
+                                "text": "ねえ",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+        endpoint = ModelEndpoint(
+            adapter="local-qwen-asr",
+            endpoint_url=None,
+            model_id="Qwen/Qwen3-ASR-1.7B",
+        )
+        segments = transcribe_audio(
+            endpoint,
+            b"audio",
+            mime_type="audio/wav",
+            channel="MIX",
+            local_transcribe_func=fake_local,
+        )
+
+        self.assertEqual(calls, [("Qwen/Qwen3-ASR-1.7B", b"audio", "audio/wav", "MIX", "ja")])
+        self.assertEqual(segments[0].text, "ねえ")
+
     def test_worker_response_is_parsed_as_segments(self):
         segments = parse_worker_response(
             json.dumps(
@@ -200,6 +249,10 @@ class TranscriptionAdapterTests(unittest.TestCase):
     def test_worker_response_failure_is_visible(self):
         with self.assertRaisesRegex(ValueError, "local transformers worker failed: load failed"):
             parse_worker_response(json.dumps({"ok": False, "error": "load failed"}))
+
+    def test_worker_response_failure_uses_worker_name(self):
+        with self.assertRaisesRegex(ValueError, "local Qwen ASR worker failed: load failed"):
+            parse_worker_response(json.dumps({"ok": False, "error": "load failed"}), worker_name="local Qwen ASR worker")
 
     def test_transformers_worker_client_uses_json_lines_protocol(self):
         response = json.dumps(
