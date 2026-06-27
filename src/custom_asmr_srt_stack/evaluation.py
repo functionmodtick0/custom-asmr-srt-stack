@@ -253,7 +253,11 @@ def aggregate_channel_reports(reports: list[dict[str, Any]], key: str) -> dict[s
             "candidate_mix_segments": candidate_mix_segments,
             "candidate_mix_ratio": candidate_mix_segments / max(1, paired_segments),
         }
-    correct_segments = sum(report[key]["accuracy"] * report[key]["comparable_segments"] for report in reports)
+    correct_segments = sum(
+        report[key]["accuracy"] * report[key]["comparable_segments"]
+        for report in reports
+        if report[key]["accuracy"] is not None
+    )
     return {
         "paired_segments": paired_segments,
         "comparable_segments": comparable_segments,

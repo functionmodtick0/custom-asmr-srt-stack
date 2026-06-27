@@ -143,6 +143,37 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["summary"]["channel"]["candidate_mix_ratio"], 1.0)
         self.assertEqual(report["summary"]["channel_time_aligned"]["candidate_mix_ratio"], 1.0)
 
+    def test_evaluate_manifest_aggregates_channel_reports_when_one_case_has_no_comparable_segments(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            refs = root / "refs"
+            candidates = root / "candidates"
+            refs.mkdir()
+            candidates.mkdir()
+            (refs / "l.srt").write_text("1\n00:00:01,000 --> 00:00:02,000\n[L] あ\n", encoding="utf-8")
+            (candidates / "l.srt").write_text("1\n00:00:01,000 --> 00:00:02,000\n[L] あ\n", encoding="utf-8")
+            (refs / "mix.srt").write_text("1\n00:00:03,000 --> 00:00:04,000\n[LR] い\n", encoding="utf-8")
+            (candidates / "mix.srt").write_text("1\n00:00:03,000 --> 00:00:04,000\n[LR] い\n", encoding="utf-8")
+            manifest = root / "gold.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-manifest-v1",
+                        "cases": [
+                            {"id": "l", "reference": "refs/l.srt", "candidate": "candidates/l.srt"},
+                            {"id": "mix", "reference": "refs/mix.srt", "candidate": "candidates/mix.srt"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            report = evaluate_manifest(manifest)
+
+        self.assertEqual(report["summary"]["channel_time_aligned"]["comparable_segments"], 1)
+        self.assertEqual(report["summary"]["channel_time_aligned"]["accuracy"], 1.0)
+        self.assertEqual(report["cases"][1]["report"]["channel_time_aligned"]["accuracy"], None)
+
     def test_evaluate_manifest_rejects_duplicate_case_ids(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             manifest = Path(tmpdir) / "gold.json"

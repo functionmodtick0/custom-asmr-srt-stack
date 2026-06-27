@@ -309,14 +309,18 @@ uv run casrt eval-transcript ref.master.json candidate.master.json \
 | 후보 | cases | reference segments | candidate segments | practical CER | time-aligned 500ms ratio | channel time-aligned accuracy | 판단 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | neosophie/Qwen3-ASR-1.7B-JA, 01/04/07 front120 | 3 | 74 | 81 | 29.6% | 29.5% | 73.1% | 불합격 |
+| mistralai/Voxtral-Mini-4B-Realtime-2602, 01/04/07 front120 | 3 | 74 | 44 | 40.0% | 28.7% | 63.6% | 불합격 |
 
 case별 practical CER:
 
-| case | practical CER | time-aligned 500ms ratio | channel time-aligned accuracy |
-| --- | ---: | ---: | ---: |
-| 01-front120 | 20.4% | 25.0% | 66.7% |
-| 04-front120 | 21.3% | 37.0% | 60.0% |
-| 07-front120 | 53.0% | 26.9% | 80.0% |
+| 후보 | case | practical CER | time-aligned 500ms ratio | channel time-aligned accuracy |
+| --- | --- | ---: | ---: | ---: |
+| Neosophie | 01-front120 | 20.4% | 25.0% | 66.7% |
+| Neosophie | 04-front120 | 21.3% | 37.0% | 60.0% |
+| Neosophie | 07-front120 | 53.0% | 26.9% | 80.0% |
+| Voxtral Mini Realtime | 01-front120 | 22.4% | 22.7% | 66.7% |
+| Voxtral Mini Realtime | 04-front120 | 20.8% | 37.0% | 60.0% |
+| Voxtral Mini Realtime | 07-front120 | 89.0% | 0.0% | n/a |
 
 결정:
 
@@ -328,6 +332,7 @@ case별 practical CER:
 - 01/04/07 front120 확장 gold에서도 Neosophie/Qwen3-ASR-JA는 practical CER 29.6%라 기본 승격하지 않는다. 특히 07의 whisper/침대 ASMR 구간에서 텍스트 인식이 크게 무너졌다.
 - Neosophie full-window와 1.5초 silence 병합 실험은 text와 timing이 모두 악화됐다. 이 샘플에서는 chunk를 길게 잡는 것이 해결책이 아니다.
 - `Qwen/Qwen3-ASR-1.7B-hf`는 Hugging Face metadata상 `automatic-speech-recognition`, `ja` 지원, `transformers` 모델이다. 현재 pinned Transformers는 `qwen3_asr` 아키텍처를 인식하지 못한다. 공식 Transformers main `5.13.0.dev0` ephemeral runtime에서는 `qwen3_asr` support를 확인했지만, weight 다운로드가 Xet/일반 HTTP 양쪽에서 장시간 진행돼 2026-06-28 루프에서는 점수화하지 못했다.
+- `mistralai/Voxtral-Mini-4B-Realtime-2602`는 remote model code 없이 Transformers `VoxtralRealtimeForConditionalGeneration`으로 로딩됐다. 8.9GB weight는 단일 HF stream이 느려 HTTP range 8조각 병렬 다운로드로 확보했다. 30초 smoke와 01/04 일부 텍스트는 Qwen보다 자연스러웠지만, 07 whisper/침대 ASMR에서 chunked 입력은 대부분 빈 출력이었고 120초 full-window 입력도 앞부분만 출력해 기본 승격하지 않는다.
 - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 최신 로컬 후보지만 model card metadata에 `custom_code`가 있다. Cohere는 gated 모델이다. 외부 모델 저장소 코드를 실행하는 `trust_remote_code=True`는 기본 실험 경로로 쓰지 않고, 사용자 명시 승인이나 first-party package 지원이 있을 때만 검증한다.
 - 다음 개선은 더 강한 로컬 ASR 후보를 안전하게 로딩하는 경로, Silero/TEN VAD wrapper, 또는 사용자 glossary 기반 후처리를 별도 실험으로 검증한다.
 
@@ -361,6 +366,7 @@ case별 practical CER:
    - `Qwen/Qwen3-ASR-1.7B`를 주력으로 둔다.
    - `neosophie/Qwen3-ASR-1.7B-JA`는 검증 완료 후보지만 기본 승격하지 않는다.
    - `Qwen/Qwen3-ASR-1.7B-hf`는 공식 Transformers release가 `qwen3_asr`를 포함하거나 weight를 안정적으로 내려받을 수 있으면 다시 비교한다.
+   - `mistralai/Voxtral-Mini-4B-Realtime-2602`는 remote code 없이 검증했지만 07 whisper 구간에서 실패해 기본 승격하지 않는다.
    - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 성능 후보로 남기되, custom code/gated 접근 조건을 먼저 해결해야 한다.
    - `Qwen/Qwen3-ASR-0.6B`는 속도/저사양 후보로 비교한다.
    - Gemma 4 E4B는 general multimodal baseline으로만 유지한다.
