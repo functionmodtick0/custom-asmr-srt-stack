@@ -76,10 +76,13 @@ class ProjectStore:
         audio_info: dict[str, Any],
         chunks: list[dict[str, int]],
         channel_audio: dict[str, bytes],
+        normalized_wav: bytes,
     ) -> dict[str, Any]:
         project_root = self.require_project_root(project_id)
         audio_root = project_root / "audio"
         audio_root.mkdir(exist_ok=True)
+        normalized_path = audio_root / "normalized.wav"
+        normalized_path.write_bytes(normalized_wav)
         channels: dict[str, str] = {}
         for channel, audio_bytes in channel_audio.items():
             path = audio_root / f"{channel.lower()}.wav"
@@ -90,6 +93,7 @@ class ProjectStore:
         metadata["audio_info"] = audio_info
         metadata["chunks"] = chunks
         metadata["channels"] = channels
+        metadata["normalized_audio_file"] = str(normalized_path.relative_to(project_root))
         self.write_json(project_root / "project.json", metadata)
         return {"project_id": project_id, "metadata": metadata}
 

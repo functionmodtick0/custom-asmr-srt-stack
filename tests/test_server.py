@@ -125,6 +125,7 @@ class ServerApiTests(unittest.TestCase):
             self.assertEqual(analyze_status, 200)
             self.assertEqual(analyzed["metadata"]["audio_info"]["duration_ms"], 2)
             self.assertEqual(set(analyzed["metadata"]["channels"]), {"MIX"})
+            self.assertEqual(analyzed["metadata"]["normalized_audio_file"], "audio/normalized.wav")
 
     def test_transcribe_route_uses_analyzed_left_and_right_channels(self):
         output = io.BytesIO()

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import io
+import shutil
 import struct
+import subprocess
+import tempfile
 import wave
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -76,6 +80,49 @@ def split_wav_channels(audio_bytes: bytes) -> tuple[AudioInfo, dict[str, bytes]]
     }
 
 
+def normalize_audio_to_wav(audio_bytes: bytes, *, file_name: str | None = None, mime_type: str | None = None) -> bytes:
+    if not audio_bytes:
+        raise ValueError("audio_bytes must not be empty")
+    try:
+        analyze_wav(audio_bytes)
+        return audio_bytes
+    except ValueError:
+        pass
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise ValueError("audio is not WAV and ffmpeg is not available")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        input_path = root / f"input{input_extension(file_name=file_name, mime_type=mime_type)}"
+        output_path = root / "normalized.wav"
+        input_path.write_bytes(audio_bytes)
+        result = subprocess.run(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(input_path),
+                "-acodec",
+                "pcm_s16le",
+                str(output_path),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            detail = result.stderr.strip() or "unknown ffmpeg error"
+            raise ValueError(f"ffmpeg could not decode audio: {detail}")
+        normalized = output_path.read_bytes()
+    analyze_wav(normalized)
+    return normalized
+
+
 def chunk_intervals(duration_ms: int, max_chunk_ms: int = 180_000) -> list[dict[str, int]]:
     if duration_ms < 0:
         raise ValueError("duration_ms must be non-negative")
@@ -116,3 +163,17 @@ def pcm16_to_int(sample: bytes) -> int:
 
 def int_to_pcm16(value: int) -> bytes:
     return struct.pack("<h", max(-32768, min(32767, value)))
+
+
+def input_extension(*, file_name: str | None, mime_type: str | None) -> str:
+    if file_name:
+        suffix = Path(file_name).suffix.lower()
+        if suffix:
+            return suffix
+    if mime_type:
+        subtype = mime_type.split("/", 1)[-1].split(";", 1)[0].lower()
+        if subtype == "mpeg":
+            return ".mp3"
+        if subtype:
+            return f".{subtype}"
+    return ".bin"
