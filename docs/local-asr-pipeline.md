@@ -90,9 +90,9 @@ max gain: 4.0x
 ```text
 threshold_dbfs: -48.0
 window_ms: 100
-min_silence_ms: 800
+min_silence_ms: 500
 min_speech_ms: 200
-pad_ms: 400
+pad_ms: 200
 ```
 
 `CASRT_VAD_COMMAND`가 설정되어 있으면 energy splitter 대신 고정 VAD command의 interval을 사용한다.
@@ -111,6 +111,16 @@ VAD command contract:
 - interval은 정렬되어야 하고 서로 겹치면 안 된다.
 - interval이 audio duration을 넘거나 malformed이면 fallback하지 않고 실패한다.
 - WebUI/CLI 옵션으로 노출하지 않는다.
+
+내장 energy splitter는 다음 env로만 내부 튜닝할 수 있다.
+
+```text
+CASRT_QWEN_ENERGY_THRESHOLD_DBFS
+CASRT_QWEN_ENERGY_WINDOW_MS
+CASRT_QWEN_ENERGY_MIN_SILENCE_MS
+CASRT_QWEN_ENERGY_MIN_SPEECH_MS
+CASRT_QWEN_ENERGY_PAD_MS
+```
 
 이 결정의 이유:
 
@@ -249,6 +259,47 @@ energy chunking + channel attribution 출력:
 - 첫 segment는 L/R energy 차이가 충분해서 L로 확정됐다.
 - 둘째 segment는 L/R 차이가 6dB 미만이라 MIX로 남았다.
 
+## 120초 품질 루프
+
+일자: 2026-06-28
+
+입력:
+
+```text
+data/uploads/01.淫魔＆魔女との遭遇.wav 앞 120초
+```
+
+reference:
+
+```text
+data/outputs/eval-csv-srt-01-full.srt에서 120초 crop
+```
+
+현재 실사용 후보 기준:
+
+- practical CER: 5~10% 이하
+- time-aligned 500ms boundary ratio: 90% 이상
+- 명확한 L/R 구간 channel accuracy: 85~90% 이상
+
+결과:
+
+| 후보 | segments | practical CER | time-aligned 500ms ratio | channel time-aligned accuracy | 판단 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Qwen3-ASR 1.7B, energy 800/400 | 7 | 29.3% | 10.0% | 100.0% on 2 comparable | 불합격: 과도한 병합 |
+| Qwen3-ASR 1.7B, energy 500/200 | 26 | 21.7% | 25.0% | 66.7% | 불합격 |
+| Qwen3-ASR 1.7B, energy 500/100 | 26 | 22.8% | 27.1% | 66.7% | 불합격 |
+| Qwen3-ASR 1.7B, energy 500/200 + context | 26 | 46.5% | 25.0% | 66.7% | 불합격: context hallucination |
+| Qwen3-ASR 1.7B, energy 500/200 + ForcedAligner | 26 | 21.7% | 31.2% | 83.3% | 불합격: timing/text 부족 |
+| stable-ts baseline | 25 | 7.8% | 56.5% | n/a | text 합격, timing 불합격 |
+
+결정:
+
+- Qwen 내장 energy 기본값은 `min_silence_ms=500`, `pad_ms=200`으로 낮춘다.
+- `CASRT_QWEN_ASR_CONTEXT`에 긴 glossary를 그대로 넣는 방식은 기본값으로 쓰지 않는다. 짧은 구간에서 glossary 전체를 출력하는 hallucination이 발생했다.
+- Qwen3-ForcedAligner는 channel/timing을 일부 개선했지만 120초 gold 기준으로 기본 승격하지 않는다.
+- 현재 Qwen3-ASR 1.7B 경로만으로는 품질 기준을 만족하지 못한다.
+- 다음 개선은 Silero/TEN VAD wrapper, 더 강한 로컬 ASR 후보, 또는 사용자 glossary 기반 후처리를 별도 실험으로 검증한다.
+
 ## 다음 작업 계획
 
 1. Gold set 운영
@@ -262,7 +313,7 @@ energy chunking + channel attribution 출력:
 
 3. VAD 후보 추가
    - VAD command hook은 추가됐다.
-   - 현재 energy splitter는 fallback-free baseline이다.
+   - 현재 energy splitter 500/200은 fallback-free baseline이다.
    - Silero VAD 또는 TEN VAD wrapper를 command로 붙여 gold set에서 비교한다.
    - VAD도 WebUI 옵션으로 노출하지 않고 고정/내부 설정으로 둔다.
 

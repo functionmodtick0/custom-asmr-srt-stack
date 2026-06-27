@@ -20,6 +20,11 @@ from custom_asmr_srt_stack.transcription import ModelEndpoint, adapter_max_chunk
 from custom_asmr_srt_stack.vad import run_vad_command
 
 CHANNEL_ATTRIBUTION_THRESHOLD_DB = 6.0
+QWEN_ENERGY_THRESHOLD_DBFS = -48.0
+QWEN_ENERGY_WINDOW_MS = 100
+QWEN_ENERGY_MIN_SILENCE_MS = 500
+QWEN_ENERGY_MIN_SPEECH_MS = 200
+QWEN_ENERGY_PAD_MS = 200
 
 
 def analyze_project(store: ProjectStore, project_id: str) -> dict[str, Any]:
@@ -167,8 +172,18 @@ def qwen_asr_chunks(model_endpoint: ModelEndpoint, audio_bytes: bytes | None) ->
     if vad_command:
         chunks = run_vad_command(audio_bytes, command=shlex.split(vad_command))
     else:
-        chunks = speech_intervals_by_energy(audio_bytes)
+        chunks = speech_intervals_by_energy(audio_bytes, **qwen_energy_chunk_kwargs())
     return tuple({"start_ms": chunk["start_ms"], "end_ms": chunk["end_ms"]} for chunk in chunks)
+
+
+def qwen_energy_chunk_kwargs() -> dict[str, float | int]:
+    return {
+        "threshold_dbfs": float(os.environ.get("CASRT_QWEN_ENERGY_THRESHOLD_DBFS", QWEN_ENERGY_THRESHOLD_DBFS)),
+        "window_ms": int(os.environ.get("CASRT_QWEN_ENERGY_WINDOW_MS", QWEN_ENERGY_WINDOW_MS)),
+        "min_silence_ms": int(os.environ.get("CASRT_QWEN_ENERGY_MIN_SILENCE_MS", QWEN_ENERGY_MIN_SILENCE_MS)),
+        "min_speech_ms": int(os.environ.get("CASRT_QWEN_ENERGY_MIN_SPEECH_MS", QWEN_ENERGY_MIN_SPEECH_MS)),
+        "pad_ms": int(os.environ.get("CASRT_QWEN_ENERGY_PAD_MS", QWEN_ENERGY_PAD_MS)),
+    }
 
 
 def transcription_channel_names(channels: Any, model_endpoint: ModelEndpoint) -> list[str]:

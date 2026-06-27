@@ -233,6 +233,64 @@ class WorkflowTests(unittest.TestCase):
                 transcribe_audio_func=fake_transcribe,
             )
 
+            self.assertEqual(calls, [("MIX", 1200), ("MIX", 1200)])
+            self.assertEqual(
+                [(segment.start_ms, segment.end_ms, segment.text) for segment in master.segments],
+                [(0, 1200, "1200"), (1800, 3000, "1200")],
+            )
+
+    def test_local_qwen_asr_energy_chunks_can_be_tuned_by_env(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "qwen-silence.wav"
+            write_stereo_samples(
+                audio_path,
+                ([(2000, 2000)] * 1000) + ([(0, 0)] * 1000) + ([(2000, 2000)] * 1000),
+            )
+            store = ProjectStore(root / "projects")
+            created = store.create_from_audio(
+                "qwen-silence.wav",
+                "audio/wav",
+                base64.b64encode(audio_path.read_bytes()).decode("ascii"),
+            )
+            analyzed = analyze_project(store, created["project_id"])
+            calls = []
+
+            def fake_transcribe(endpoint, audio_bytes, *, mime_type, channel, source_language):
+                del endpoint, mime_type, source_language
+                duration_ms = analyze_wav(audio_bytes).duration_ms
+                calls.append((channel, duration_ms))
+                return (
+                    Segment(
+                        id="ignored",
+                        start_ms=0,
+                        end_ms=duration_ms,
+                        channel=channel,
+                        kind="speech",
+                        text=str(duration_ms),
+                    ),
+                )
+
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "CASRT_QWEN_ENERGY_MIN_SILENCE_MS": "800",
+                    "CASRT_QWEN_ENERGY_PAD_MS": "400",
+                },
+            ):
+                master = transcribe_project(
+                    store,
+                    created["project_id"],
+                    ModelEndpoint(
+                        adapter="local-qwen-asr",
+                        endpoint_url=None,
+                        model_id="Qwen/Qwen3-ASR-1.7B",
+                    ),
+                    analyzed["metadata"],
+                    source_language="ja",
+                    transcribe_audio_func=fake_transcribe,
+                )
+
             self.assertEqual(calls, [("MIX", 1400), ("MIX", 1400)])
             self.assertEqual(
                 [(segment.start_ms, segment.end_ms, segment.text) for segment in master.segments],
