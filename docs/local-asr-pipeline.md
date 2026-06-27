@@ -310,6 +310,7 @@ uv run casrt eval-transcript ref.master.json candidate.master.json \
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | neosophie/Qwen3-ASR-1.7B-JA, 01/04/07 front120 | 3 | 74 | 81 | 29.6% | 29.5% | 73.1% | 불합격 |
 | mistralai/Voxtral-Mini-4B-Realtime-2602, 01/04/07 front120 | 3 | 74 | 44 | 40.0% | 28.7% | 63.6% | 불합격 |
+| stable-ts baseline, 01/04/07 front120 | 3 | 74 | 60 | 16.1% | 56.7% | n/a | 불합격: text/timing 부족, MIX-only |
 
 case별 practical CER:
 
@@ -321,6 +322,17 @@ case별 practical CER:
 | Voxtral Mini Realtime | 01-front120 | 22.4% | 22.7% | 66.7% |
 | Voxtral Mini Realtime | 04-front120 | 20.8% | 37.0% | 60.0% |
 | Voxtral Mini Realtime | 07-front120 | 89.0% | 0.0% | n/a |
+| stable-ts baseline | 01-front120 | 7.8% | 56.5% | n/a |
+| stable-ts baseline | 04-front120 | 7.3% | 60.9% | n/a |
+| stable-ts baseline | 07-front120 | 39.0% | 52.4% | n/a |
+
+stable-ts에 L/R energy attribution만 붙인 channel 진단:
+
+| attribution threshold | practical CER | time-aligned 500ms ratio | channel time-aligned accuracy | comparable segments | candidate MIX ratio |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 3dB | 16.1% | 56.7% | 68.2% | 22 | 17.9% |
+| 6dB | 16.1% | 56.7% | 65.0% | 20 | 23.9% |
+| 10dB | 16.1% | 56.7% | 76.9% | 13 | 58.2% |
 
 결정:
 
@@ -336,6 +348,7 @@ case별 practical CER:
 - `mistralai/Voxtral Mini Transcribe 2.0`는 Mistral API batch transcription 제품으로 확인됐고 open-weight 로컬 checkpoint는 확인하지 못했다. 외부 API는 제품 방향이 아니므로 기본 경로에서 제외한다.
 - `Atotti/llm-jp-4-8b-speech-asr`는 일본어 ASR 특화 8B 후보지만 model card상 `speech_llm_ja` 패키지(`git+https://github.com/Atotti/ja-speech-llm.git`)가 필요하다. 현재 설치된 Transformers `5.12.1`와 official main `5.13.0.dev0` 모두 `LlamaForSpeechLM`을 노출하지 않는다. 원격/외부 패키지 코드를 실행해야 하므로 사용자 명시 승인 전에는 자동 검증하지 않는다.
 - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 최신 로컬 후보지만 model card metadata에 `custom_code`가 있다. Cohere는 gated 모델이다. 외부 모델 저장소 코드를 실행하는 `trust_remote_code=True`는 기본 실험 경로로 쓰지 않고, 사용자 명시 승인이나 first-party package 지원이 있을 때만 검증한다.
+- stable-ts/Whisper계 baseline은 현재 후보 중 text가 가장 좋지만 3-case practical CER 16.1%로 기준 10%를 넘고, time-aligned 500ms ratio도 56.7%로 기준 90%에 못 미친다. L/R energy attribution을 후처리로 붙여도 channel accuracy가 85%에 도달하지 않는다. 따라서 제품 기본 경로로 승격하지 않고 품질 상한 비교용으로만 유지한다.
 - 다음 개선은 더 강한 로컬 ASR 후보를 안전하게 로딩하는 경로, Silero/TEN VAD wrapper, 또는 사용자 glossary 기반 후처리를 별도 실험으로 검증한다.
 
 ## 다음 작업 계획

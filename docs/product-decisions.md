@@ -118,6 +118,7 @@ ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한
 - `mistralai/Voxtral Mini Transcribe 2.0`: Mistral API batch transcription 제품으로 확인됐다. open-weight 로컬 checkpoint가 확인되지 않았고 외부 API는 제품 방향이 아니므로 기본 경로에서 제외한다.
 - `Atotti/llm-jp-4-8b-speech-asr`: 일본어 ASR 특화 8B 후보. 현재 official Transformers에서 `LlamaForSpeechLM`을 제공하지 않고 model card의 third-party runtime package가 필요하므로 사용자 명시 승인 전에는 자동 검증하지 않는다.
 - `AutoArk-AI/ARK-ASR-3B`, `CohereLabs/cohere-transcribe-03-2026`: 최신 로컬 후보. model metadata상 custom code가 필요하고 Cohere는 gated 모델이라, 사용자 명시 승인 또는 first-party package 경로가 확인된 뒤 실제 benchmark 대상으로 삼는다.
+- stable-ts/Whisper계 산출물은 2026-06-28 01/04/07 front120 확장 gold에서 practical CER 16.1%, time-aligned 500ms ratio 56.7%였다. Qwen/Neosophie/Voxtral보다 text는 낫지만 기준을 만족하지 못하고 MIX-only라 channel 제품 요구사항도 충족하지 않는다. 제품 기본 경로가 아니라 비교 baseline으로만 유지한다.
 - `Qwen/Qwen3-ASR-0.6B`: 빠른 비교/저사양 후보
 - `Qwen/Qwen3-ForcedAligner-0.6B`: 고정 forced alignment 후보
 
