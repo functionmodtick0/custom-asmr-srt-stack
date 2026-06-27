@@ -8,18 +8,29 @@ import wave
 from custom_asmr_srt_stack.transformers_worker import (
     TransformersRuntime,
     clean_transcription_text,
+    prepare_audio_for_asr,
     response_for_line,
 )
 
 
 def mono_wav_bytes(duration_ms: int = 2) -> bytes:
+    return mono_wav_from_samples([100] * duration_ms)
+
+
+def mono_wav_from_samples(samples: list[int]) -> bytes:
     output = io.BytesIO()
     with wave.open(output, "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
         wav.setframerate(1000)
-        wav.writeframes(struct.pack("<h", 100) * duration_ms)
+        wav.writeframes(b"".join(struct.pack("<h", sample) for sample in samples))
     return output.getvalue()
+
+
+def read_mono_samples(audio_bytes: bytes) -> list[int]:
+    with wave.open(io.BytesIO(audio_bytes), "rb") as wav:
+        frames = wav.readframes(wav.getnframes())
+    return [struct.unpack("<h", frames[index : index + 2])[0] for index in range(0, len(frames), 2)]
 
 
 class FakeRuntime(TransformersRuntime):
@@ -78,6 +89,24 @@ class TransformersWorkerTests(unittest.TestCase):
 
     def test_clean_transcription_text_removes_common_prefix(self):
         self.assertEqual(clean_transcription_text("Transcription: ねえ"), "ねえ")
+
+    def test_clean_transcription_text_compacts_japanese_spacing_and_noise(self):
+        self.assertEqual(
+            clean_transcription_text("ียบ みつかっ ちゃっ た 。 ねえ ねえ 、 魔女 ちゃん 、 こいつ 強い ? えっ と"),
+            "みつかっちゃった。ねえねえ、魔女ちゃん、こいつ強い?えっと",
+        )
+
+    def test_prepare_audio_for_asr_boosts_quiet_pcm16_audio(self):
+        prepared = prepare_audio_for_asr(mono_wav_from_samples([100, -100, 100]))
+
+        self.assertEqual(read_mono_samples(prepared), [400, -400, 400])
+
+    def test_prepare_audio_for_asr_caps_gain_at_peak_headroom(self):
+        prepared = prepare_audio_for_asr(mono_wav_from_samples(([10] * 999) + [8000]))
+
+        samples = read_mono_samples(prepared)
+        self.assertGreater(samples[0], 10)
+        self.assertLessEqual(max(abs(sample) for sample in samples), 23200)
 
 
 if __name__ == "__main__":
