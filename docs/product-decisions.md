@@ -94,6 +94,8 @@ Gemma 4 E2B/E4B 계열처럼 audio clip 길이 제한이 있는 모델을 고려
 
 Gemma 4 audio path는 audio tower까지 pre-quantize된 bnb checkpoint에서 깨질 수 있다. 실제 smoke에서 `unsloth/gemma-4-E4B-it-unsloth-bnb-4bit`는 audio tower의 `bitsandbytes` `AssertionError`로 실패했다. 따라서 worker의 runtime 4-bit quantization은 `lm_head`와 `model.audio_tower`를 quantization에서 제외한다.
 
+로컬 Transformers worker는 chunk 전사마다 generation을 기본 256 new tokens로 제한한다. 30초 이하 ASMR chunk에서 1024 tokens는 반복 생성과 장시간 block을 만들 수 있으므로 정상 경로가 아니다.
+
 ## 일본 ASMR 고품질 로컬 파이프라인
 
 일본 ASMR/동인음성의 기본 파이프라인은 다음 순서를 목표로 한다.

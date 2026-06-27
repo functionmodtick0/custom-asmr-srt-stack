@@ -18,6 +18,7 @@ LOCAL_TRANSCRIPTION_PROMPT = (
     "Do not add timestamps, channel labels, explanations, or markdown."
 )
 QUANTIZATION_SKIP_MODULES = ["lm_head", "model.audio_tower"]
+DEFAULT_MAX_NEW_TOKENS = 256
 
 
 class TransformersRuntime:
@@ -70,7 +71,7 @@ class TransformersRuntime:
             )
             if hasattr(inputs, "to"):
                 inputs = inputs.to(model.device)
-            output_ids = model.generate(**inputs, max_new_tokens=1024, do_sample=False)
+            output_ids = model.generate(**inputs, max_new_tokens=max_new_tokens(), do_sample=False)
             input_length = inputs["input_ids"].shape[-1]
             generated_ids = output_ids[:, input_length:]
             return processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
@@ -174,6 +175,19 @@ def log(message: str) -> None:
 def quantization_mode() -> str | None:
     value = os.environ.get("CASRT_TRANSFORMERS_QUANTIZATION", "").strip().lower()
     return value or None
+
+
+def max_new_tokens() -> int:
+    raw_value = os.environ.get("CASRT_TRANSFORMERS_MAX_NEW_TOKENS", "").strip()
+    if not raw_value:
+        return DEFAULT_MAX_NEW_TOKENS
+    try:
+        value = int(raw_value)
+    except ValueError as error:
+        raise ValueError("CASRT_TRANSFORMERS_MAX_NEW_TOKENS must be a positive integer") from error
+    if value <= 0:
+        raise ValueError("CASRT_TRANSFORMERS_MAX_NEW_TOKENS must be a positive integer")
+    return value
 
 
 def handle_request(runtime: TransformersRuntime, request: dict[str, Any]) -> dict[str, Any]:

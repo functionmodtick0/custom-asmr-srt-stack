@@ -8,8 +8,10 @@ import wave
 from unittest import mock
 
 from custom_asmr_srt_stack.transformers_worker import (
+    DEFAULT_MAX_NEW_TOKENS,
     TransformersRuntime,
     clean_transcription_text,
+    max_new_tokens,
     prepare_audio_for_asr,
     quantization_config,
     quantization_mode,
@@ -150,6 +152,20 @@ class TransformersWorkerTests(unittest.TestCase):
     def test_quantization_mode_reads_normalized_environment_value(self):
         with mock.patch.dict(os.environ, {"CASRT_TRANSFORMERS_QUANTIZATION": " 8BIT "}):
             self.assertEqual(quantization_mode(), "8bit")
+
+    def test_max_new_tokens_defaults_and_reads_environment_override(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(max_new_tokens(), DEFAULT_MAX_NEW_TOKENS)
+
+        with mock.patch.dict(os.environ, {"CASRT_TRANSFORMERS_MAX_NEW_TOKENS": "128"}):
+            self.assertEqual(max_new_tokens(), 128)
+
+    def test_max_new_tokens_rejects_invalid_values(self):
+        for value in ("0", "-1", "many"):
+            with self.subTest(value=value):
+                with mock.patch.dict(os.environ, {"CASRT_TRANSFORMERS_MAX_NEW_TOKENS": value}):
+                    with self.assertRaisesRegex(ValueError, "CASRT_TRANSFORMERS_MAX_NEW_TOKENS"):
+                        max_new_tokens()
 
 
 if __name__ == "__main__":

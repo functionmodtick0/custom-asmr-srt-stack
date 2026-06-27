@@ -56,6 +56,12 @@ Gemma 4 E4B는 full checkpoint를 다운로드하더라도 로딩은 4-bit runti
 CASRT_TRANSFORMERS_QUANTIZATION=4bit uv run casrt serve
 ```
 
+필요하면 worker generation 상한을 환경변수로 조정할 수 있습니다.
+
+```bash
+CASRT_TRANSFORMERS_MAX_NEW_TOKENS=256 uv run casrt serve
+```
+
 ## 실행
 
 서버 실행:

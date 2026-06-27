@@ -154,6 +154,7 @@ CASRT_TRANSFORMERS_QUANTIZATION=4bit \
 - worker는 모델을 lazy load하고 같은 CLI/WebUI 프로세스 안에서 재사용한다.
 - `CASRT_TRANSFORMERS_QUANTIZATION=4bit` 또는 `8bit`가 설정되면 runtime quantization을 사용하고, Gemma 4 audio path가 깨지지 않도록 `lm_head`와 `model.audio_tower`는 quantization에서 제외한다.
 - 잘못된 quantization 값은 full precision fallback으로 넘기지 않고 오류로 표시한다.
+- worker generation은 기본 `max_new_tokens=256`으로 제한한다. `CASRT_TRANSFORMERS_MAX_NEW_TOKENS`로 조정할 수 있지만 WebUI 옵션으로 노출하지 않는다.
 - worker import, model load, inference, response contract 오류는 실패로 표시한다.
 
 로컬 Qwen ASR worker:
