@@ -112,7 +112,7 @@ ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한
 우선 구현 대상은 다음이다.
 
 - `Qwen/Qwen3-ASR-1.7B`: 주력 로컬 ASR 후보
-- `neosophie/Qwen3-ASR-1.7B-JA`: Qwen3-ASR-1.7B 기반 일본어 fine-tune 후보. 2026-06-28 120초 gold에서 practical CER 20.4%, time-aligned 500ms ratio 25.0%, channel time-aligned accuracy 66.7%라 기본 승격하지 않는다.
+- `neosophie/Qwen3-ASR-1.7B-JA`: Qwen3-ASR-1.7B 기반 일본어 fine-tune 후보. 2026-06-28 01/04/07 front120 확장 gold에서 practical CER 29.6%, time-aligned 500ms ratio 29.5%, channel time-aligned accuracy 73.1%라 기본 승격하지 않는다.
 - `Qwen/Qwen3-ASR-1.7B-hf`: native Transformers 후보. 현재 설치된 Transformers에서는 `qwen3_asr` 아키텍처가 remote code 없이 로딩되지 않는다. 공식 Transformers main `5.13.0.dev0`에서는 support를 확인했지만 weight 다운로드가 장시간 진행돼 아직 점수화하지 못했다.
 - `AutoArk-AI/ARK-ASR-3B`, `CohereLabs/cohere-transcribe-03-2026`: 최신 로컬 후보. model metadata상 custom code가 필요하고 Cohere는 gated 모델이라, 사용자 명시 승인 또는 first-party package 경로가 확인된 뒤 실제 benchmark 대상으로 삼는다.
 - `Qwen/Qwen3-ASR-0.6B`: 빠른 비교/저사양 후보
