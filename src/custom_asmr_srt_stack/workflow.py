@@ -7,7 +7,7 @@ from typing import Any
 
 from custom_asmr_srt_stack.alignment import apply_alignment_review_flags, run_alignment_command
 from custom_asmr_srt_stack.audio import chunk_intervals, normalize_audio_to_wav, slice_wav, split_wav_channels
-from custom_asmr_srt_stack.models import MasterDocument, Segment, make_segment_id
+from custom_asmr_srt_stack.models import MasterDocument, Segment, make_segment_id, require_int, require_mapping
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.transcription import ModelEndpoint, transcribe_audio
 
@@ -56,23 +56,32 @@ def transcribe_project(
     else:
         raise ValueError("project must be analyzed before transcription")
 
+    chunks = analysis_chunks(metadata)
     raw_segments: list[Segment] = []
     for channel in channel_names:
         if isinstance(channels, dict) and channel in channels:
-            audio_bytes = store.read_channel_audio(project_id, channel)
+            channel_audio = store.read_channel_audio(project_id, channel)
             mime_type = "audio/wav"
         else:
-            audio_bytes, mime_type = store.read_audio(project_id)
-        raw_segments.extend(
-            replace(segment, channel=channel)
-            for segment in transcribe_audio_func(
-                model_endpoint,
-                audio_bytes,
-                mime_type=mime_type,
-                channel=channel,
-                source_language=source_language,
+            channel_audio, mime_type = store.read_audio(project_id)
+
+        for chunk in chunks:
+            clip = slice_wav(channel_audio, start_ms=chunk["start_ms"], end_ms=chunk["end_ms"])
+            raw_segments.extend(
+                replace(
+                    segment,
+                    channel=channel,
+                    start_ms=chunk["start_ms"] + segment.start_ms,
+                    end_ms=chunk["start_ms"] + segment.end_ms,
+                )
+                for segment in transcribe_audio_func(
+                    model_endpoint,
+                    clip,
+                    mime_type=mime_type,
+                    channel=channel,
+                    source_language=source_language,
+                )
             )
-        )
 
     segments = tuple(
         replace(segment, id=make_segment_id(index + 1))
@@ -104,6 +113,24 @@ def transcribe_project(
         audio_file=store.require_project_root(project_id) / normalized_audio_file,
         command=shlex.split(aligner_command),
     )
+
+
+def analysis_chunks(metadata: dict[str, Any]) -> tuple[dict[str, int], ...]:
+    raw_chunks = metadata.get("chunks")
+    if not isinstance(raw_chunks, list):
+        raise ValueError("project must be analyzed before transcription")
+
+    chunks: list[dict[str, int]] = []
+    for raw_chunk in raw_chunks:
+        chunk = require_mapping(raw_chunk, "metadata.chunks[]")
+        start_ms = require_int(chunk.get("start_ms"), "metadata.chunks[].start_ms")
+        end_ms = require_int(chunk.get("end_ms"), "metadata.chunks[].end_ms")
+        if start_ms < 0:
+            raise ValueError("metadata.chunks[].start_ms must be non-negative")
+        if end_ms <= start_ms:
+            raise ValueError("metadata.chunks[].end_ms must be greater than start_ms")
+        chunks.append({"start_ms": start_ms, "end_ms": end_ms})
+    return tuple(chunks)
 
 
 def retranscribe_segment(

@@ -69,6 +69,8 @@ API Key
 
 vLLM, SGLang 등으로 서빙되는 로컬 모델은 가능하면 OpenAI-compatible 어댑터로 연결한다.
 
+전사 endpoint는 오디오 입력을 실제로 받아야 한다. vision-only 또는 text-only multimodal endpoint는 모델 이름이 최신이어도 ASR 경로로 사용할 수 없다.
+
 ## Alignment 정책
 
 Alignment는 애플리케이션이 고정으로 제공하며, 기본 UI에서 사용자가 선택하지 않는다.

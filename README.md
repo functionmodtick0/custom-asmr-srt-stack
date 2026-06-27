@@ -10,8 +10,9 @@
 - 외부 번역 도구용 `translation.json` export
 - 외부 번역 결과 `translated.json` import 후 SRT export
 - 오디오 project 저장
-- ffmpeg 기반 오디오 WAV 정규화
+- ffmpeg 기반 오디오 16-bit PCM WAV 정규화
 - WAV L/R/MIX 채널 분리
+- 분석된 chunk 단위 전사
 - OpenAI-compatible / Gemini 모델 endpoint adapter
 - 고정 aligner command hook
 - 선택 segment 재전사
@@ -23,7 +24,7 @@
 
 - uv
 - Node.js: `web/app.js` 구문 검사용
-- ffmpeg: WAV가 아닌 오디오를 전사 전에 WAV로 정규화할 때 필요
+- ffmpeg: WAV가 아니거나 채널 분리에 맞지 않는 WAV를 16-bit PCM WAV로 정규화할 때 필요
 
 ## 실행
 
@@ -119,6 +120,8 @@ uv run casrt project transcribe PROJECT_ID \
   --endpoint-url http://127.0.0.1:8000/v1 \
   --model-id gemma-4-e4b
 ```
+
+전사는 `project analyze`가 저장한 L/R 또는 MIX 채널을 chunk 단위로 잘라 모델에 보낸 뒤, 결과 타임스탬프를 원본 timeline으로 되돌려 저장합니다.
 
 선택 segment 재전사:
 
