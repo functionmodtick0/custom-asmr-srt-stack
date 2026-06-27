@@ -359,10 +359,14 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - `mistralai/Voxtral Mini Transcribe 2.0`는 Mistral API batch transcription 제품으로 확인됐고 open-weight 로컬 checkpoint는 확인하지 못했다. 외부 API는 제품 방향이 아니므로 기본 경로에서 제외한다.
 - `google/gemma-4-E4B-it`는 공식 오디오 입력을 지원하고 5초 smoke에서 유의미한 전사를 반환했다. 그러나 01/04/07 front120 확장 gold에서 4-bit practical CER 42.3%, 8-bit practical CER 46.1%로 기준을 크게 벗어났다. 8-bit는 01 smoke와 01 case를 조금 개선했지만 07 whisper/침대 ASMR에서 반복 hallucination이 발생해 전체 지표가 악화됐다. 따라서 기본 승격하지 않는다.
 - Gemma E4B 실험 산출물은 `/tmp/casrt-quality/gemma-e4b-4bit-bounded-results`, `/tmp/casrt-quality/gemma-e4b-8bit-bounded-results`, report는 `/tmp/casrt-quality/gemma-e4b-4bit-bounded-3case-report.json`, `/tmp/casrt-quality/gemma-e4b-8bit-bounded-3case-report.json`에 있다.
+- `zhifeixie/Mega-ASR`는 2026-05 공개 Qwen3-ASR-1.7B 기반 robust ASR 후보이며, noisy/reverberant/clipped/band-limited/overlapping 등 어려운 실제 녹음에서 empty output, omission, repetition, hallucination을 줄이는 것을 목표로 한다. ASMR 전용은 아니지만 현재 07 whisper/침대 구간 실패 양상과 맞닿아 있으므로 다음 우선 모델 실험으로 둔다. 공식 runtime은 `xzf-thu/Mega-ASR` repository 코드와 checkpoint 배치를 요구하므로 `/tmp` 격리 환경에서 실행한다.
 - `Atotti/llm-jp-4-8b-speech-asr`는 일본어 ASR 특화 8B 후보지만 model card상 `speech_llm_ja` 패키지(`git+https://github.com/Atotti/ja-speech-llm.git`)가 필요하다. 현재 설치된 Transformers `5.12.1`와 official main `5.13.0.dev0` 모두 `LlamaForSpeechLM`을 노출하지 않는다. 원격/외부 패키지 코드를 실행해야 하므로 사용자 명시 승인 전에는 자동 검증하지 않는다.
 - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 최신 로컬 후보지만 model card metadata에 `custom_code`가 있다. Cohere는 gated 모델이다. 외부 모델 저장소 코드를 실행하는 `trust_remote_code=True`는 기본 실험 경로로 쓰지 않고, 사용자 명시 승인이나 first-party package 지원이 있을 때만 검증한다.
 - stable-ts/Whisper계 baseline은 현재 후보 중 text가 가장 좋지만 3-case practical CER 16.1%로 기준 10%를 넘고, time-aligned 500ms ratio도 56.7%로 기준 90%에 못 미친다. L/R energy attribution을 후처리로 붙여도 channel accuracy가 85%에 도달하지 않는다. 따라서 제품 기본 경로로 승격하지 않고 품질 상한 비교용으로만 유지한다.
-- 다음 개선은 더 강한 로컬 ASR 후보를 안전하게 로딩하는 경로, Silero/TEN VAD wrapper, 또는 사용자 glossary 기반 후처리를 별도 실험으로 검증한다.
+- 2026년 공개 파이프라인 조사에서 WhisperJAV는 ASMR/VR/whisper 콘텐츠에 `fidelity` pipeline과 `aggressive` sensitivity를 권장한다. 또한 ChronosJAV는 Qwen ASR, anime-whisper, Kotoba처럼 timestamp 없는 모델의 text generation과 timestamp alignment를 분리한다. 이 방향은 모델 단독 교체보다 VAD/scene detection/alignment를 분리해서 검증해야 함을 뒷받침한다.
+- `TransWithAI/Whisper-Vad-EncDec-ASMR-onnx`는 Whisper encoder 기반 VAD이며 공개 discussion에서 일본어 ASMR 약 500시간으로 학습됐다고 설명된다. ASR 모델이 아니므로 text CER를 직접 개선하지는 않지만, energy splitter보다 ASMR whisper boundary를 더 잘 잡는지 `CASRT_VAD_COMMAND` 후보로 비교한다.
+- vocal separation은 무조건 적용하지 않는다. WhisperJAV README는 blanket denoise/vocal separation이 Whisper log-Mel feature를 망가뜨릴 수 있다고 경고한다. 반면 WhisperJAV issue에서는 강한 BGM/환경음이 있을 때 UVR/MDX/Demucs류 분리의 필요성이 제기됐다. 따라서 BGM/SFX가 강한 case에서만 별도 실험으로 둔다.
+- 다음 개선은 Mega-ASR 모델 점수화, ASMR-trained VAD wrapper, scene-aware chunking, forced alignment 재평가 순서로 검증한다.
 
 ## 다음 작업 계획
 
@@ -378,7 +382,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 3. VAD 후보 추가
    - VAD command hook은 추가됐다.
    - 현재 energy splitter 500/200은 fallback-free baseline이다.
-   - Silero VAD 또는 TEN VAD wrapper를 command로 붙여 gold set에서 비교한다. 단, 현재 120초 결과는 VAD만으로 품질 기준을 만족할 가능성이 낮으므로 text ASR 후보 검증을 우선한다.
+   - `TransWithAI/Whisper-Vad-EncDec-ASMR-onnx`, Silero VAD, TEN VAD wrapper를 command로 붙여 gold set에서 비교한다. 단, 현재 120초 결과는 VAD만으로 품질 기준을 만족할 가능성이 낮으므로 text ASR 후보 검증을 우선한다.
    - VAD도 WebUI 옵션으로 노출하지 않고 고정/내부 설정으로 둔다.
 
 4. Channel attribution 튜닝
@@ -392,6 +396,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 
 6. 모델 비교
    - `Qwen/Qwen3-ASR-1.7B`를 주력으로 둔다.
+   - `zhifeixie/Mega-ASR`는 Qwen3-ASR robust 후보로 우선 점수화한다.
    - `neosophie/Qwen3-ASR-1.7B-JA`는 검증 완료 후보지만 기본 승격하지 않는다.
    - `Qwen/Qwen3-ASR-1.7B-hf`는 공식 Transformers release가 `qwen3_asr`를 포함하거나 weight를 안정적으로 내려받을 수 있으면 다시 비교한다.
    - `mistralai/Voxtral-Mini-4B-Realtime-2602`는 remote code 없이 검증했지만 07 whisper 구간에서 실패해 기본 승격하지 않는다.
@@ -400,6 +405,15 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
    - `Qwen/Qwen3-ASR-0.6B`는 속도/저사양 후보로 비교한다.
    - Gemma 4 E4B는 공식 오디오 입력과 smoke 전사는 성공했지만 01/04/07 front120 gold 기준을 만족하지 못해 기본 승격하지 않는다.
    - Whisper 계열 도메인 fine-tune은 제품 기본이 아니라 비교 baseline으로만 본다.
+
+## 2026 공개 조사 출처
+
+- Mega-ASR model card: https://huggingface.co/zhifeixie/Mega-ASR
+- Mega-ASR runtime repository: https://github.com/xzf-thu/Mega-ASR
+- WhisperJAV README: https://github.com/meizhong986/WhisperJAV
+- WhisperJAV vocal separation issue: https://github.com/meizhong986/WhisperJAV/issues/224
+- ASMR-trained Whisper VAD discussion: https://github.com/CrispStrobe/CrispASR/issues/36
+- Qwen3-ASR user report thread: https://www.reddit.com/r/LocalLLaMA/comments/1rq118c/qwen3_asr_seems_to_outperform_whisper_in_almost/
 
 ## 문서화 규칙
 
