@@ -384,6 +384,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - `TransWithAI/Whisper-Vad-EncDec-ASMR-onnx`는 Whisper encoder 기반 VAD이며 공개 discussion에서 일본어 ASMR 약 500시간으로 학습됐다고 설명된다. ASR 모델이 아니므로 text CER를 직접 개선하지는 않지만, energy splitter보다 ASMR whisper boundary를 더 잘 잡는지 `CASRT_VAD_COMMAND` 후보로 비교한다.
 - ASMR Whisper ONNX VAD는 외부 `inference.py`를 실행하지 않고 `casrt vad whisper-asmr-onnx`로 직접 구현한다. 입력은 CASRT VAD command stdin contract를 따르고 출력은 `{ intervals }`만 반환한다. 전처리는 16kHz mono, 30초 chunk, WhisperFeatureExtractor, ONNX Runtime, sigmoid activation, hysteresis postprocess로 제한한다.
 - ASMR Whisper ONNX VAD 실행 전 `gpt-5.4 xhigh` subagent가 정적 보안 검토했다. Verdict는 `PASS_WITH_CONSTRAINTS`다. 조건은 전용 venv, `model.onnx`/`model_metadata.json` 두 파일만 있는 전용 모델 디렉터리, SHA-256 기록, CPU-only `--force-cpu --num-threads 1`, 외부 `inference.py` 실행 금지, HF/API/W&B token 제거, VAD subprocess timeout, metadata/shape fail-closed 검증이다. ORT가 custom op/external tensor/unexpected provider를 요구하거나 모델 디렉터리에 extra file이 있으면 중단한다.
+- ONNX Runtime session metadata는 input shape를 `['s6', 80, 3000]`, output shape를 `[1, 1500]`, provider를 `CPUExecutionProvider`로 노출했다. `s6`는 symbolic batch dim으로 보고 이 축만 허용하며, feature/time/output shape는 metadata 계약 그대로 고정 검증한다.
 - vocal separation은 무조건 적용하지 않는다. WhisperJAV README는 blanket denoise/vocal separation이 Whisper log-Mel feature를 망가뜨릴 수 있다고 경고한다. 반면 WhisperJAV issue에서는 강한 BGM/환경음이 있을 때 UVR/MDX/Demucs류 분리의 필요성이 제기됐다. 따라서 BGM/SFX가 강한 case에서만 별도 실험으로 둔다.
 - 다음 개선은 ASMR-trained VAD gold 점수화, scene-aware chunking, forced alignment 재평가 순서로 검증한다.
 

@@ -187,7 +187,8 @@ def validate_session_contract(session: Any) -> None:
         raise ValueError("ONNX VAD model must have exactly one input")
     if len(outputs) != 1:
         raise ValueError("ONNX VAD model must have exactly one output")
-    if list(inputs[0].shape) != EXPECTED_INPUT_SHAPE:
+    input_shape = list(inputs[0].shape)
+    if len(input_shape) != 3 or input_shape[1:] != EXPECTED_INPUT_SHAPE[1:] or input_shape[0] not in {1, "s6"}:
         raise ValueError(f"ONNX VAD input shape must be {EXPECTED_INPUT_SHAPE!r}")
     if list(outputs[0].shape) != EXPECTED_OUTPUT_SHAPE:
         raise ValueError(f"ONNX VAD output shape must be {EXPECTED_OUTPUT_SHAPE!r}")

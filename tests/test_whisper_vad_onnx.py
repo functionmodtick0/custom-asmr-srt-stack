@@ -11,8 +11,30 @@ from custom_asmr_srt_stack.whisper_vad_onnx import (
     probabilities_to_intervals,
     validate_model_files,
     validate_model_metadata,
+    validate_session_contract,
     validate_settings,
 )
+
+
+class FakeOrtValue:
+    def __init__(self, shape):
+        self.shape = shape
+
+
+class FakeOrtSession:
+    def __init__(self, *, input_shape, output_shape, providers=None):
+        self.input_shape = input_shape
+        self.output_shape = output_shape
+        self.providers = providers or ["CPUExecutionProvider"]
+
+    def get_providers(self):
+        return self.providers
+
+    def get_inputs(self):
+        return [FakeOrtValue(self.input_shape)]
+
+    def get_outputs(self):
+        return [FakeOrtValue(self.output_shape)]
 
 
 class WhisperVadOnnxTests(unittest.TestCase):
@@ -91,6 +113,21 @@ class WhisperVadOnnxTests(unittest.TestCase):
     def test_settings_require_cpu(self):
         with self.assertRaisesRegex(ValueError, "force_cpu"):
             validate_settings(WhisperVadOnnxSettings(force_cpu=False))
+
+    def test_session_contract_allows_reviewed_symbolic_batch_only(self):
+        validate_session_contract(FakeOrtSession(input_shape=["s6", 80, 3000], output_shape=[1, 1500]))
+
+        with self.assertRaisesRegex(ValueError, "input shape"):
+            validate_session_contract(FakeOrtSession(input_shape=["s6", 80, 2999], output_shape=[1, 1500]))
+
+        with self.assertRaisesRegex(ValueError, "CPUExecutionProvider"):
+            validate_session_contract(
+                FakeOrtSession(
+                    input_shape=["s6", 80, 3000],
+                    output_shape=[1, 1500],
+                    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+                )
+            )
 
 
 if __name__ == "__main__":
