@@ -313,6 +313,9 @@ uv run casrt eval-transcript ref.master.json candidate.master.json \
 | mistralai/Voxtral-Mini-4B-Realtime-2602, 01/04/07 front120 | 3 | 74 | 44 | 40.0% | 28.7% | 63.6% | 불합격 |
 | google/gemma-4-E4B-it, 4-bit local-transformers, MIX-first, 01/04/07 front120 | 3 | 74 | 81 | 42.3% | 29.5% | 73.1% | 불합격 |
 | google/gemma-4-E4B-it, 8-bit local-transformers, MIX-first, 01/04/07 front120 | 3 | 74 | 81 | 46.1% | 29.5% | 73.1% | 불합격 |
+| zhifeixie/Mega-ASR, routed, MIX-first, 01/04/07 front120 | 3 | 74 | 68 | 30.9% | 28.4% | 69.6% | 불합격 |
+| zhifeixie/Mega-ASR, base-only threshold 1.1, MIX-first, 01/04/07 front120 | 3 | 74 | 64 | 30.8% | 27.3% | 68.2% | 불합격 |
+| zhifeixie/Mega-ASR, forced LoRA, MIX-first, 01/04/07 front120 | 3 | 74 | 81 | 77.6% | 29.5% | 73.1% | 불합격: LoRA가 ASMR에서 악화 |
 | stable-ts baseline, 01/04/07 front120 | 3 | 74 | 60 | 16.1% | 56.7% | n/a | 불합격: text/timing 부족, MIX-only |
 
 case별 practical CER:
@@ -331,6 +334,15 @@ case별 practical CER:
 | Gemma 4 E4B 8-bit | 01-front120 | 27.7% | 25.0% | 66.7% |
 | Gemma 4 E4B 8-bit | 04-front120 | 31.4% | 37.0% | 60.0% |
 | Gemma 4 E4B 8-bit | 07-front120 | 90.2% | 26.9% | 80.0% |
+| Mega-ASR routed | 01-front120 | 23.0% | 22.7% | 66.7% |
+| Mega-ASR routed | 04-front120 | 20.1% | 37.0% | 60.0% |
+| Mega-ASR routed | 07-front120 | 55.8% | 25.0% | 75.0% |
+| Mega-ASR base-only threshold 1.1 | 01-front120 | 23.5% | 22.7% | 66.7% |
+| Mega-ASR base-only threshold 1.1 | 04-front120 | 20.1% | 37.0% | 60.0% |
+| Mega-ASR base-only threshold 1.1 | 07-front120 | 54.6% | 21.4% | 72.7% |
+| Mega-ASR forced LoRA | 01-front120 | 66.2% | 25.0% | 66.7% |
+| Mega-ASR forced LoRA | 04-front120 | 81.3% | 37.0% | 60.0% |
+| Mega-ASR forced LoRA | 07-front120 | 88.4% | 26.9% | 80.0% |
 | stable-ts baseline | 01-front120 | 7.8% | 56.5% | n/a |
 | stable-ts baseline | 04-front120 | 7.3% | 60.9% | n/a |
 | stable-ts baseline | 07-front120 | 39.0% | 52.4% | n/a |
@@ -362,13 +374,16 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - `zhifeixie/Mega-ASR`는 2026-05 공개 Qwen3-ASR-1.7B 기반 robust ASR 후보이며, noisy/reverberant/clipped/band-limited/overlapping 등 어려운 실제 녹음에서 empty output, omission, repetition, hallucination을 줄이는 것을 목표로 한다. ASMR 전용은 아니지만 현재 07 whisper/침대 구간 실패 양상과 맞닿아 있으므로 다음 우선 모델 실험으로 둔다. 공식 runtime은 `xzf-thu/Mega-ASR` repository 코드와 checkpoint 배치를 요구하므로 `/tmp` 격리 환경에서 실행한다.
 - Mega-ASR runtime은 실행 전 `gpt-5.4 xhigh` subagent가 정적 보안 검토했다. Verdict는 `PASS_WITH_CONSTRAINTS`다. 허용 범위는 `/tmp` 별도 venv, `/tmp` HF cache, Hugging Face allowlist download, Transformers backend만, `infer.py`/`evaluate_wer.py`만, vLLM/webui/training/wandb 금지, safetensors-only checkpoint 강제다. `adapter_model.bin`, `.pt`, `.pth` 또는 router non-safetensors checkpoint를 읽게 되면 미승인으로 간주한다.
 - Mega-ASR 정적 검토에서 확인한 고위험 지점은 `lora_switch.py`의 `adapter_model.bin` fallback `torch.load`와 `router.py`의 non-safetensors `torch.load(weights_only=False)`다. 따라서 실험 전 `mega-asr-merged/adapter_model.safetensors`와 `audio_quality_router/best_acc_model.safetensors` 존재를 확인하고 unsafe fallback 파일은 사용하지 않는다.
+- Mega-ASR는 `/tmp/casrt-quality/mega-asr-venv`, `HF_HOME=/tmp/casrt-quality/hf-home-mega-asr`, offline env에서 점수화했다. Checkpoint에는 unsafe pickle fallback 대상 파일이 없고, `adapter_model.safetensors`와 `best_acc_model.safetensors`를 확인했다.
+- Mega-ASR 5초 smoke는 `やば、見つかっちゃった。`를 반환했고 router는 `use_lora=False`, degraded probability 0.0559였다. 그러나 01/04/07 front120 routed practical CER는 30.9%라 Neosophie 29.6%보다 약간 낮고 기준에 크게 못 미친다. threshold 1.1로 base-only에 가깝게 만든 경로도 30.8%로 유의미한 개선이 없다. forced LoRA는 77.6%로 크게 악화되어 ASMR 기본 경로로 쓰지 않는다.
+- Mega-ASR 산출물은 `/tmp/casrt-quality/mega-asr-results/routed`, `/tmp/casrt-quality/mega-asr-results/base-threshold-1p1`, `/tmp/casrt-quality/mega-asr-results/force-lora`에 있다. Report는 각각 `routed-3case-report.json`, `base-threshold-1p1-3case-report.json`, `force-lora-3case-report.json`이다.
 - `Atotti/llm-jp-4-8b-speech-asr`는 일본어 ASR 특화 8B 후보지만 model card상 `speech_llm_ja` 패키지(`git+https://github.com/Atotti/ja-speech-llm.git`)가 필요하다. 현재 설치된 Transformers `5.12.1`와 official main `5.13.0.dev0` 모두 `LlamaForSpeechLM`을 노출하지 않는다. 원격/외부 패키지 코드를 실행해야 하므로 사용자 명시 승인 전에는 자동 검증하지 않는다.
 - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 최신 로컬 후보지만 model card metadata에 `custom_code`가 있다. Cohere는 gated 모델이다. 외부 모델 저장소 코드를 실행하는 `trust_remote_code=True`는 기본 실험 경로로 쓰지 않고, 사용자 명시 승인이나 first-party package 지원이 있을 때만 검증한다.
 - stable-ts/Whisper계 baseline은 현재 후보 중 text가 가장 좋지만 3-case practical CER 16.1%로 기준 10%를 넘고, time-aligned 500ms ratio도 56.7%로 기준 90%에 못 미친다. L/R energy attribution을 후처리로 붙여도 channel accuracy가 85%에 도달하지 않는다. 따라서 제품 기본 경로로 승격하지 않고 품질 상한 비교용으로만 유지한다.
 - 2026년 공개 파이프라인 조사에서 WhisperJAV는 ASMR/VR/whisper 콘텐츠에 `fidelity` pipeline과 `aggressive` sensitivity를 권장한다. 또한 ChronosJAV는 Qwen ASR, anime-whisper, Kotoba처럼 timestamp 없는 모델의 text generation과 timestamp alignment를 분리한다. 이 방향은 모델 단독 교체보다 VAD/scene detection/alignment를 분리해서 검증해야 함을 뒷받침한다.
 - `TransWithAI/Whisper-Vad-EncDec-ASMR-onnx`는 Whisper encoder 기반 VAD이며 공개 discussion에서 일본어 ASMR 약 500시간으로 학습됐다고 설명된다. ASR 모델이 아니므로 text CER를 직접 개선하지는 않지만, energy splitter보다 ASMR whisper boundary를 더 잘 잡는지 `CASRT_VAD_COMMAND` 후보로 비교한다.
 - vocal separation은 무조건 적용하지 않는다. WhisperJAV README는 blanket denoise/vocal separation이 Whisper log-Mel feature를 망가뜨릴 수 있다고 경고한다. 반면 WhisperJAV issue에서는 강한 BGM/환경음이 있을 때 UVR/MDX/Demucs류 분리의 필요성이 제기됐다. 따라서 BGM/SFX가 강한 case에서만 별도 실험으로 둔다.
-- 다음 개선은 Mega-ASR 모델 점수화, ASMR-trained VAD wrapper, scene-aware chunking, forced alignment 재평가 순서로 검증한다.
+- 다음 개선은 ASMR-trained VAD wrapper, scene-aware chunking, forced alignment 재평가 순서로 검증한다.
 
 ## 다음 작업 계획
 
@@ -398,7 +413,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 
 6. 모델 비교
    - `Qwen/Qwen3-ASR-1.7B`를 주력으로 둔다.
-   - `zhifeixie/Mega-ASR`는 Qwen3-ASR robust 후보로 우선 점수화한다.
+   - `zhifeixie/Mega-ASR`는 검증 완료 후보지만 기본 승격하지 않는다.
    - `neosophie/Qwen3-ASR-1.7B-JA`는 검증 완료 후보지만 기본 승격하지 않는다.
    - `Qwen/Qwen3-ASR-1.7B-hf`는 공식 Transformers release가 `qwen3_asr`를 포함하거나 weight를 안정적으로 내려받을 수 있으면 다시 비교한다.
    - `mistralai/Voxtral-Mini-4B-Realtime-2602`는 remote code 없이 검증했지만 07 whisper 구간에서 실패해 기본 승격하지 않는다.
