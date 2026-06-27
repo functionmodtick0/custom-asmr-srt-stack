@@ -44,10 +44,19 @@ class EvaluationTests(unittest.TestCase):
         self.assertAlmostEqual(report["text"]["cer"], 2 / 7)
         self.assertEqual(report["text_practical"]["mode"], "practical")
         self.assertEqual(report["timing"]["paired_segments"], 2)
+        self.assertEqual(report["timing"]["boundary_samples"], 4)
         self.assertEqual(report["timing"]["mean_start_error_ms"], 60)
         self.assertEqual(report["timing"]["mean_end_error_ms"], 100)
+        self.assertEqual(report["timing"]["mean_boundary_error_ms"], 80)
+        self.assertEqual(report["timing"]["max_boundary_error_ms"], 100)
+        self.assertEqual(report["timing"]["within_250ms_count"], 4)
+        self.assertEqual(report["timing"]["within_250ms_ratio"], 1.0)
+        self.assertEqual(report["channel"]["paired_segments"], 2)
         self.assertEqual(report["channel"]["comparable_segments"], 2)
         self.assertEqual(report["channel"]["accuracy"], 0.5)
+        self.assertEqual(report["channel"]["confusion"]["L"]["L"], 1)
+        self.assertEqual(report["channel"]["confusion"]["R"]["L"], 1)
+        self.assertEqual(report["channel"]["candidate_mix_segments"], 0)
         self.assertEqual(report["review"]["candidate_review_count"], 1)
 
     def test_practical_cer_normalizes_width_spacing_and_punctuation(self):
@@ -94,8 +103,14 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["summary"]["text"]["reference_characters"], 6)
         self.assertAlmostEqual(report["summary"]["text"]["cer"], 1 / 6)
         self.assertEqual(report["summary"]["timing"]["paired_segments"], 2)
+        self.assertEqual(report["summary"]["timing"]["boundary_samples"], 4)
         self.assertEqual(report["summary"]["timing"]["mean_start_error_ms"], 150)
         self.assertEqual(report["summary"]["timing"]["mean_boundary_error_ms"], 175)
+        self.assertEqual(report["summary"]["timing"]["max_boundary_error_ms"], 200)
+        self.assertEqual(report["summary"]["timing"]["within_250ms_ratio"], 1.0)
+        self.assertEqual(report["summary"]["channel"]["paired_segments"], 2)
+        self.assertEqual(report["summary"]["channel"]["confusion"]["MIX"]["MIX"], 2)
+        self.assertEqual(report["summary"]["channel"]["candidate_mix_ratio"], 1.0)
 
     def test_evaluate_manifest_rejects_duplicate_case_ids(self):
         with tempfile.TemporaryDirectory() as tmpdir:

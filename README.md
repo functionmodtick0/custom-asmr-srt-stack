@@ -266,7 +266,7 @@ gold set manifest 평가:
 uv run casrt eval-manifest gold.json --json -o eval-suite.json
 ```
 
-현재 평가는 strict CER, practical CER, segment index 기준 timing 오차, L/R channel accuracy, review 비율을 계산합니다.
+현재 평가는 strict CER, practical CER, segment index 기준 timing 오차, boundary threshold ratio, L/R/MIX channel confusion, L/R channel accuracy, review 비율을 계산합니다.
 
 ## 테스트
 

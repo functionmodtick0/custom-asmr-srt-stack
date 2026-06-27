@@ -194,7 +194,9 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 - reference와 candidate는 SRT 또는 `master.json`을 받을 수 있다.
 - speech text strict CER와 practical CER를 계산한다.
 - segment index 기준 mean start/end/boundary error를 계산한다.
-- L/R channel accuracy와 `needs_review` 비율을 계산한다.
+- forced alignment 재평가를 위해 boundary sample 수, max boundary error, 250ms/500ms 이내 boundary ratio를 계산한다.
+- channel attribution 튜닝을 위해 L/R/MIX confusion, candidate MIX 유지 비율, L/R channel accuracy를 계산한다.
+- `needs_review` 비율을 계산한다.
 - 평가는 모델 기본값 승격이나 threshold 변경 전에 실행한다.
 
 여러 샘플을 한 번에 평가할 때는 gold set manifest를 사용한다.
@@ -222,7 +224,7 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 - `reference`와 `candidate` 경로는 manifest 파일 위치 기준 상대 경로 또는 absolute path를 받는다.
 - 각 case는 기존 `eval-transcript`와 동일한 리포트를 보존한다.
 - summary CER는 case 평균이 아니라 전체 edit distance / 전체 reference characters로 계산한다.
-- summary timing/channel/review는 전체 paired/comparable/candidate segment 수 기준으로 가중 집계한다.
+- summary timing/channel/review는 전체 paired/boundary/comparable/candidate segment 수 기준으로 가중 집계한다.
 - case `id`는 중복될 수 없다.
 
 ### 선택 segment 재전사

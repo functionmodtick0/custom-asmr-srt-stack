@@ -12,6 +12,7 @@ from custom_asmr_srt_stack.srt import parse_srt
 EVAL_FORMAT = "custom-asmr-eval-v1"
 EVAL_MANIFEST_FORMAT = "custom-asmr-eval-manifest-v1"
 EVAL_SUITE_FORMAT = "custom-asmr-eval-suite-v1"
+EVAL_CHANNELS = ("L", "R", "MIX")
 
 
 def load_transcript_document(path: Path, *, source_language: str = "ja") -> MasterDocument:
@@ -158,37 +159,75 @@ def aggregate_text_reports(reports: list[dict[str, Any]], key: str) -> dict[str,
 
 def aggregate_timing_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
     paired_segments = sum(report["timing"]["paired_segments"] for report in reports)
+    boundary_samples = sum(report["timing"]["boundary_samples"] for report in reports)
+    timed_reports = [report for report in reports if report["timing"]["paired_segments"] > 0]
     if paired_segments == 0:
         return {
             "paired_segments": 0,
+            "boundary_samples": 0,
             "mean_start_error_ms": None,
             "mean_end_error_ms": None,
             "mean_boundary_error_ms": None,
+            "max_boundary_error_ms": None,
+            "within_250ms_count": 0,
+            "within_250ms_ratio": None,
+            "within_500ms_count": 0,
+            "within_500ms_ratio": None,
         }
-    start_error_sum = sum(report["timing"]["mean_start_error_ms"] * report["timing"]["paired_segments"] for report in reports)
-    end_error_sum = sum(report["timing"]["mean_end_error_ms"] * report["timing"]["paired_segments"] for report in reports)
-    boundary_error_sum = sum(
-        report["timing"]["mean_boundary_error_ms"] * report["timing"]["paired_segments"] for report in reports
+    start_error_sum = sum(
+        report["timing"]["mean_start_error_ms"] * report["timing"]["paired_segments"] for report in timed_reports
     )
+    end_error_sum = sum(
+        report["timing"]["mean_end_error_ms"] * report["timing"]["paired_segments"] for report in timed_reports
+    )
+    boundary_error_sum = sum(
+        report["timing"]["mean_boundary_error_ms"] * report["timing"]["paired_segments"] for report in timed_reports
+    )
+    within_250ms_count = sum(report["timing"]["within_250ms_count"] for report in reports)
+    within_500ms_count = sum(report["timing"]["within_500ms_count"] for report in reports)
     return {
         "paired_segments": paired_segments,
+        "boundary_samples": boundary_samples,
         "mean_start_error_ms": start_error_sum / paired_segments,
         "mean_end_error_ms": end_error_sum / paired_segments,
         "mean_boundary_error_ms": boundary_error_sum / paired_segments,
+        "max_boundary_error_ms": max(report["timing"]["max_boundary_error_ms"] for report in timed_reports),
+        "within_250ms_count": within_250ms_count,
+        "within_250ms_ratio": within_250ms_count / max(1, boundary_samples),
+        "within_500ms_count": within_500ms_count,
+        "within_500ms_ratio": within_500ms_count / max(1, boundary_samples),
     }
 
 
 def aggregate_channel_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
+    paired_segments = sum(report["channel"]["paired_segments"] for report in reports)
     comparable_segments = sum(report["channel"]["comparable_segments"] for report in reports)
+    candidate_mix_segments = sum(report["channel"]["candidate_mix_segments"] for report in reports)
+    confusion = empty_channel_confusion()
+    for report in reports:
+        for reference_channel in EVAL_CHANNELS:
+            for candidate_channel in EVAL_CHANNELS:
+                confusion[reference_channel][candidate_channel] += report["channel"]["confusion"][reference_channel][
+                    candidate_channel
+                ]
+
     if comparable_segments == 0:
         return {
+            "paired_segments": paired_segments,
             "comparable_segments": 0,
             "accuracy": None,
+            "confusion": confusion,
+            "candidate_mix_segments": candidate_mix_segments,
+            "candidate_mix_ratio": candidate_mix_segments / max(1, paired_segments),
         }
     correct_segments = sum(report["channel"]["accuracy"] * report["channel"]["comparable_segments"] for report in reports)
     return {
+        "paired_segments": paired_segments,
         "comparable_segments": comparable_segments,
         "accuracy": correct_segments / comparable_segments,
+        "confusion": confusion,
+        "candidate_mix_segments": candidate_mix_segments,
+        "candidate_mix_ratio": candidate_mix_segments / max(1, paired_segments),
     }
 
 
@@ -261,22 +300,44 @@ def timing_error_summary(paired_segments: list[tuple[Segment, Segment]]) -> dict
     if not paired_segments:
         return {
             "paired_segments": 0,
+            "boundary_samples": 0,
             "mean_start_error_ms": None,
             "mean_end_error_ms": None,
             "mean_boundary_error_ms": None,
+            "max_boundary_error_ms": None,
+            "within_250ms_count": 0,
+            "within_250ms_ratio": None,
+            "within_500ms_count": 0,
+            "within_500ms_ratio": None,
         }
 
     start_errors = [abs(reference.start_ms - candidate.start_ms) for reference, candidate in paired_segments]
     end_errors = [abs(reference.end_ms - candidate.end_ms) for reference, candidate in paired_segments]
+    boundary_errors = start_errors + end_errors
+    within_250ms_count = sum(1 for error in boundary_errors if error <= 250)
+    within_500ms_count = sum(1 for error in boundary_errors if error <= 500)
     return {
         "paired_segments": len(paired_segments),
+        "boundary_samples": len(boundary_errors),
         "mean_start_error_ms": mean(start_errors),
         "mean_end_error_ms": mean(end_errors),
-        "mean_boundary_error_ms": mean(start_errors + end_errors),
+        "mean_boundary_error_ms": mean(boundary_errors),
+        "max_boundary_error_ms": max(boundary_errors),
+        "within_250ms_count": within_250ms_count,
+        "within_250ms_ratio": within_250ms_count / len(boundary_errors),
+        "within_500ms_count": within_500ms_count,
+        "within_500ms_ratio": within_500ms_count / len(boundary_errors),
     }
 
 
 def channel_accuracy_summary(paired_segments: list[tuple[Segment, Segment]]) -> dict[str, Any]:
+    confusion = empty_channel_confusion()
+    candidate_mix_segments = 0
+    for reference, candidate in paired_segments:
+        confusion[reference.channel][candidate.channel] += 1
+        if candidate.channel == "MIX":
+            candidate_mix_segments += 1
+
     comparable = [
         (reference, candidate)
         for reference, candidate in paired_segments
@@ -284,14 +345,26 @@ def channel_accuracy_summary(paired_segments: list[tuple[Segment, Segment]]) -> 
     ]
     if not comparable:
         return {
+            "paired_segments": len(paired_segments),
             "comparable_segments": 0,
             "accuracy": None,
+            "confusion": confusion,
+            "candidate_mix_segments": candidate_mix_segments,
+            "candidate_mix_ratio": candidate_mix_segments / max(1, len(paired_segments)),
         }
     correct = sum(1 for reference, candidate in comparable if reference.channel == candidate.channel)
     return {
+        "paired_segments": len(paired_segments),
         "comparable_segments": len(comparable),
         "accuracy": correct / len(comparable),
+        "confusion": confusion,
+        "candidate_mix_segments": candidate_mix_segments,
+        "candidate_mix_ratio": candidate_mix_segments / max(1, len(paired_segments)),
     }
+
+
+def empty_channel_confusion() -> dict[str, dict[str, int]]:
+    return {reference: {candidate: 0 for candidate in EVAL_CHANNELS} for reference in EVAL_CHANNELS}
 
 
 def mean(values: list[int]) -> float:
