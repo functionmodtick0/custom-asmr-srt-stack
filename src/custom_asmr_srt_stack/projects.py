@@ -112,6 +112,16 @@ class ProjectStore:
             raise ValueError("project audio file is missing")
         return audio_path.read_bytes(), mime_type
 
+    def read_channel_audio(self, project_id: str, channel: str) -> bytes:
+        project = self.load_project(project_id)
+        metadata = require_mapping(project.get("metadata"), "metadata")
+        channels = require_mapping(metadata.get("channels"), "metadata.channels")
+        channel_file = require_string(channels.get(channel), f"metadata.channels.{channel}")
+        channel_path = self.require_project_root(project_id) / channel_file
+        if not channel_path.exists():
+            raise ValueError(f"project channel audio is missing: {channel}")
+        return channel_path.read_bytes()
+
     def project_root(self, project_id: str) -> Path:
         if not PROJECT_ID_RE.fullmatch(project_id):
             raise ValueError("invalid project_id")

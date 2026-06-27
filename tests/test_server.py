@@ -1,6 +1,7 @@
 import json
 import base64
 import io
+import struct
 import tempfile
 import unittest
 import wave
@@ -8,14 +9,18 @@ from pathlib import Path
 
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.server import handle_api_request
+from custom_asmr_srt_stack.models import Segment
 
 
 class ServerApiTests(unittest.TestCase):
-    def post_json(self, path, payload, project_store=None):
+    def post_json(self, path, payload, project_store=None, transcribe_audio_func=None):
+        kwargs = {"project_store": project_store}
+        if transcribe_audio_func is not None:
+            kwargs["transcribe_audio_func"] = transcribe_audio_func
         status, content_type, body = handle_api_request(
             path,
             json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            project_store=project_store,
+            **kwargs,
         )
         self.assertEqual(content_type, "application/json; charset=utf-8")
         return status, json.loads(body.decode("utf-8"))
@@ -120,6 +125,68 @@ class ServerApiTests(unittest.TestCase):
             self.assertEqual(analyze_status, 200)
             self.assertEqual(analyzed["metadata"]["audio_info"]["duration_ms"], 2)
             self.assertEqual(set(analyzed["metadata"]["channels"]), {"MIX"})
+
+    def test_transcribe_route_uses_analyzed_left_and_right_channels(self):
+        output = io.BytesIO()
+        with wave.open(output, "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(1000)
+            wav.writeframes(struct.pack("<hhhh", 100, 300, 200, 400))
+
+        calls = []
+
+        def fake_transcribe(endpoint, audio_bytes, *, mime_type, channel, source_language):
+            calls.append((endpoint.model_id, len(audio_bytes), mime_type, channel, source_language))
+            text = "左" if channel == "L" else "右"
+            return (
+                Segment(
+                    id="ignored",
+                    start_ms=0 if channel == "L" else 1,
+                    end_ms=1 if channel == "L" else 2,
+                    channel="MIX",
+                    kind="speech",
+                    text=text,
+                ),
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ProjectStore(Path(tmpdir))
+            _, upload = self.post_json(
+                "/api/projects/upload-audio",
+                {
+                    "file_name": "voice.wav",
+                    "mime_type": "audio/wav",
+                    "content_base64": base64.b64encode(output.getvalue()).decode("ascii"),
+                },
+                project_store=store,
+            )
+            self.post_json(
+                "/api/projects/analyze-audio",
+                {"project_id": upload["project_id"]},
+                project_store=store,
+            )
+            status, response = self.post_json(
+                "/api/projects/transcribe",
+                {
+                    "project_id": upload["project_id"],
+                    "source_language": "ja",
+                    "model": {
+                        "adapter": "openai-compatible",
+                        "endpoint_url": "http://localhost:8000/v1",
+                        "model_id": "gemma-4-e4b",
+                    },
+                },
+                project_store=store,
+                transcribe_audio_func=fake_transcribe,
+            )
+
+            self.assertEqual(status, 200)
+            self.assertEqual([call[3] for call in calls], ["L", "R"])
+            self.assertEqual(
+                [(segment["id"], segment["channel"], segment["text"]) for segment in response["master"]["segments"]],
+                [("seg_000001", "L", "左"), ("seg_000002", "R", "右")],
+            )
 
 
 if __name__ == "__main__":

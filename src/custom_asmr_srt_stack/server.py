@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 from custom_asmr_srt_stack.audio import chunk_intervals, split_wav_channels
-from custom_asmr_srt_stack.models import MasterDocument
+from custom_asmr_srt_stack.models import MasterDocument, Segment, make_segment_id, require_mapping, require_string
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.srt import format_srt, parse_srt
 from custom_asmr_srt_stack.translation import export_translation_json, parse_translated_texts
+from custom_asmr_srt_stack.transcription import ModelEndpoint, transcribe_audio
 
 WEB_ROOT = Path(__file__).resolve().parents[2] / "web"
 
@@ -24,6 +26,7 @@ def handle_api_request(
     raw_body: bytes,
     *,
     project_store: ProjectStore | None = None,
+    transcribe_audio_func=transcribe_audio,
 ) -> tuple[int, str, bytes]:
     store = project_store or ProjectStore.default()
     try:
@@ -92,6 +95,22 @@ def handle_api_request(
                 ),
             )
 
+        if path == "/api/projects/transcribe":
+            project_id = str(payload.get("project_id") or "")
+            model_endpoint = ModelEndpoint.from_json(payload.get("model"))
+            source_language = str(payload.get("source_language") or "ja")
+            project = store.load_project(project_id)
+            metadata = require_mapping(project.get("metadata"), "metadata")
+            master = transcribe_project(
+                store,
+                project_id,
+                model_endpoint,
+                metadata,
+                source_language=source_language,
+                transcribe_audio_func=transcribe_audio_func,
+            )
+            return json_response(HTTPStatus.OK, store.save_master(project_id, master))
+
         if path == "/api/export-translation-json":
             master = MasterDocument.from_json(payload.get("master"))
             return json_response(HTTPStatus.OK, export_translation_json(master))
@@ -107,6 +126,60 @@ def handle_api_request(
         return json_response(HTTPStatus.BAD_REQUEST, {"error": f"invalid JSON: {error}"})
     except ValueError as error:
         return json_response(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+
+
+def transcribe_project(
+    store: ProjectStore,
+    project_id: str,
+    model_endpoint: ModelEndpoint,
+    metadata: dict[str, Any],
+    *,
+    source_language: str,
+    transcribe_audio_func,
+) -> MasterDocument:
+    channels = metadata.get("channels")
+    channel_names: list[str]
+    if isinstance(channels, dict) and {"L", "R"}.issubset(channels):
+        channel_names = ["L", "R"]
+    elif isinstance(channels, dict) and "MIX" in channels:
+        channel_names = ["MIX"]
+    else:
+        channel_names = ["MIX"]
+
+    raw_segments: list[Segment] = []
+    for channel in channel_names:
+        if isinstance(channels, dict) and channel in channels:
+            audio_bytes = store.read_channel_audio(project_id, channel)
+            mime_type = "audio/wav"
+        else:
+            audio_bytes, mime_type = store.read_audio(project_id)
+        raw_segments.extend(
+            replace(segment, channel=channel)
+            for segment in transcribe_audio_func(
+                model_endpoint,
+                audio_bytes,
+                mime_type=mime_type,
+                channel=channel,
+                source_language=source_language,
+            )
+        )
+
+    segments = tuple(
+        replace(segment, id=make_segment_id(index + 1))
+        for index, segment in enumerate(
+            sorted(raw_segments, key=lambda segment: (segment.start_ms, segment.end_ms, segment.channel, segment.text))
+        )
+    )
+    audio_info = metadata.get("audio_info")
+    duration_ms = None
+    if isinstance(audio_info, dict) and audio_info.get("duration_ms") is not None:
+        duration_ms = int(audio_info["duration_ms"])
+    return MasterDocument(
+        source_language=source_language,
+        source_file=metadata.get("source_file"),
+        duration_ms=duration_ms,
+        segments=segments,
+    )
 
 
 class AppRequestHandler(SimpleHTTPRequestHandler):
