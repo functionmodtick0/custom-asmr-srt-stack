@@ -14,6 +14,7 @@
 - WAV L/R/MIX 채널 분리
 - OpenAI-compatible / Gemini 모델 endpoint adapter
 - 고정 aligner command hook
+- 선택 segment 재전사
 - 로컬 WebUI 서버
 
 번역 기능은 제공하지 않습니다.
@@ -45,6 +46,7 @@ WebUI 기본 흐름:
 모델 설정 입력
 전사 시작
 segment 확인/수정
+선택 segment 재전사
 translation.json 내보내기
 translated.json 가져오기
 SRT 내보내기
