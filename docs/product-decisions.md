@@ -112,6 +112,7 @@ ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한
 우선 구현 대상은 다음이다.
 
 - `Qwen/Qwen3-ASR-1.7B`: 주력 로컬 ASR 후보
+- `neosophie/Qwen3-ASR-1.7B-JA`: Qwen3-ASR-1.7B 기반 일본어 fine-tune 후보. 2026-06-28 현재 품질 검증을 시도했지만 Hugging Face weight 다운로드가 중단되어 아직 점수화하지 못했다.
 - `Qwen/Qwen3-ASR-0.6B`: 빠른 비교/저사양 후보
 - `Qwen/Qwen3-ForcedAligner-0.6B`: 고정 forced alignment 후보
 

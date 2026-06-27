@@ -291,6 +291,7 @@ data/outputs/eval-csv-srt-01-full.srt에서 120초 crop
 | Qwen3-ASR 1.7B, energy 500/200 + context | 26 | 46.5% | 25.0% | 66.7% | 불합격: context hallucination |
 | Qwen3-ASR 1.7B, energy 500/200 + ForcedAligner | 26 | 21.7% | 31.2% | 83.3% | 불합격: timing/text 부족 |
 | stable-ts baseline | 25 | 7.8% | 56.5% | n/a | text 합격, timing 불합격 |
+| neosophie/Qwen3-ASR-1.7B-JA | n/a | n/a | n/a | n/a | 미측정: HF weight 다운로드 정지 |
 
 결정:
 
@@ -298,6 +299,7 @@ data/outputs/eval-csv-srt-01-full.srt에서 120초 crop
 - `CASRT_QWEN_ASR_CONTEXT`에 긴 glossary를 그대로 넣는 방식은 기본값으로 쓰지 않는다. 짧은 구간에서 glossary 전체를 출력하는 hallucination이 발생했다.
 - Qwen3-ForcedAligner는 channel/timing을 일부 개선했지만 120초 gold 기준으로 기본 승격하지 않는다.
 - 현재 Qwen3-ASR 1.7B 경로만으로는 품질 기준을 만족하지 못한다.
+- `neosophie/Qwen3-ASR-1.7B-JA`는 Qwen3-ASR-1.7B 기반 일본어 fine-tune이라 다음 로컬 주력 후보로 적합하지만, 2026-06-28 실험에서는 `model.safetensors` 다운로드가 57% 부근에서 정지해 점수화하지 못했다.
 - 다음 개선은 Silero/TEN VAD wrapper, 더 강한 로컬 ASR 후보, 또는 사용자 glossary 기반 후처리를 별도 실험으로 검증한다.
 
 ## 다음 작업 계획
