@@ -97,6 +97,14 @@ uv run casrt model validate \
 
 이 명령은 필수 필드와 adapter 계약만 검증한다. 실제 모델 호출은 하지 않는다.
 
+로컬 Transformers worker를 사용할 때는 endpoint URL을 입력하지 않는다.
+
+```bash
+uv run casrt model validate \
+  --adapter local-transformers \
+  --model-id google/gemma-4-E4B-it
+```
+
 ### 전체 전사
 
 ```bash
@@ -113,10 +121,26 @@ uv run casrt project transcribe PROJECT_ID \
 - L/R 채널이 있으면 각각 전사한다.
 - mono/MIX만 있으면 MIX를 전사한다.
 - 분석 단계가 저장한 chunk interval별로 오디오를 잘라 모델에 보낸다.
+- `local-transformers` adapter는 worker 모델의 audio limit을 고려해 chunk를 30초 이하 subchunk로 다시 자른다.
 - 모델이 반환한 chunk-relative timing을 원본 timeline timing으로 offset한다.
 - 결과를 시간순으로 정렬하고 stable segment id를 다시 부여한다.
 - `master.json`을 project에 저장한다.
 - `CASRT_ALIGNER_COMMAND`가 설정되어 있으면 고정 aligner hook을 실행한다.
+
+로컬 Transformers worker:
+
+```bash
+uv run casrt project transcribe PROJECT_ID \
+  --adapter local-transformers \
+  --model-id google/gemma-4-E4B-it
+```
+
+동작:
+
+- `casrt`가 내부적으로 `python -m custom_asmr_srt_stack.transformers_worker` subprocess를 시작한다.
+- worker와 JSON Lines로 통신한다.
+- worker는 모델을 lazy load하고 같은 CLI/WebUI 프로세스 안에서 재사용한다.
+- worker import, model load, inference, response contract 오류는 실패로 표시한다.
 
 ### 선택 segment 재전사
 

@@ -14,6 +14,7 @@
 - WAV L/R/MIX 채널 분리
 - 분석된 chunk 단위 전사
 - OpenAI-compatible / Gemini 모델 endpoint adapter
+- local Transformers subprocess worker adapter
 - 고정 aligner command hook
 - 선택 segment 재전사
 - 로컬 WebUI 서버
@@ -25,6 +26,12 @@
 - uv
 - Node.js: `web/app.js` 구문 검사용
 - ffmpeg: WAV가 아니거나 채널 분리에 맞지 않는 WAV를 16-bit PCM WAV로 정규화할 때 필요
+
+로컬 Transformers worker를 사용하려면 추가 의존성을 설치합니다.
+
+```bash
+uv sync --extra local
+```
 
 ## 실행
 
@@ -56,11 +63,13 @@ SRT 내보내기
 모델 설정은 UI에서 직접 입력합니다.
 
 ```text
-Adapter: openai-compatible 또는 gemini
+Adapter: openai-compatible, gemini, local-transformers
 Endpoint URL
 Model ID
 API Key
 ```
+
+`local-transformers`는 Endpoint URL과 API Key를 사용하지 않습니다.
 
 고정 aligner command를 사용하려면 서버 실행 전에 `CASRT_ALIGNER_COMMAND`를 설정합니다. 이 명령은 stdin으로 `{ audio_file, master }` JSON을 받고 stdout으로 `{ segments: [{ id, start_ms, end_ms }] }` JSON을 반환해야 합니다.
 
@@ -112,6 +121,14 @@ uv run casrt model validate \
   --model-id gemma-4-e4b
 ```
 
+로컬 Transformers worker 설정 검증:
+
+```bash
+uv run casrt model validate \
+  --adapter local-transformers \
+  --model-id google/gemma-4-E4B-it
+```
+
 전체 project 전사:
 
 ```bash
@@ -119,6 +136,14 @@ uv run casrt project transcribe PROJECT_ID \
   --adapter openai-compatible \
   --endpoint-url http://127.0.0.1:8000/v1 \
   --model-id gemma-4-e4b
+```
+
+로컬 Transformers worker로 전사:
+
+```bash
+uv run casrt project transcribe PROJECT_ID \
+  --adapter local-transformers \
+  --model-id google/gemma-4-E4B-it
 ```
 
 전사는 `project analyze`가 저장한 L/R 또는 MIX 채널을 chunk 단위로 잘라 모델에 보낸 뒤, 결과 타임스탬프를 원본 timeline으로 되돌려 저장합니다.
