@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from custom_asmr_srt_stack.evaluation import evaluate_transcripts, load_transcript_document
 from custom_asmr_srt_stack.models import MasterDocument
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.server import run_server
@@ -83,6 +84,23 @@ def json_to_srt(args: argparse.Namespace) -> None:
 def export_translation(args: argparse.Namespace) -> None:
     master = MasterDocument.from_json(json.loads(read_text(args.input)))
     write_text(args.output, json.dumps(export_translation_json(master), ensure_ascii=False, indent=2) + "\n")
+
+
+def eval_transcript(args: argparse.Namespace) -> None:
+    reference = load_transcript_document(args.reference, source_language=args.source_language)
+    candidate = load_transcript_document(args.candidate, source_language=args.source_language)
+    report = evaluate_transcripts(reference, candidate)
+    if args.output is not None:
+        write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    emit(
+        args,
+        report,
+        (
+            f"cer={report['text']['cer']:.4f} "
+            f"segments={report['candidate_segments']}/{report['reference_segments']} "
+            f"timing_ms={report['timing']['mean_boundary_error_ms']}"
+        ),
+    )
 
 
 def serve(args: argparse.Namespace) -> None:
@@ -271,6 +289,14 @@ def build_parser() -> argparse.ArgumentParser:
     translation_export.add_argument("input", type=Path)
     translation_export.add_argument("-o", "--output", type=Path, required=True)
     translation_export.set_defaults(func=export_translation)
+
+    eval_transcript_parser = subcommands.add_parser("eval-transcript", help="Evaluate a candidate transcript.")
+    eval_transcript_parser.add_argument("reference", type=Path)
+    eval_transcript_parser.add_argument("candidate", type=Path)
+    eval_transcript_parser.add_argument("-o", "--output", type=Path)
+    eval_transcript_parser.add_argument("--source-language", default="ja")
+    eval_transcript_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
+    eval_transcript_parser.set_defaults(func=eval_transcript)
 
     serve_web = subcommands.add_parser("serve", help="Run the local WebUI server.")
     serve_web.add_argument("--host", default="127.0.0.1")

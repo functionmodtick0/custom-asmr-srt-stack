@@ -230,6 +230,14 @@ uv run casrt json-to-srt master.json -o export.srt
 uv run casrt json-to-srt master.json --translated translated.json -o export.srt
 ```
 
+전사 결과 평가:
+
+```bash
+uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
+```
+
+현재 평가는 speech 텍스트 CER, segment index 기준 timing 오차, L/R channel accuracy, review 비율을 계산합니다.
+
 ## 테스트
 
 ```bash
