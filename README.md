@@ -76,6 +76,77 @@ uv run casrt serve --port 5174
 
 ## CLI
 
+### Project workflow
+
+오디오 project 생성:
+
+```bash
+uv run casrt project create-audio input.wav
+```
+
+SRT project 생성:
+
+```bash
+uv run casrt project create-srt input.srt
+```
+
+project 상태 확인:
+
+```bash
+uv run casrt project show PROJECT_ID
+```
+
+오디오 분석:
+
+```bash
+uv run casrt project analyze PROJECT_ID
+```
+
+모델 설정 검증:
+
+```bash
+uv run casrt model validate \
+  --adapter openai-compatible \
+  --endpoint-url http://127.0.0.1:8000/v1 \
+  --model-id gemma-4-e4b
+```
+
+전체 project 전사:
+
+```bash
+uv run casrt project transcribe PROJECT_ID \
+  --adapter openai-compatible \
+  --endpoint-url http://127.0.0.1:8000/v1 \
+  --model-id gemma-4-e4b
+```
+
+선택 segment 재전사:
+
+```bash
+uv run casrt project retranscribe PROJECT_ID seg_000001 \
+  --adapter openai-compatible \
+  --endpoint-url http://127.0.0.1:8000/v1 \
+  --model-id gemma-4-e4b
+```
+
+project 산출물 내보내기:
+
+```bash
+uv run casrt project export-master PROJECT_ID -o master.json
+uv run casrt project export-translation PROJECT_ID -o translation.json
+uv run casrt project export-srt PROJECT_ID -o source.srt
+uv run casrt project export-srt PROJECT_ID --translated translated.json -o translated.srt
+```
+
+자동화용 JSON 출력과 저장 위치 지정:
+
+```bash
+uv run casrt project show PROJECT_ID --json
+uv run casrt project create-audio --project-root ./projects input.wav
+```
+
+### Standalone conversion
+
 SRT를 내부 기준 JSON으로 변환:
 
 ```bash
