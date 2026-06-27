@@ -333,6 +333,8 @@ case별 practical CER:
 - Neosophie full-window와 1.5초 silence 병합 실험은 text와 timing이 모두 악화됐다. 이 샘플에서는 chunk를 길게 잡는 것이 해결책이 아니다.
 - `Qwen/Qwen3-ASR-1.7B-hf`는 Hugging Face metadata상 `automatic-speech-recognition`, `ja` 지원, `transformers` 모델이다. 현재 pinned Transformers는 `qwen3_asr` 아키텍처를 인식하지 못한다. 공식 Transformers main `5.13.0.dev0` ephemeral runtime에서는 `qwen3_asr` support를 확인했지만, weight 다운로드가 Xet/일반 HTTP 양쪽에서 장시간 진행돼 2026-06-28 루프에서는 점수화하지 못했다.
 - `mistralai/Voxtral-Mini-4B-Realtime-2602`는 remote model code 없이 Transformers `VoxtralRealtimeForConditionalGeneration`으로 로딩됐다. 8.9GB weight는 단일 HF stream이 느려 HTTP range 8조각 병렬 다운로드로 확보했다. 30초 smoke와 01/04 일부 텍스트는 Qwen보다 자연스러웠지만, 07 whisper/침대 ASMR에서 chunked 입력은 대부분 빈 출력이었고 120초 full-window 입력도 앞부분만 출력해 기본 승격하지 않는다.
+- `mistralai/Voxtral Mini Transcribe 2.0`는 Mistral API batch transcription 제품으로 확인됐고 open-weight 로컬 checkpoint는 확인하지 못했다. 외부 API는 제품 방향이 아니므로 기본 경로에서 제외한다.
+- `Atotti/llm-jp-4-8b-speech-asr`는 일본어 ASR 특화 8B 후보지만 model card상 `speech_llm_ja` 패키지(`git+https://github.com/Atotti/ja-speech-llm.git`)가 필요하다. 현재 설치된 Transformers `5.12.1`와 official main `5.13.0.dev0` 모두 `LlamaForSpeechLM`을 노출하지 않는다. 원격/외부 패키지 코드를 실행해야 하므로 사용자 명시 승인 전에는 자동 검증하지 않는다.
 - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 최신 로컬 후보지만 model card metadata에 `custom_code`가 있다. Cohere는 gated 모델이다. 외부 모델 저장소 코드를 실행하는 `trust_remote_code=True`는 기본 실험 경로로 쓰지 않고, 사용자 명시 승인이나 first-party package 지원이 있을 때만 검증한다.
 - 다음 개선은 더 강한 로컬 ASR 후보를 안전하게 로딩하는 경로, Silero/TEN VAD wrapper, 또는 사용자 glossary 기반 후처리를 별도 실험으로 검증한다.
 
@@ -367,6 +369,7 @@ case별 practical CER:
    - `neosophie/Qwen3-ASR-1.7B-JA`는 검증 완료 후보지만 기본 승격하지 않는다.
    - `Qwen/Qwen3-ASR-1.7B-hf`는 공식 Transformers release가 `qwen3_asr`를 포함하거나 weight를 안정적으로 내려받을 수 있으면 다시 비교한다.
    - `mistralai/Voxtral-Mini-4B-Realtime-2602`는 remote code 없이 검증했지만 07 whisper 구간에서 실패해 기본 승격하지 않는다.
+   - `Atotti/llm-jp-4-8b-speech-asr`는 ASR 특화 일본어 후보지만 third-party runtime package가 필요하므로 사용자 명시 승인 후 비교한다.
    - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 성능 후보로 남기되, custom code/gated 접근 조건을 먼저 해결해야 한다.
    - `Qwen/Qwen3-ASR-0.6B`는 속도/저사양 후보로 비교한다.
    - Gemma 4 E4B는 general multimodal baseline으로만 유지한다.
