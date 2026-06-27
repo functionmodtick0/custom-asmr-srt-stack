@@ -123,11 +123,11 @@ ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한
 - `Atotti/llm-jp-4-8b-speech-asr`: 일본어 ASR 특화 8B 후보. 현재 official Transformers에서 `LlamaForSpeechLM`을 제공하지 않고 model card의 third-party runtime package가 필요하므로 사용자 명시 승인 전에는 자동 검증하지 않는다.
 - `AutoArk-AI/ARK-ASR-3B`, `CohereLabs/cohere-transcribe-03-2026`: 최신 로컬 후보. model metadata상 custom code가 필요하고 Cohere는 gated 모델이라, 사용자 명시 승인 또는 first-party package 경로가 확인된 뒤 실제 benchmark 대상으로 삼는다.
 - stable-ts/Whisper계 산출물은 2026-06-28 01/04/07 front120 확장 gold에서 practical CER 16.1%, time-aligned 500ms ratio 56.7%였다. Qwen/Neosophie/Voxtral보다 text는 낫지만 기준을 만족하지 못하고 MIX-only라 channel 제품 요구사항도 충족하지 않는다. 제품 기본 경로가 아니라 비교 baseline으로만 유지한다.
-- `google/gemma-4-E4B-it`: 공식 오디오 입력을 지원하는 최신 로컬 multimodal 후보. 2026-06-28 smoke에서 5초 ASMR clip 전사를 성공했으므로 01/04/07 front120 gold set의 우선 평가 대상으로 둔다. 평가 없이 기본값으로 승격하지 않는다.
+- `google/gemma-4-E4B-it`: 공식 오디오 입력을 지원하는 최신 로컬 multimodal 후보. 2026-06-28 smoke 전사는 성공했지만 01/04/07 front120 gold에서 4-bit practical CER 42.3%, 8-bit practical CER 46.1%라 기본 승격하지 않는다.
 - `Qwen/Qwen3-ASR-0.6B`: 빠른 비교/저사양 후보
 - `Qwen/Qwen3-ForcedAligner-0.6B`: 고정 forced alignment 후보
 
-Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되, 제품의 일본 ASMR 품질 기준 모델 승격 여부는 동일한 gold set 평가 결과로만 결정한다.
+Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되, 제품의 일본 ASMR 품질 기준 모델 승격 여부는 동일한 gold set 평가 결과로만 결정한다. 현재 Gemma 4 E4B는 기준 미달이다.
 
 평가 없이 모델을 기본값으로 승격하지 않는다. 최소 평가 기준은 다음이다.
 

@@ -311,6 +311,8 @@ uv run casrt eval-transcript ref.master.json candidate.master.json \
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | neosophie/Qwen3-ASR-1.7B-JA, 01/04/07 front120 | 3 | 74 | 81 | 29.6% | 29.5% | 73.1% | 불합격 |
 | mistralai/Voxtral-Mini-4B-Realtime-2602, 01/04/07 front120 | 3 | 74 | 44 | 40.0% | 28.7% | 63.6% | 불합격 |
+| google/gemma-4-E4B-it, 4-bit local-transformers, MIX-first, 01/04/07 front120 | 3 | 74 | 81 | 42.3% | 29.5% | 73.1% | 불합격 |
+| google/gemma-4-E4B-it, 8-bit local-transformers, MIX-first, 01/04/07 front120 | 3 | 74 | 81 | 46.1% | 29.5% | 73.1% | 불합격 |
 | stable-ts baseline, 01/04/07 front120 | 3 | 74 | 60 | 16.1% | 56.7% | n/a | 불합격: text/timing 부족, MIX-only |
 
 case별 practical CER:
@@ -323,6 +325,12 @@ case별 practical CER:
 | Voxtral Mini Realtime | 01-front120 | 22.4% | 22.7% | 66.7% |
 | Voxtral Mini Realtime | 04-front120 | 20.8% | 37.0% | 60.0% |
 | Voxtral Mini Realtime | 07-front120 | 89.0% | 0.0% | n/a |
+| Gemma 4 E4B 4-bit | 01-front120 | 30.9% | 25.0% | 66.7% |
+| Gemma 4 E4B 4-bit | 04-front120 | 30.9% | 37.0% | 60.0% |
+| Gemma 4 E4B 4-bit | 07-front120 | 72.6% | 26.9% | 80.0% |
+| Gemma 4 E4B 8-bit | 01-front120 | 27.7% | 25.0% | 66.7% |
+| Gemma 4 E4B 8-bit | 04-front120 | 31.4% | 37.0% | 60.0% |
+| Gemma 4 E4B 8-bit | 07-front120 | 90.2% | 26.9% | 80.0% |
 | stable-ts baseline | 01-front120 | 7.8% | 56.5% | n/a |
 | stable-ts baseline | 04-front120 | 7.3% | 60.9% | n/a |
 | stable-ts baseline | 07-front120 | 39.0% | 52.4% | n/a |
@@ -349,6 +357,8 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - `Qwen/Qwen3-ASR-1.7B-hf`는 Hugging Face metadata상 `automatic-speech-recognition`, `ja` 지원, `transformers` 모델이다. 현재 pinned Transformers는 `qwen3_asr` 아키텍처를 인식하지 못한다. 공식 Transformers main `5.13.0.dev0` ephemeral runtime에서는 `qwen3_asr` support를 확인했지만, weight 다운로드가 Xet/일반 HTTP 양쪽에서 장시간 진행돼 2026-06-28 루프에서는 점수화하지 못했다.
 - `mistralai/Voxtral-Mini-4B-Realtime-2602`는 remote model code 없이 Transformers `VoxtralRealtimeForConditionalGeneration`으로 로딩됐다. 8.9GB weight는 단일 HF stream이 느려 HTTP range 8조각 병렬 다운로드로 확보했다. 30초 smoke와 01/04 일부 텍스트는 Qwen보다 자연스러웠지만, 07 whisper/침대 ASMR에서 chunked 입력은 대부분 빈 출력이었고 120초 full-window 입력도 앞부분만 출력해 기본 승격하지 않는다.
 - `mistralai/Voxtral Mini Transcribe 2.0`는 Mistral API batch transcription 제품으로 확인됐고 open-weight 로컬 checkpoint는 확인하지 못했다. 외부 API는 제품 방향이 아니므로 기본 경로에서 제외한다.
+- `google/gemma-4-E4B-it`는 공식 오디오 입력을 지원하고 5초 smoke에서 유의미한 전사를 반환했다. 그러나 01/04/07 front120 확장 gold에서 4-bit practical CER 42.3%, 8-bit practical CER 46.1%로 기준을 크게 벗어났다. 8-bit는 01 smoke와 01 case를 조금 개선했지만 07 whisper/침대 ASMR에서 반복 hallucination이 발생해 전체 지표가 악화됐다. 따라서 기본 승격하지 않는다.
+- Gemma E4B 실험 산출물은 `/tmp/casrt-quality/gemma-e4b-4bit-bounded-results`, `/tmp/casrt-quality/gemma-e4b-8bit-bounded-results`, report는 `/tmp/casrt-quality/gemma-e4b-4bit-bounded-3case-report.json`, `/tmp/casrt-quality/gemma-e4b-8bit-bounded-3case-report.json`에 있다.
 - `Atotti/llm-jp-4-8b-speech-asr`는 일본어 ASR 특화 8B 후보지만 model card상 `speech_llm_ja` 패키지(`git+https://github.com/Atotti/ja-speech-llm.git`)가 필요하다. 현재 설치된 Transformers `5.12.1`와 official main `5.13.0.dev0` 모두 `LlamaForSpeechLM`을 노출하지 않는다. 원격/외부 패키지 코드를 실행해야 하므로 사용자 명시 승인 전에는 자동 검증하지 않는다.
 - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 최신 로컬 후보지만 model card metadata에 `custom_code`가 있다. Cohere는 gated 모델이다. 외부 모델 저장소 코드를 실행하는 `trust_remote_code=True`는 기본 실험 경로로 쓰지 않고, 사용자 명시 승인이나 first-party package 지원이 있을 때만 검증한다.
 - stable-ts/Whisper계 baseline은 현재 후보 중 text가 가장 좋지만 3-case practical CER 16.1%로 기준 10%를 넘고, time-aligned 500ms ratio도 56.7%로 기준 90%에 못 미친다. L/R energy attribution을 후처리로 붙여도 channel accuracy가 85%에 도달하지 않는다. 따라서 제품 기본 경로로 승격하지 않고 품질 상한 비교용으로만 유지한다.
@@ -388,7 +398,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
    - `Atotti/llm-jp-4-8b-speech-asr`는 ASR 특화 일본어 후보지만 third-party runtime package가 필요하므로 사용자 명시 승인 후 비교한다.
    - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 성능 후보로 남기되, custom code/gated 접근 조건을 먼저 해결해야 한다.
    - `Qwen/Qwen3-ASR-0.6B`는 속도/저사양 후보로 비교한다.
-   - Gemma 4 E4B는 공식 오디오 입력을 지원하고 2026-06-28 smoke 전사에 성공했으므로 우선 평가 후보로 승격한다. 단, 기본 모델 승격은 01/04/07 front120 gold set 지표를 본 뒤 결정한다.
+   - Gemma 4 E4B는 공식 오디오 입력과 smoke 전사는 성공했지만 01/04/07 front120 gold 기준을 만족하지 못해 기본 승격하지 않는다.
    - Whisper 계열 도메인 fine-tune은 제품 기본이 아니라 비교 baseline으로만 본다.
 
 ## 문서화 규칙
