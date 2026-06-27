@@ -7,6 +7,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from custom_asmr_srt_stack.alignment import apply_alignment_review_flags
 from custom_asmr_srt_stack.audio import chunk_intervals, split_wav_channels
 from custom_asmr_srt_stack.models import MasterDocument, Segment, make_segment_id, require_mapping, require_string
 from custom_asmr_srt_stack.projects import ProjectStore
@@ -174,11 +175,13 @@ def transcribe_project(
     duration_ms = None
     if isinstance(audio_info, dict) and audio_info.get("duration_ms") is not None:
         duration_ms = int(audio_info["duration_ms"])
-    return MasterDocument(
-        source_language=source_language,
-        source_file=metadata.get("source_file"),
-        duration_ms=duration_ms,
-        segments=segments,
+    return apply_alignment_review_flags(
+        MasterDocument(
+            source_language=source_language,
+            source_file=metadata.get("source_file"),
+            duration_ms=duration_ms,
+            segments=segments,
+        )
     )
 
 
