@@ -30,7 +30,8 @@ body {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -346,7 +347,8 @@ dialog::backdrop {
   font-size: 13px;
 }
 
-.model-form input {
+.model-form input,
+.model-form select {
   min-height: 40px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -355,7 +357,8 @@ dialog::backdrop {
   padding: 0 10px;
 }
 
-.model-form input:focus {
+.model-form input:focus,
+.model-form select:focus {
   outline: none;
   border-color: var(--accent);
 }

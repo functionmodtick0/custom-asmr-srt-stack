@@ -68,6 +68,13 @@
           <button type="submit" value="cancel" class="icon-button" aria-label="닫기">×</button>
         </header>
         <label>
+          <span>Adapter</span>
+          <select id="adapterInput" name="adapter">
+            <option value="openai-compatible">OpenAI-compatible</option>
+            <option value="gemini">Gemini API</option>
+          </select>
+        </label>
+        <label>
           <span>Endpoint URL</span>
           <input id="endpointInput" name="endpoint" autocomplete="off" placeholder="http://127.0.0.1:8000/v1" />
         </label>

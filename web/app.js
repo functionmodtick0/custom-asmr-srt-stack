@@ -1,10 +1,12 @@
 const state = {
+  projectId: null,
   master: null,
   translated: null,
   selectedId: null,
   audioUrl: null,
   stopTimer: null,
   audioBuffer: null,
+  saveTimer: null,
 };
 
 const els = {
@@ -26,6 +28,7 @@ const els = {
   importTranslatedButton: document.getElementById("importTranslatedButton"),
   exportSrtButton: document.getElementById("exportSrtButton"),
   modelDialog: document.getElementById("modelDialog"),
+  adapterInput: document.getElementById("adapterInput"),
   endpointInput: document.getElementById("endpointInput"),
   modelInput: document.getElementById("modelInput"),
   apiKeyInput: document.getElementById("apiKeyInput"),
@@ -78,6 +81,7 @@ function loadModelSettings() {
   if (!raw) return;
   try {
     const settings = JSON.parse(raw);
+    els.adapterInput.value = settings.adapter || "openai-compatible";
     els.endpointInput.value = settings.endpoint || "";
     els.modelInput.value = settings.model || "";
     els.apiKeyInput.value = settings.apiKey || "";
@@ -91,6 +95,7 @@ function saveModelSettings() {
     "customAsmrModelSettings",
     JSON.stringify({
       endpoint: els.endpointInput.value.trim(),
+      adapter: els.adapterInput.value,
       model: els.modelInput.value.trim(),
       apiKey: els.apiKeyInput.value,
     }),
@@ -99,7 +104,17 @@ function saveModelSettings() {
   setStatus("저장됨", "모델 설정을 저장했습니다.");
 }
 
-function setMaster(master, label) {
+function getModelSettings() {
+  return {
+    adapter: els.adapterInput.value,
+    endpoint_url: els.endpointInput.value.trim(),
+    model_id: els.modelInput.value.trim(),
+    api_key: els.apiKeyInput.value,
+  };
+}
+
+function setMaster(master, label, projectId = state.projectId) {
+  state.projectId = projectId;
   state.master = master;
   state.translated = null;
   state.selectedId = master.segments[0]?.id || null;
@@ -112,19 +127,20 @@ async function handleFile(file) {
   const lowerName = file.name.toLowerCase();
   if (lowerName.endsWith(".srt")) {
     const content = await file.text();
-    const master = await apiPost("/api/srt-to-json", {
+    const project = await apiPost("/api/projects/import-srt", {
       content,
       source_language: "ja",
       source_file: file.name,
     });
-    setMaster(master, `${file.name}에서 ${master.segments.length}개 segment를 만들었습니다.`);
+    setMaster(project.master, `${file.name}에서 ${project.master.segments.length}개 segment를 만들었습니다.`, project.project_id);
     return;
   }
 
   if (lowerName.endsWith(".json")) {
     const parsed = JSON.parse(await file.text());
     if (parsed.format === "custom-asmr-master-v1") {
-      setMaster(parsed, `${file.name}을 열었습니다.`);
+      const project = await apiPost("/api/projects/import-master-json", { master: parsed });
+      setMaster(project.master, `${file.name}을 열었습니다.`, project.project_id);
       return;
     }
     if (parsed.format === "custom-asmr-translated-v1") {
@@ -138,11 +154,32 @@ async function handleFile(file) {
 
   if (file.type.startsWith("audio/")) {
     await loadAudio(file);
-    setStatus("오디오 로드됨", file.name);
+    const project = await apiPost("/api/projects/upload-audio", {
+      file_name: file.name,
+      mime_type: file.type || "application/octet-stream",
+      content_base64: await fileToBase64(file),
+    });
+    state.projectId = project.project_id;
+    state.master = null;
+    state.translated = null;
+    state.selectedId = null;
+    render();
+    setStatus("오디오 로드됨", `${file.name} project를 만들었습니다.`);
     return;
   }
 
   throw new Error("지원하지 않는 파일입니다.");
+}
+
+async function fileToBase64(file) {
+  const buffer = await file.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
 }
 
 async function loadAudio(file) {
@@ -204,6 +241,7 @@ function renderSegment(segment) {
   text.value = segment.text;
   text.addEventListener("input", () => {
     segment.text = text.value;
+    scheduleSaveMaster();
   });
   text.addEventListener("focus", () => selectSegment(segment.id, false));
 
@@ -307,6 +345,41 @@ async function exportSrt() {
   setStatus("내보냄", "export.srt를 만들었습니다.");
 }
 
+function scheduleSaveMaster() {
+  window.clearTimeout(state.saveTimer);
+  if (!state.projectId || !state.master) return;
+  state.saveTimer = window.setTimeout(() => {
+    safeRun(async () => {
+      await apiPost("/api/projects/save-master", {
+        project_id: state.projectId,
+        master: state.master,
+      });
+    });
+  }, 500);
+}
+
+async function startTranscription() {
+  if (!state.projectId) {
+    setStatus("파일 필요", "먼저 오디오 파일을 여세요.", true);
+    return;
+  }
+  const model = getModelSettings();
+  if (!model.model_id || !model.endpoint_url) {
+    setStatus("모델 필요", "모델 설정에서 Endpoint URL과 Model ID를 입력하세요.", true);
+    return;
+  }
+
+  setStatus("분석 중", "오디오 채널과 chunk를 준비합니다.");
+  await apiPost("/api/projects/analyze-audio", { project_id: state.projectId });
+  setStatus("전사 중", "모델 endpoint에 오디오를 보내고 있습니다.");
+  const result = await apiPost("/api/projects/transcribe", {
+    project_id: state.projectId,
+    source_language: "ja",
+    model,
+  });
+  setMaster(result.master, `${result.master.segments.length}개 segment를 저장했습니다.`, state.projectId);
+}
+
 async function safeRun(task) {
   try {
     await task();
@@ -355,13 +428,7 @@ els.exportMasterButton.addEventListener("click", () => {
 els.exportTranslationButton.addEventListener("click", () => safeRun(exportTranslationJson));
 els.exportSrtButton.addEventListener("click", () => safeRun(exportSrt));
 els.startButton.addEventListener("click", () => {
-  const model = els.modelInput.value.trim();
-  const endpoint = els.endpointInput.value.trim();
-  if (!model || !endpoint) {
-    setStatus("모델 필요", "모델 설정에서 Endpoint URL과 Model ID를 입력하세요.", true);
-    return;
-  }
-  setStatus("대기", "전사 어댑터는 다음 개발 단위에서 연결됩니다.");
+  safeRun(startTranscription);
 });
 els.retranscribeButton.addEventListener("click", () => {
   if (!state.selectedId) return;
