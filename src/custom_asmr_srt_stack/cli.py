@@ -4,6 +4,7 @@ import argparse
 import base64
 import json
 import mimetypes
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -379,7 +380,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    args.func(args)
+    try:
+        args.func(args)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
     return 0
 
 

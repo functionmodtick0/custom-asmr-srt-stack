@@ -19,6 +19,14 @@ def run_cli(argv):
     return result, stdout.getvalue()
 
 
+def run_cli_with_stderr(argv):
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        result = main(argv)
+    return result, stdout.getvalue(), stderr.getvalue()
+
+
 def write_mono_wav(path: Path) -> None:
     with wave.open(str(path), "wb") as wav:
         wav.setnchannels(1)
@@ -207,6 +215,17 @@ class ProjectCliTests(unittest.TestCase):
 
             self.assertEqual(result, 0)
             self.assertEqual(json.loads(output)["master"]["segments"][0]["text"], "再")
+
+    def test_cli_errors_are_visible_without_traceback(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result, stdout, stderr = run_cli_with_stderr(
+                ["project", "show", "--project-root", str(Path(tmpdir)), "0" * 32]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(stdout, "")
+            self.assertIn("error: project not found", stderr)
+            self.assertNotIn("Traceback", stderr)
 
 
 if __name__ == "__main__":

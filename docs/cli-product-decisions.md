@@ -112,6 +112,8 @@ uv run casrt project transcribe PROJECT_ID \
 - project가 아직 분석되지 않았다면 실패한다.
 - L/R 채널이 있으면 각각 전사한다.
 - mono/MIX만 있으면 MIX를 전사한다.
+- 분석 단계가 저장한 chunk interval별로 오디오를 잘라 모델에 보낸다.
+- 모델이 반환한 chunk-relative timing을 원본 timeline timing으로 offset한다.
 - 결과를 시간순으로 정렬하고 stable segment id를 다시 부여한다.
 - `master.json`을 project에 저장한다.
 - `CASRT_ALIGNER_COMMAND`가 설정되어 있으면 고정 aligner hook을 실행한다.
@@ -178,6 +180,8 @@ project 저장 root 지정:
 ## 실패 동작
 
 CLI는 실패 시 non-zero exit code로 종료한다.
+
+예상 가능한 프로젝트, 파일, 모델 응답 오류는 traceback 대신 stderr에 한 줄 `error: ...` 메시지로 출력한다.
 
 조용히 보정하지 않는 오류:
 
