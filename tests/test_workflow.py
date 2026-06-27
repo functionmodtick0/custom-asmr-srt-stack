@@ -130,6 +130,50 @@ class WorkflowTests(unittest.TestCase):
                 ],
             )
 
+    def test_local_qwen_asr_transcribe_project_uses_mix_first(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "qwen.wav"
+            write_stereo_wav(audio_path, duration_ms=10_000)
+            store = ProjectStore(root / "projects")
+            created = store.create_from_audio(
+                "qwen.wav",
+                "audio/wav",
+                base64.b64encode(audio_path.read_bytes()).decode("ascii"),
+            )
+            analyzed = analyze_project(store, created["project_id"])
+            calls = []
+
+            def fake_transcribe(endpoint, audio_bytes, *, mime_type, channel, source_language):
+                del endpoint, mime_type, source_language
+                calls.append((channel, analyze_wav(audio_bytes).duration_ms))
+                return (
+                    Segment(
+                        id="ignored",
+                        start_ms=0,
+                        end_ms=10_000,
+                        channel=channel,
+                        kind="speech",
+                        text="MIX-first",
+                    ),
+                )
+
+            master = transcribe_project(
+                store,
+                created["project_id"],
+                ModelEndpoint(
+                    adapter="local-qwen-asr",
+                    endpoint_url=None,
+                    model_id="Qwen/Qwen3-ASR-1.7B",
+                ),
+                analyzed["metadata"],
+                source_language="ja",
+                transcribe_audio_func=fake_transcribe,
+            )
+
+            self.assertEqual(calls, [("MIX", 10_000)])
+            self.assertEqual([(segment.channel, segment.text) for segment in master.segments], [("MIX", "MIX-first")])
+
     def test_transcribe_project_requires_analysis_chunks(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ProjectStore(Path(tmpdir))

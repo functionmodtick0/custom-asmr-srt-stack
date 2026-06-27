@@ -48,12 +48,8 @@ def transcribe_project(
     transcribe_audio_func=transcribe_audio,
 ) -> MasterDocument:
     channels = metadata.get("channels")
-    channel_names: list[str]
-    if isinstance(channels, dict) and {"L", "R"}.issubset(channels):
-        channel_names = ["L", "R"]
-    elif isinstance(channels, dict) and "MIX" in channels:
-        channel_names = ["MIX"]
-    else:
+    channel_names = transcription_channel_names(channels, model_endpoint)
+    if not channel_names:
         raise ValueError("project must be analyzed before transcription")
 
     chunks = transcription_chunks(metadata, model_endpoint)
@@ -142,6 +138,18 @@ def transcription_chunks(metadata: dict[str, Any], model_endpoint: ModelEndpoint
     for chunk in chunks:
         split_chunks.extend(split_interval(chunk["start_ms"], chunk["end_ms"], max_chunk_ms))
     return tuple(split_chunks)
+
+
+def transcription_channel_names(channels: Any, model_endpoint: ModelEndpoint) -> list[str]:
+    if not isinstance(channels, dict):
+        return []
+    if model_endpoint.adapter == "local-qwen-asr" and "MIX" in channels:
+        return ["MIX"]
+    if {"L", "R"}.issubset(channels):
+        return ["L", "R"]
+    if "MIX" in channels:
+        return ["MIX"]
+    return []
 
 
 def split_interval(start_ms: int, end_ms: int, max_chunk_ms: int) -> tuple[dict[str, int], ...]:
