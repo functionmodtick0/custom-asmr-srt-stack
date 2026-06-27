@@ -3,7 +3,14 @@ import struct
 import unittest
 import wave
 
-from custom_asmr_srt_stack.audio import analyze_wav, chunk_intervals, normalize_audio_to_wav, slice_wav, split_wav_channels
+from custom_asmr_srt_stack.audio import (
+    analyze_wav,
+    chunk_intervals,
+    normalize_audio_to_wav,
+    slice_wav,
+    speech_intervals_by_energy,
+    split_wav_channels,
+)
 
 
 def make_stereo_wav(samples):
@@ -17,6 +24,16 @@ def make_stereo_wav(samples):
             frames.extend(struct.pack("<h", left))
             frames.extend(struct.pack("<h", right))
         wav.writeframes(bytes(frames))
+    return output.getvalue()
+
+
+def make_mono_wav(samples):
+    output = io.BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(1000)
+        wav.writeframes(b"".join(struct.pack("<h", sample) for sample in samples))
     return output.getvalue()
 
 
@@ -53,6 +70,19 @@ class AudioPipelineTests(unittest.TestCase):
                 {"index": 2, "start_ms": 400, "end_ms": 450},
             ],
         )
+
+    def test_speech_intervals_by_energy_splits_on_long_silence(self):
+        audio = make_mono_wav(([2000] * 1000) + ([0] * 1000) + ([2000] * 1000))
+
+        intervals = speech_intervals_by_energy(
+            audio,
+            threshold_dbfs=-40,
+            window_ms=100,
+            min_silence_ms=500,
+            pad_ms=100,
+        )
+
+        self.assertEqual(intervals, [{"index": 0, "start_ms": 0, "end_ms": 1100}, {"index": 1, "start_ms": 1900, "end_ms": 3000}])
 
     def test_normalize_audio_keeps_valid_wav(self):
         audio = make_stereo_wav([(100, 300)])

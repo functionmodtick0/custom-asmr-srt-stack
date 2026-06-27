@@ -4,8 +4,10 @@ import io
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import wave
+from array import array
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -158,6 +160,88 @@ def chunk_intervals(duration_ms: int, max_chunk_ms: int = 180_000) -> list[dict[
         intervals.append({"index": len(intervals), "start_ms": start_ms, "end_ms": end_ms})
         start_ms = end_ms
     return intervals
+
+
+def speech_intervals_by_energy(
+    audio_bytes: bytes,
+    *,
+    threshold_dbfs: float = -48.0,
+    window_ms: int = 100,
+    min_silence_ms: int = 800,
+    min_speech_ms: int = 200,
+    pad_ms: int = 400,
+) -> list[dict[str, int]]:
+    info = analyze_wav(audio_bytes)
+    if info.duration_ms == 0:
+        return []
+    if info.sample_width != 2:
+        return [{"index": 0, "start_ms": 0, "end_ms": info.duration_ms}]
+    if window_ms <= 0:
+        raise ValueError("window_ms must be positive")
+    if min_silence_ms < 0:
+        raise ValueError("min_silence_ms must be non-negative")
+    if min_speech_ms < 0:
+        raise ValueError("min_speech_ms must be non-negative")
+    if pad_ms < 0:
+        raise ValueError("pad_ms must be non-negative")
+
+    with open_wave(audio_bytes) as wav:
+        channels = wav.getnchannels()
+        sample_rate = wav.getframerate()
+        frame_count = wav.getnframes()
+        frames = wav.readframes(frame_count)
+
+    window_frames = max(1, round(sample_rate * (window_ms / 1000)))
+    bytes_per_frame = channels * info.sample_width
+    threshold = dbfs_to_pcm16_amplitude(threshold_dbfs)
+    speech_ranges: list[tuple[int, int]] = []
+    for start_frame in range(0, frame_count, window_frames):
+        end_frame = min(frame_count, start_frame + window_frames)
+        chunk = frames[start_frame * bytes_per_frame : end_frame * bytes_per_frame]
+        if pcm16_rms(chunk) >= threshold:
+            speech_ranges.append((round(start_frame / sample_rate * 1000), round(end_frame / sample_rate * 1000)))
+
+    if not speech_ranges:
+        return [{"index": 0, "start_ms": 0, "end_ms": info.duration_ms}]
+
+    merged: list[tuple[int, int]] = []
+    current_start, current_end = speech_ranges[0]
+    for start_ms, end_ms in speech_ranges[1:]:
+        if start_ms - current_end <= min_silence_ms:
+            current_end = end_ms
+        else:
+            merged.append((current_start, current_end))
+            current_start, current_end = start_ms, end_ms
+    merged.append((current_start, current_end))
+
+    padded: list[dict[str, int]] = []
+    for start_ms, end_ms in merged:
+        if end_ms - start_ms < min_speech_ms:
+            continue
+        padded.append(
+            {
+                "index": len(padded),
+                "start_ms": max(0, start_ms - pad_ms),
+                "end_ms": min(info.duration_ms, end_ms + pad_ms),
+            }
+        )
+    return padded or [{"index": 0, "start_ms": 0, "end_ms": info.duration_ms}]
+
+
+def pcm16_rms(frames: bytes) -> float:
+    if not frames:
+        return 0.0
+    samples = array("h")
+    samples.frombytes(frames)
+    if sys.byteorder != "little":
+        samples.byteswap()
+    if len(samples) == 0:
+        return 0.0
+    return (sum(sample * sample for sample in samples) / len(samples)) ** 0.5
+
+
+def dbfs_to_pcm16_amplitude(dbfs: float) -> float:
+    return (2**15 - 1) * (10 ** (dbfs / 20))
 
 
 def open_wave(audio_bytes: bytes) -> wave.Wave_read:

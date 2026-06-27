@@ -6,7 +6,13 @@ from dataclasses import replace
 from typing import Any
 
 from custom_asmr_srt_stack.alignment import apply_alignment_review_flags, run_alignment_command
-from custom_asmr_srt_stack.audio import chunk_intervals, normalize_audio_to_wav, slice_wav, split_wav_channels
+from custom_asmr_srt_stack.audio import (
+    chunk_intervals,
+    normalize_audio_to_wav,
+    slice_wav,
+    speech_intervals_by_energy,
+    split_wav_channels,
+)
 from custom_asmr_srt_stack.models import MasterDocument, Segment, make_segment_id, require_int, require_mapping
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.transcription import ModelEndpoint, adapter_max_chunk_ms, transcribe_audio
@@ -51,8 +57,8 @@ def transcribe_project(
     channel_names = transcription_channel_names(channels, model_endpoint)
     if not channel_names:
         raise ValueError("project must be analyzed before transcription")
+    analysis_chunks(metadata)
 
-    chunks = transcription_chunks(metadata, model_endpoint)
     raw_segments: list[Segment] = []
     for channel in channel_names:
         if isinstance(channels, dict) and channel in channels:
@@ -61,6 +67,7 @@ def transcribe_project(
         else:
             channel_audio, mime_type = store.read_audio(project_id)
 
+        chunks = transcription_chunks(metadata, model_endpoint, channel_audio)
         for chunk in chunks:
             clip = slice_wav(channel_audio, start_ms=chunk["start_ms"], end_ms=chunk["end_ms"])
             raw_segments.extend(
@@ -129,8 +136,12 @@ def analysis_chunks(metadata: dict[str, Any]) -> tuple[dict[str, int], ...]:
     return tuple(chunks)
 
 
-def transcription_chunks(metadata: dict[str, Any], model_endpoint: ModelEndpoint) -> tuple[dict[str, int], ...]:
-    chunks = analysis_chunks(metadata)
+def transcription_chunks(
+    metadata: dict[str, Any],
+    model_endpoint: ModelEndpoint,
+    audio_bytes: bytes | None = None,
+) -> tuple[dict[str, int], ...]:
+    chunks = qwen_asr_chunks(model_endpoint, audio_bytes) or analysis_chunks(metadata)
     max_chunk_ms = adapter_max_chunk_ms(model_endpoint)
     if max_chunk_ms is None:
         return chunks
@@ -138,6 +149,13 @@ def transcription_chunks(metadata: dict[str, Any], model_endpoint: ModelEndpoint
     for chunk in chunks:
         split_chunks.extend(split_interval(chunk["start_ms"], chunk["end_ms"], max_chunk_ms))
     return tuple(split_chunks)
+
+
+def qwen_asr_chunks(model_endpoint: ModelEndpoint, audio_bytes: bytes | None) -> tuple[dict[str, int], ...]:
+    if model_endpoint.adapter != "local-qwen-asr" or audio_bytes is None:
+        return ()
+    chunks = speech_intervals_by_energy(audio_bytes)
+    return tuple({"start_ms": chunk["start_ms"], "end_ms": chunk["end_ms"]} for chunk in chunks)
 
 
 def transcription_channel_names(channels: Any, model_endpoint: ModelEndpoint) -> list[str]:
