@@ -32,6 +32,7 @@ const els = {
   endpointInput: document.getElementById("endpointInput"),
   modelInput: document.getElementById("modelInput"),
   apiKeyInput: document.getElementById("apiKeyInput"),
+  validateModelButton: document.getElementById("validateModelButton"),
   saveModelButton: document.getElementById("saveModelButton"),
 };
 
@@ -102,6 +103,12 @@ function saveModelSettings() {
   );
   els.modelDialog.close();
   setStatus("저장됨", "모델 설정을 저장했습니다.");
+}
+
+async function validateModelSettings() {
+  const model = getModelSettings();
+  const result = await apiPost("/api/model/validate", { model });
+  setStatus("확인됨", `${result.adapter} / ${result.model_id}`);
 }
 
 function getModelSettings() {
@@ -426,6 +433,7 @@ els.dropZone.addEventListener("drop", (event) => {
 });
 
 els.modelButton.addEventListener("click", () => els.modelDialog.showModal());
+els.validateModelButton.addEventListener("click", () => safeRun(validateModelSettings));
 els.saveModelButton.addEventListener("click", saveModelSettings);
 els.importTranslatedButton.addEventListener("click", () => els.translatedInput.click());
 els.exportMasterButton.addEventListener("click", () => {

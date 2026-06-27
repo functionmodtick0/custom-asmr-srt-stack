@@ -74,6 +74,22 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("content must be a string", response["error"])
 
+    def test_model_validate_route_checks_endpoint_contract(self):
+        status, response = self.post_json(
+            "/api/model/validate",
+            {
+                "model": {
+                    "adapter": "gemini",
+                    "endpoint_url": "https://generativelanguage.googleapis.com",
+                    "model_id": "gemini-2.5-pro",
+                }
+            },
+        )
+
+        self.assertEqual(status, 200)
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["adapter"], "gemini")
+
     def test_import_srt_route_persists_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ProjectStore(Path(tmpdir))

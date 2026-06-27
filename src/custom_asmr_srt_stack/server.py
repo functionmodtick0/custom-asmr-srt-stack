@@ -128,6 +128,17 @@ def handle_api_request(
             text_by_id = None if translated is None else parse_translated_texts(master, translated)
             return json_response(HTTPStatus.OK, {"content": format_srt(master, text_by_id=text_by_id)})
 
+        if path == "/api/model/validate":
+            endpoint = ModelEndpoint.from_json(payload.get("model"))
+            return json_response(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "adapter": endpoint.adapter,
+                    "model_id": endpoint.model_id,
+                },
+            )
+
         return json_response(HTTPStatus.NOT_FOUND, {"error": "unknown API route"})
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         return json_response(HTTPStatus.BAD_REQUEST, {"error": f"invalid JSON: {error}"})
