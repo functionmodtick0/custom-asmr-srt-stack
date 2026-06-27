@@ -312,7 +312,7 @@ uv run casrt eval-transcript ref.master.json candidate.master.json \
 - 현재 Qwen3-ASR 1.7B 경로만으로는 품질 기준을 만족하지 못한다.
 - `neosophie/Qwen3-ASR-1.7B-JA`는 다운로드 재시도 후 점수화했다. 120초 gold 기준 Qwen3-ASR 1.7B보다 약간 낫지만 practical CER 20.4%라 기본 승격하지 않는다.
 - Neosophie full-window와 1.5초 silence 병합 실험은 text와 timing이 모두 악화됐다. 이 샘플에서는 chunk를 길게 잡는 것이 해결책이 아니다.
-- `Qwen/Qwen3-ASR-1.7B-hf`는 Hugging Face metadata상 `automatic-speech-recognition`, `ja` 지원, `transformers` 모델이지만 현재 설치된 Transformers가 `qwen3_asr` 아키텍처를 인식하지 못해 remote code 없이 로딩되지 않았다.
+- `Qwen/Qwen3-ASR-1.7B-hf`는 Hugging Face metadata상 `automatic-speech-recognition`, `ja` 지원, `transformers` 모델이다. 현재 pinned Transformers는 `qwen3_asr` 아키텍처를 인식하지 못한다. 공식 Transformers main `5.13.0.dev0` ephemeral runtime에서는 `qwen3_asr` support를 확인했지만, weight 다운로드가 Xet/일반 HTTP 양쪽에서 장시간 진행돼 2026-06-28 루프에서는 점수화하지 못했다.
 - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 최신 로컬 후보지만 model card metadata에 `custom_code`가 있다. Cohere는 gated 모델이다. 외부 모델 저장소 코드를 실행하는 `trust_remote_code=True`는 기본 실험 경로로 쓰지 않고, 사용자 명시 승인이나 first-party package 지원이 있을 때만 검증한다.
 - 다음 개선은 더 강한 로컬 ASR 후보를 안전하게 로딩하는 경로, Silero/TEN VAD wrapper, 또는 사용자 glossary 기반 후처리를 별도 실험으로 검증한다.
 
@@ -345,7 +345,7 @@ uv run casrt eval-transcript ref.master.json candidate.master.json \
 6. 모델 비교
    - `Qwen/Qwen3-ASR-1.7B`를 주력으로 둔다.
    - `neosophie/Qwen3-ASR-1.7B-JA`는 검증 완료 후보지만 기본 승격하지 않는다.
-   - `Qwen/Qwen3-ASR-1.7B-hf`는 remote code 없이 로딩 가능한 Transformers 버전 또는 first-party package가 확인되면 다시 비교한다.
+   - `Qwen/Qwen3-ASR-1.7B-hf`는 공식 Transformers release가 `qwen3_asr`를 포함하거나 weight를 안정적으로 내려받을 수 있으면 다시 비교한다.
    - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 성능 후보로 남기되, custom code/gated 접근 조건을 먼저 해결해야 한다.
    - `Qwen/Qwen3-ASR-0.6B`는 속도/저사양 후보로 비교한다.
    - Gemma 4 E4B는 general multimodal baseline으로만 유지한다.
