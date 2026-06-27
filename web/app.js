@@ -235,6 +235,12 @@ function renderSegment(segment) {
   kind.className = "kind";
   kind.textContent = segment.kind;
   meta.append(channel, kind);
+  if (segment.needs_review) {
+    const review = document.createElement("span");
+    review.className = "review-flag";
+    review.textContent = "확인 필요";
+    meta.append(review);
+  }
 
   const text = document.createElement("textarea");
   text.className = "segment-text";
