@@ -335,6 +335,8 @@ stable-ts에 L/R energy attribution만 붙인 channel 진단:
 | 6dB | 16.1% | 56.7% | 65.0% | 20 | 23.9% |
 | 10dB | 16.1% | 56.7% | 76.9% | 13 | 58.2% |
 
+window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts baseline에서 실험했다. 100ms window, active threshold -60dBFS, margin 1~10dB, dominant fraction 35~75% sweep 기준 최고 channel time-aligned accuracy는 71.4%였고, segment 전체 RMS 10dB 방식의 76.9%보다 낮았다. 따라서 window 방식은 기본 구현으로 승격하지 않는다.
+
 결정:
 
 - Qwen 내장 energy 기본값은 `min_silence_ms=500`, `pad_ms=200`으로 낮춘다.
