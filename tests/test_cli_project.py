@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 import struct
+import sys
 import tempfile
 import unittest
 import wave
@@ -285,6 +286,55 @@ class ProjectCliTests(unittest.TestCase):
             frozen = json.loads(frozen_path.read_text(encoding="utf-8"))
             self.assertEqual([segment["channel"] for segment in frozen["segments"]], ["L", "R"])
             self.assertEqual([segment["id"] for segment in frozen["segments"]], ["seg_000001", "seg_000002"])
+
+    def test_align_transcript_runs_configured_aligner_command(self):
+        script = (
+            "import json,sys;"
+            "json.load(sys.stdin);"
+            "print(json.dumps({'segments':[{'id':'seg_000001','start_ms':120,'end_ms':900}]}))"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "audio.wav"
+            source = root / "candidate.srt"
+            aligned_path = root / "aligned.master.json"
+            audio.write_bytes(b"audio")
+            source.write_text("1\n00:00:00,000 --> 00:00:01,000\nねえ\n", encoding="utf-8")
+
+            with mock.patch.dict("os.environ", {"CASRT_ALIGNER_COMMAND": f"{sys.executable} -c {json.dumps(script)}"}):
+                result, output = run_cli(
+                    [
+                        "align-transcript",
+                        str(audio),
+                        str(source),
+                        "-o",
+                        str(aligned_path),
+                        "--json",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output)["segments"], 1)
+            aligned = json.loads(aligned_path.read_text(encoding="utf-8"))
+            self.assertEqual(aligned["segments"][0]["start_ms"], 120)
+            self.assertEqual(aligned["segments"][0]["end_ms"], 900)
+
+    def test_align_transcript_requires_configured_aligner_command(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "audio.wav"
+            source = root / "candidate.srt"
+            aligned_path = root / "aligned.master.json"
+            audio.write_bytes(b"audio")
+            source.write_text("1\n00:00:00,000 --> 00:00:01,000\nねえ\n", encoding="utf-8")
+
+            with mock.patch.dict("os.environ", {}, clear=True):
+                result, _, error = run_cli_with_stderr(
+                    ["align-transcript", str(audio), str(source), "-o", str(aligned_path)]
+                )
+
+            self.assertEqual(result, 1)
+            self.assertIn("CASRT_ALIGNER_COMMAND is required", error)
 
     def test_eval_transcript_quality_gate_fails_after_emitting_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:

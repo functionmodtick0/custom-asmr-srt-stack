@@ -251,6 +251,21 @@ uv run casrt freeze-reference reviewed.master.json -o refs/front120.master.json 
 - 이 명령은 검수 상태를 추정하지 않는다. 사람이 검수한 파일만 입력으로 넣는 것이 계약이다.
 - pseudo-gold나 모델 산출물을 `freeze-reference`로 고정할 수는 있지만, manifest에는 `reference_type=pseudo-gold`로 기록해야 하며 모델 승격 근거로 쓰지 않는다.
 
+### 기존 Transcript Alignment
+
+```bash
+CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.qwen_aligner_worker --model-id /path/to/Qwen3-ForcedAligner-0.6B/snapshot' \
+  uv run casrt align-transcript audio.wav candidate.master.json -o candidate.aligned.master.json --json
+```
+
+동작:
+
+- 입력 transcript는 SRT 또는 `master.json`을 받는다.
+- audio path와 transcript를 `CASRT_ALIGNER_COMMAND`에 넘겨 segment timing을 갱신한다.
+- output은 `master.json`으로 저장한다.
+- text, channel, kind는 aligner contract상 변경하지 않는다.
+- 이 명령은 기존 후보를 평가 harness에 넣기 위한 도구이며 WebUI 옵션을 늘리지 않는다.
+
 ### 평가
 
 ```bash

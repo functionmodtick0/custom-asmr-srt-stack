@@ -304,6 +304,13 @@ uv run casrt freeze-reference reviewed.srt -o refs/front120.master.json --json
 
 `freeze-reference`는 segment를 시간순으로 정렬하고 `seg_000001` 형식 id를 다시 부여하며 `needs_review=false`로 저장합니다. 이 산출물은 사람이 검수한 reference manifest에서만 모델 승격 근거로 사용합니다.
 
+기존 SRT 또는 master JSON을 고정 aligner로 재정렬:
+
+```bash
+CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.qwen_aligner_worker --model-id /path/to/Qwen3-ForcedAligner-0.6B/snapshot' \
+  uv run casrt align-transcript audio.wav candidate.master.json -o candidate.aligned.master.json --json
+```
+
 전사 결과 평가:
 
 ```bash

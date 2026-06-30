@@ -4,11 +4,14 @@ import argparse
 import base64
 import json
 import mimetypes
+import os
+import shlex
 import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from custom_asmr_srt_stack.alignment import run_alignment_command
 from custom_asmr_srt_stack.evaluation import evaluate_manifest, evaluate_transcripts, load_transcript_document
 from custom_asmr_srt_stack.model_snapshot import snapshot_digest
 from custom_asmr_srt_stack.models import MasterDocument
@@ -105,6 +108,20 @@ def freeze_reference(args: argparse.Namespace) -> None:
         args,
         {"output": str(args.output), "segments": len(segments), "reference_type": "human-reviewed"},
         f"reference frozen: {args.output} segments={len(segments)}",
+    )
+
+
+def align_transcript(args: argparse.Namespace) -> None:
+    command = os.environ.get("CASRT_ALIGNER_COMMAND")
+    if not command:
+        raise ValueError("CASRT_ALIGNER_COMMAND is required")
+    master = load_transcript_document(args.input, source_language=args.source_language)
+    aligned = run_alignment_command(master, audio_file=args.audio, command=shlex.split(command))
+    write_text(args.output, json.dumps(aligned.to_json(), ensure_ascii=False, indent=2) + "\n")
+    emit(
+        args,
+        {"output": str(args.output), "segments": len(aligned.segments), "aligner": "CASRT_ALIGNER_COMMAND"},
+        f"transcript aligned: {args.output} segments={len(aligned.segments)}",
     )
 
 
@@ -476,6 +493,17 @@ def build_parser() -> argparse.ArgumentParser:
     freeze_reference_parser.add_argument("-o", "--output", type=Path, required=True)
     freeze_reference_parser.add_argument("--source-language", default="ja")
     freeze_reference_parser.set_defaults(func=freeze_reference)
+
+    align_transcript_parser = subcommands.add_parser(
+        "align-transcript",
+        parents=[output_parent],
+        help="Align an existing SRT/master transcript with CASRT_ALIGNER_COMMAND.",
+    )
+    align_transcript_parser.add_argument("audio", type=Path)
+    align_transcript_parser.add_argument("input", type=Path)
+    align_transcript_parser.add_argument("-o", "--output", type=Path, required=True)
+    align_transcript_parser.add_argument("--source-language", default="ja")
+    align_transcript_parser.set_defaults(func=align_transcript)
 
     eval_transcript_parser = subcommands.add_parser("eval-transcript", help="Evaluate a candidate transcript.")
     eval_transcript_parser.add_argument("reference", type=Path)

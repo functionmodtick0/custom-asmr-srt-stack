@@ -253,6 +253,20 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
 - result: `seg_000001` moved from `980-3800ms` to `1460-2660ms`
 - output: `/tmp/casrt-quality.Q5OdDf/qwen-aligner-smoke-output.json`
 
+기존 transcript를 benchmark용으로 재정렬할 때는 `align-transcript`를 사용한다.
+
+```bash
+CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.qwen_aligner_worker --model-id /path/to/Qwen3-ForcedAligner-0.6B/snapshot' \
+  uv run casrt align-transcript audio.wav candidate.master.json -o candidate.aligned.master.json --json
+```
+
+2026-06-30 `align-transcript` CLI smoke:
+
+- input: `/tmp/casrt-quality.Q5OdDf/qwen-aligner-smoke-input.master.json`
+- output: `/tmp/casrt-quality.Q5OdDf/qwen-aligner-smoke-cli-output.master.json`
+- result: `seg_000001` moved from `980-3800ms` to `1460-2660ms`, matching direct worker smoke
+- note: sandboxed run used `UV_CACHE_DIR=/tmp/casrt-uv-cache` to avoid default uv cache write errors.
+
 현재 판단:
 
 - 기본 경로로 승격하지 않는다.
