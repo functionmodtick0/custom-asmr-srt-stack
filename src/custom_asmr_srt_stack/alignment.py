@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import replace
 from pathlib import Path
@@ -9,6 +10,36 @@ from typing import Any
 from custom_asmr_srt_stack.models import MasterDocument, Segment, require_int, require_mapping, require_string
 
 DEFAULT_LONG_SEGMENT_MS = 30_000
+ALIGNER_ENV_ALLOWLIST = {
+    "CUDA_HOME",
+    "CUDA_VISIBLE_DEVICES",
+    "HF_HOME",
+    "HUGGINGFACE_HUB_CACHE",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LD_LIBRARY_PATH",
+    "NVIDIA_DRIVER_CAPABILITIES",
+    "NVIDIA_VISIBLE_DEVICES",
+    "PATH",
+    "PYTORCH_CUDA_ALLOC_CONF",
+    "TORCH_HOME",
+    "TRANSFORMERS_CACHE",
+    "USER",
+    "VIRTUAL_ENV",
+    "XDG_CACHE_HOME",
+}
+ALIGNER_ENV_PREFIXES = ("CASRT_ALIGNER_", "CASRT_QWEN_ALIGNER_")
+ALIGNER_ENV_BLOCKLIST = {"CASRT_ALIGNER_COMMAND"}
+ALIGNER_OFFLINE_ENV = {
+    "HF_DATASETS_OFFLINE": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "WANDB_MODE": "disabled",
+    "PYTHONNOUSERSITE": "1",
+    "TOKENIZERS_PARALLELISM": "false",
+}
+SENSITIVE_ENV_SUBSTRINGS = ("API_KEY", "AUTH", "PASSWORD", "SECRET", "TOKEN")
 
 
 def apply_alignment_review_flags(
@@ -85,6 +116,7 @@ def run_alignment_command(master: MasterDocument, *, audio_file: Path, command: 
         capture_output=True,
         text=True,
         check=False,
+        env=aligner_env(),
     )
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "unknown aligner error"
@@ -94,3 +126,29 @@ def run_alignment_command(master: MasterDocument, *, audio_file: Path, command: 
     except json.JSONDecodeError as error:
         raise ValueError(f"alignment command returned invalid JSON: {error}") from error
     return merge_alignment_output(master, output)
+
+
+def aligner_env() -> dict[str, str] | None:
+    mode = os.environ.get("CASRT_ALIGNER_ENV_MODE", "inherit").strip().lower()
+    if mode in {"", "inherit"}:
+        return None
+    if mode != "offline":
+        raise ValueError("CASRT_ALIGNER_ENV_MODE must be inherit or offline")
+
+    env: dict[str, str] = {}
+    for name, value in os.environ.items():
+        if name in ALIGNER_ENV_ALLOWLIST or name.startswith(ALIGNER_ENV_PREFIXES):
+            env[name] = value
+
+    for name in list(env):
+        if name in ALIGNER_ENV_BLOCKLIST:
+            env.pop(name, None)
+            continue
+        if name == "TOKENIZERS_PARALLELISM":
+            continue
+        if any(part in name for part in SENSITIVE_ENV_SUBSTRINGS):
+            env.pop(name, None)
+
+    env.setdefault("PATH", os.defpath)
+    env.update(ALIGNER_OFFLINE_ENV)
+    return env

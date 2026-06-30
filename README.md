@@ -40,8 +40,10 @@ uv sync --extra local
 ```bash
 uv venv .casrt/qwen-asr-venv --python 3.12
 uv pip install --python .casrt/qwen-asr-venv/bin/python -e .
-uv pip install --python .casrt/qwen-asr-venv/bin/python qwen-asr
+uv pip install --python .casrt/qwen-asr-venv/bin/python qwen-asr==0.0.6
 ```
+
+실험 실행 전 `qwen-asr` package fingerprint도 기록합니다. 현재 허용 fingerprint는 version `0.0.6`, dist-info `RECORD` SHA-256 `56454a099599cb3c86fd96347baa86269cc62e0d9eced004eeb2faa26b3a8a7c`입니다.
 
 실행 시 `CASRT_QWEN_ASR_WORKER_COMMAND`로 Qwen venv의 Python을 지정합니다.
 
@@ -146,6 +148,19 @@ CASRT_QWEN_ASR_DISABLE_NETWORK=1 \
 CASRT_ALIGNER_COMMAND='python3 path/to/aligner.py' \
   uv run casrt serve
 ```
+
+Qwen3-ForcedAligner를 기존 master 텍스트 재정렬용으로 쓰려면 qwen-asr 전용 venv에서 내장 worker를 실행합니다.
+
+```bash
+CASRT_ALIGNER_ENV_MODE=offline \
+CASRT_QWEN_ALIGNER_REQUIRE_LOCAL_MODEL_PATH=1 \
+CASRT_QWEN_ALIGNER_LOCAL_FILES_ONLY=1 \
+CASRT_QWEN_ALIGNER_DISABLE_NETWORK=1 \
+CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.qwen_aligner_worker --model-id /path/to/Qwen3-ForcedAligner-0.6B/snapshot' \
+  uv run casrt serve
+```
+
+이 worker는 `offline + local path-only + local_files_only + network disabled` 조건이 모두 없으면 시작하지 않습니다. 또한 `qwen-asr` RECORD hash, RECORD에 기록된 각 설치 파일 hash, `qwen_asr` import origin을 검증한 뒤에만 import합니다. transcript text를 바꾸지 않고 segment 내부 start/end만 재정렬합니다. 모델 실행 전에는 local snapshot digest, `qwen-asr` package fingerprint, 보안 리뷰 결과를 실험 기록에 남깁니다.
 
 포트를 바꾸려면:
 

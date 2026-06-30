@@ -155,6 +155,12 @@ uv run casrt project transcribe PROJECT_ID \
 - 결과를 시간순으로 정렬하고 stable segment id를 다시 부여한다.
 - `master.json`을 project에 저장한다.
 - `CASRT_ALIGNER_COMMAND`가 설정되어 있으면 고정 aligner hook을 실행한다.
+- `CASRT_ALIGNER_ENV_MODE=offline`이면 aligner subprocess env는 CUDA/cache/path와 `CASRT_ALIGNER_`, `CASRT_QWEN_ALIGNER_` prefix만 보존하고 API key/token/secret류 env, `CASRT_ALIGNER_COMMAND`, `PYTHONPATH`를 제거하며 `PYTHONNOUSERSITE=1`을 강제한다.
+- `python -m custom_asmr_srt_stack.qwen_aligner_worker --model-id LOCAL_SNAPSHOT`은 Qwen3-ForcedAligner를 generic aligner command로 실행한다.
+- Qwen aligner worker는 `CASRT_ALIGNER_ENV_MODE=offline`, `CASRT_QWEN_ALIGNER_REQUIRE_LOCAL_MODEL_PATH=1`, `CASRT_QWEN_ALIGNER_LOCAL_FILES_ONLY=1`, `CASRT_QWEN_ALIGNER_DISABLE_NETWORK=1` 조건이 모두 없으면 실패하며, `--model-id`는 existing local directory만 허용한다.
+- Qwen aligner worker는 `qwen-asr==0.0.6`, dist-info `RECORD` SHA-256 `56454a099599cb3c86fd96347baa86269cc62e0d9eced004eeb2faa26b3a8a7c`, RECORD에 기록된 각 설치 파일 hash, `qwen_asr` import origin을 강제한다.
+- Qwen aligner worker는 segment text를 바꾸지 않고 speech segment 내부 start/end만 재정렬한다. `CASRT_QWEN_ALIGNER_MIN_ALIGNED_DURATION_MS`보다 짧은 span은 원래 segment timing으로 유지한다.
+- Qwen aligner worker 실패 응답은 요약 오류만 노출하고 traceback은 stdout/stderr/API 경로로 내보내지 않는다.
 
 로컬 Transformers worker:
 

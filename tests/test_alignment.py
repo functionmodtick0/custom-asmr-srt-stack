@@ -1,9 +1,11 @@
+import os
 import unittest
 import sys
 import tempfile
 from pathlib import Path
+from unittest import mock
 
-from custom_asmr_srt_stack.alignment import apply_alignment_review_flags, merge_alignment_output, run_alignment_command
+from custom_asmr_srt_stack.alignment import aligner_env, apply_alignment_review_flags, merge_alignment_output, run_alignment_command
 from custom_asmr_srt_stack.models import MasterDocument, Segment
 
 
@@ -108,6 +110,33 @@ class AlignmentTests(unittest.TestCase):
 
         self.assertEqual(aligned.segments[0].start_ms, 10)
         self.assertEqual(aligned.segments[1].end_ms, 3010)
+
+    def test_aligner_offline_env_scrubs_sensitive_values(self):
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "CASRT_ALIGNER_ENV_MODE": "offline",
+                "CASRT_ALIGNER_API_KEY": "secret",
+                "CASRT_ALIGNER_COMMAND": "python unsafe.py",
+                "CASRT_QWEN_ALIGNER_MODEL_ID": "/models/aligner",
+                "HF_TOKEN": "secret",
+                "PATH": "/bin",
+                "PYTHONPATH": "src",
+            },
+            clear=True,
+        ):
+            env = aligner_env()
+
+        assert env is not None
+        self.assertEqual(env["CASRT_ALIGNER_ENV_MODE"], "offline")
+        self.assertEqual(env["CASRT_QWEN_ALIGNER_MODEL_ID"], "/models/aligner")
+        self.assertEqual(env["HF_HUB_OFFLINE"], "1")
+        self.assertEqual(env["PYTHONNOUSERSITE"], "1")
+        self.assertEqual(env["PATH"], "/bin")
+        self.assertNotIn("CASRT_ALIGNER_API_KEY", env)
+        self.assertNotIn("CASRT_ALIGNER_COMMAND", env)
+        self.assertNotIn("HF_TOKEN", env)
+        self.assertNotIn("PYTHONPATH", env)
 
 
 if __name__ == "__main__":
