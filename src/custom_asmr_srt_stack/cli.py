@@ -46,6 +46,16 @@ from custom_asmr_srt_stack.workflow import analyze_project
 from custom_asmr_srt_stack.workflow import retranscribe_segment as retranscribe_project_segment
 from custom_asmr_srt_stack.workflow import transcribe_project
 
+PRODUCT_GATE_REFERENCE_TYPE = "human-reviewed"
+PRODUCT_GATE_THRESHOLDS = {
+    "max_practical_cer": 0.10,
+    "min_time_aligned_500ms_ratio": 0.90,
+    "min_channel_time_aligned_accuracy": 0.85,
+    "max_channel_time_aligned_mix_ratio": 0.50,
+    "max_segments_needing_edit_ratio": 0.15,
+    "max_candidate_review_ratio": 0.00,
+}
+
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -420,45 +430,22 @@ def compare_evals(args: argparse.Namespace) -> None:
 
 
 def annotate_comparison_quality_gates(report: dict[str, Any], args: argparse.Namespace) -> None:
-    max_practical_cer = ratio_arg(args.max_practical_cer, "--max-practical-cer")
-    min_time_aligned_500ms_ratio = ratio_arg(
-        args.min_time_aligned_500ms_ratio,
-        "--min-time-aligned-500ms-ratio",
-    )
-    min_channel_time_aligned_accuracy = ratio_arg(
-        args.min_channel_time_aligned_accuracy,
-        "--min-channel-time-aligned-accuracy",
-    )
-    max_channel_time_aligned_mix_ratio = ratio_arg(
-        args.max_channel_time_aligned_mix_ratio,
-        "--max-channel-time-aligned-mix-ratio",
-    )
-    max_segments_needing_edit_ratio = ratio_arg(
-        args.max_segments_needing_edit_ratio,
-        "--max-segments-needing-edit-ratio",
-    )
-    max_candidate_review_ratio = ratio_arg(args.max_candidate_review_ratio, "--max-candidate-review-ratio")
-    gate = {
-        "max_practical_cer": max_practical_cer,
-        "min_time_aligned_500ms_ratio": min_time_aligned_500ms_ratio,
-        "min_channel_time_aligned_accuracy": min_channel_time_aligned_accuracy,
-        "max_channel_time_aligned_mix_ratio": max_channel_time_aligned_mix_ratio,
-        "max_segments_needing_edit_ratio": max_segments_needing_edit_ratio,
-        "max_candidate_review_ratio": max_candidate_review_ratio,
-    }
-    if all(value is None for value in gate.values()):
+    thresholds = quality_gate_thresholds(args)
+    required_reference_type = reference_type_requirement(args)
+    gate = {key: value for key, value in thresholds.items() if value is not None}
+    if required_reference_type is not None:
+        gate["require_reference_type"] = required_reference_type
+    if getattr(args, "product_gate", False):
+        gate["preset"] = "local-asmr-v1"
+    if not gate:
         return
 
-    report["quality_gate"] = {key: value for key, value in gate.items() if value is not None}
+    report["quality_gate"] = gate
     for item in report["items"]:
         failures = comparison_quality_gate_failures(
             item,
-            max_practical_cer=max_practical_cer,
-            min_time_aligned_500ms_ratio=min_time_aligned_500ms_ratio,
-            min_channel_time_aligned_accuracy=min_channel_time_aligned_accuracy,
-            max_channel_time_aligned_mix_ratio=max_channel_time_aligned_mix_ratio,
-            max_segments_needing_edit_ratio=max_segments_needing_edit_ratio,
-            max_candidate_review_ratio=max_candidate_review_ratio,
+            required_reference_type=required_reference_type,
+            **thresholds,
         )
         item["gate_passed"] = not failures
         item["gate_failures"] = failures
@@ -473,8 +460,15 @@ def comparison_quality_gate_failures(
     max_channel_time_aligned_mix_ratio: float | None,
     max_segments_needing_edit_ratio: float | None,
     max_candidate_review_ratio: float | None,
+    required_reference_type: str | None,
 ) -> list[str]:
     failures: list[str] = []
+    if required_reference_type is not None:
+        reference_type = item.get("reference_type")
+        if reference_type is None:
+            failures.append("reference_type is unavailable")
+        elif reference_type != required_reference_type:
+            failures.append(f"reference_type {reference_type!r} != {required_reference_type!r}")
     if max_practical_cer is not None and item["practical_cer"] > max_practical_cer:
         failures.append(f"practical CER {item['practical_cer']:.4f} > {max_practical_cer:.4f}")
     if min_time_aligned_500ms_ratio is not None:
@@ -534,24 +528,13 @@ def review_pack(args: argparse.Namespace) -> None:
 
 def enforce_quality_gate(metrics: dict[str, Any], args: argparse.Namespace) -> None:
     failures: list[str] = []
-    max_practical_cer = ratio_arg(args.max_practical_cer, "--max-practical-cer")
-    min_time_aligned_500ms_ratio = ratio_arg(
-        args.min_time_aligned_500ms_ratio,
-        "--min-time-aligned-500ms-ratio",
-    )
-    min_channel_time_aligned_accuracy = ratio_arg(
-        args.min_channel_time_aligned_accuracy,
-        "--min-channel-time-aligned-accuracy",
-    )
-    max_channel_time_aligned_mix_ratio = ratio_arg(
-        args.max_channel_time_aligned_mix_ratio,
-        "--max-channel-time-aligned-mix-ratio",
-    )
-    max_segments_needing_edit_ratio = ratio_arg(
-        args.max_segments_needing_edit_ratio,
-        "--max-segments-needing-edit-ratio",
-    )
-    max_candidate_review_ratio = ratio_arg(args.max_candidate_review_ratio, "--max-candidate-review-ratio")
+    thresholds = quality_gate_thresholds(args)
+    max_practical_cer = thresholds["max_practical_cer"]
+    min_time_aligned_500ms_ratio = thresholds["min_time_aligned_500ms_ratio"]
+    min_channel_time_aligned_accuracy = thresholds["min_channel_time_aligned_accuracy"]
+    max_channel_time_aligned_mix_ratio = thresholds["max_channel_time_aligned_mix_ratio"]
+    max_segments_needing_edit_ratio = thresholds["max_segments_needing_edit_ratio"]
+    max_candidate_review_ratio = thresholds["max_candidate_review_ratio"]
 
     if max_practical_cer is not None:
         practical_cer = float(metrics["text_practical"]["cer"])
@@ -598,7 +581,7 @@ def enforce_quality_gate(metrics: dict[str, Any], args: argparse.Namespace) -> N
 
 
 def enforce_reference_type_gate(report: dict[str, Any], args: argparse.Namespace) -> None:
-    required = getattr(args, "require_reference_type", None)
+    required = reference_type_requirement(args)
     if required is None:
         return
 
@@ -610,6 +593,53 @@ def enforce_reference_type_gate(report: dict[str, Any], args: argparse.Namespace
 
     if failures:
         raise ValueError("reference type gate failed: " + "; ".join(failures))
+
+
+def quality_gate_thresholds(args: argparse.Namespace) -> dict[str, float | None]:
+    return {
+        "max_practical_cer": quality_gate_ratio(args, "max_practical_cer", "--max-practical-cer"),
+        "min_time_aligned_500ms_ratio": quality_gate_ratio(
+            args,
+            "min_time_aligned_500ms_ratio",
+            "--min-time-aligned-500ms-ratio",
+        ),
+        "min_channel_time_aligned_accuracy": quality_gate_ratio(
+            args,
+            "min_channel_time_aligned_accuracy",
+            "--min-channel-time-aligned-accuracy",
+        ),
+        "max_channel_time_aligned_mix_ratio": quality_gate_ratio(
+            args,
+            "max_channel_time_aligned_mix_ratio",
+            "--max-channel-time-aligned-mix-ratio",
+        ),
+        "max_segments_needing_edit_ratio": quality_gate_ratio(
+            args,
+            "max_segments_needing_edit_ratio",
+            "--max-segments-needing-edit-ratio",
+        ),
+        "max_candidate_review_ratio": quality_gate_ratio(
+            args,
+            "max_candidate_review_ratio",
+            "--max-candidate-review-ratio",
+        ),
+    }
+
+
+def quality_gate_ratio(args: argparse.Namespace, name: str, option_name: str) -> float | None:
+    value = getattr(args, name)
+    if value is None and getattr(args, "product_gate", False):
+        value = PRODUCT_GATE_THRESHOLDS[name]
+    return ratio_arg(value, option_name)
+
+
+def reference_type_requirement(args: argparse.Namespace) -> str | None:
+    required = getattr(args, "require_reference_type", None)
+    if required is not None:
+        return required
+    if getattr(args, "product_gate", False):
+        return PRODUCT_GATE_REFERENCE_TYPE
+    return None
 
 
 def ratio_arg(value: float | None, name: str) -> float | None:
@@ -1234,6 +1264,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def add_quality_gate_args(parser: argparse.ArgumentParser, *, action_verb: str = "Fail") -> None:
+    parser.add_argument(
+        "--product-gate",
+        action="store_true",
+        help=(
+            f"{action_verb} with the documented local ASMR product gate "
+            "(human-reviewed reference where applicable, practical CER <= 0.10, "
+            "time-aligned 500ms >= 0.90, L/R channel accuracy >= 0.85, "
+            "candidate MIX <= 0.50, review effort <= 0.15, candidate review ratio = 0)."
+        ),
+    )
     parser.add_argument(
         "--max-practical-cer",
         type=float,

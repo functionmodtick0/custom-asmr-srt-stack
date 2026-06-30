@@ -460,7 +460,8 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 - 단일 case report의 `review_effort.items`는 사람이 고쳐야 할 segment와 reasons(`text`, `channel`, `timing`, `missing_reference`, `extra_candidate`)를 담는다. manifest summary에는 큰 리포트 팽창을 피하기 위해 items를 집계하지 않는다.
 - `text_japanese_relaxed`는 practical normalization에 더해 장음류 문자 `ー〜～`를 제거한다. ASMR 발화 길이/표기 차이를 관찰하기 위한 보조 metric이며 품질 gate와 `review_effort`에는 사용하지 않는다.
 - 평가는 모델 기본값 승격이나 threshold 변경 전에 실행한다.
-- `--max-practical-cer`, `--min-time-aligned-500ms-ratio`, `--min-channel-time-aligned-accuracy`, `--max-channel-time-aligned-mix-ratio`, `--max-segments-needing-edit-ratio`, `--max-candidate-review-ratio`를 지정하면 품질 gate로 동작한다. gate 실패 시 report는 stdout/file에 남기고 exit code를 실패로 반환한다.
+- `--product-gate`는 문서화된 로컬 ASMR product gate를 적용한다. 기본값은 practical CER 0.10 이하, time-aligned 500ms 0.90 이상, L/R channel accuracy 0.85 이상, candidate MIX ratio 0.50 이하, review effort 0.15 이하, candidate `needs_review` 0이다. `eval-manifest`와 `compare-evals`에서는 `reference_type=human-reviewed`도 요구한다.
+- `--max-practical-cer`, `--min-time-aligned-500ms-ratio`, `--min-channel-time-aligned-accuracy`, `--max-channel-time-aligned-mix-ratio`, `--max-segments-needing-edit-ratio`, `--max-candidate-review-ratio`를 지정하면 품질 gate로 동작한다. `--product-gate`와 함께 지정한 개별 threshold는 product 기본값보다 우선한다. gate 실패 시 report는 stdout/file에 남기고 exit code를 실패로 반환한다.
 
 여러 샘플을 한 번에 평가할 때는 gold set manifest를 사용한다.
 
@@ -524,7 +525,7 @@ uv run casrt compare-evals qwen-report.json stable-report.json quiet8-report.jso
 - output format은 `custom-asmr-eval-comparison-v1`이다.
 - 각 report의 practical CER, optional Japanese relaxed CER, time-aligned 500ms ratio, channel time-aligned accuracy, candidate MIX ratio, candidate `needs_review` 비율, `review_effort` 수정 비율을 한 줄 summary로 뽑는다.
 - ranking은 `segments_needing_edit_ratio`, practical CER, time-aligned 500ms ratio desc, channel time-aligned accuracy desc 순서다.
-- `--max-practical-cer`, `--min-time-aligned-500ms-ratio`, `--min-channel-time-aligned-accuracy`, `--max-channel-time-aligned-mix-ratio`, `--max-segments-needing-edit-ratio`, `--max-candidate-review-ratio`를 지정하면 각 item에 `gate_passed`와 `gate_failures`를 표시한다. `compare-evals` 자체는 gate 실패 때문에 실패 exit code를 반환하지 않는다.
+- `--product-gate` 또는 개별 gate 인자를 지정하면 각 item에 `gate_passed`와 `gate_failures`를 표시한다. `compare-evals` 자체는 gate 실패 때문에 실패 exit code를 반환하지 않는다.
 - 이 명령은 모델/heuristic 승격을 자동 결정하지 않는다. 사람이 다음 실험 후보를 고르는 비교표만 만든다.
 
 ### Review Pack

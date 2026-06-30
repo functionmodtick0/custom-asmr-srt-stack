@@ -1381,6 +1381,48 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(json.loads(output)["review"]["candidate_review_ratio"], 1.0)
             self.assertIn("candidate review ratio", error)
 
+    def test_eval_transcript_product_gate_applies_documented_thresholds(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.master.json"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\n[L] ねえ\n", encoding="utf-8")
+            candidate.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "candidate.wav", "duration_ms": 3000},
+                        "segments": [
+                            {
+                                "id": "seg_000001",
+                                "start_ms": 1000,
+                                "end_ms": 2000,
+                                "channel": "L",
+                                "kind": "speech",
+                                "text": "ねえ",
+                                "needs_review": True,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "eval-transcript",
+                    "--json",
+                    "--product-gate",
+                    str(reference),
+                    str(candidate),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(json.loads(output)["review_effort"]["segments_needing_edit"], 0)
+            self.assertIn("candidate review ratio 1.0000 > 0.0000", error)
+
     def test_eval_manifest_outputs_aggregated_json_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1424,6 +1466,38 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["summary"]["text"]["edit_distance"], 1)
             self.assertEqual(report["cases"][0]["candidate_id"], "qwen-energy")
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["summary"]["text"]["edit_distance"], 1)
+
+    def test_eval_manifest_product_gate_requires_human_reviewed_reference(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            manifest = root / "gold.json"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\n[L] ねえ\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:01,000 --> 00:00:02,000\n[L] ねえ\n", encoding="utf-8")
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-manifest-v1",
+                        "cases": [{"id": "sample", "reference": "reference.srt", "candidate": "candidate.srt"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "eval-manifest",
+                    "--json",
+                    "--product-gate",
+                    str(manifest),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(json.loads(output)["summary"]["review_effort"]["segments_needing_edit"], 0)
+            self.assertIn("reference type gate failed", error)
+            self.assertIn("human-reviewed", error)
 
     def test_compare_evals_ranks_reports_by_review_effort(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1514,6 +1588,35 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(comparison["items"][0]["candidate_review_ratio"], 1.0)
             self.assertFalse(comparison["items"][0]["gate_passed"])
             self.assertIn("candidate review ratio", comparison["items"][0]["gate_failures"][0])
+
+    def test_compare_evals_product_gate_marks_reference_type_failures(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            manifest = root / "gold.json"
+            report_path = root / "report.json"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\n[L] ねえ\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:01,000 --> 00:00:02,000\n[L] ねえ\n", encoding="utf-8")
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-manifest-v1",
+                        "cases": [{"id": "sample", "reference": "reference.srt", "candidate": "candidate.srt"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            run_cli(["eval-manifest", "-o", str(report_path), str(manifest)])
+
+            result, output = run_cli(["compare-evals", "--json", "--product-gate", str(report_path)])
+
+            self.assertEqual(result, 0)
+            comparison = json.loads(output)
+            self.assertEqual(comparison["quality_gate"]["preset"], "local-asmr-v1")
+            self.assertEqual(comparison["quality_gate"]["require_reference_type"], "human-reviewed")
+            self.assertFalse(comparison["items"][0]["gate_passed"])
+            self.assertIn("reference_type", comparison["items"][0]["gate_failures"][0])
 
     def test_review_effort_outputs_items_from_eval_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:

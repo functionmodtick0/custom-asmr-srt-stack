@@ -460,26 +460,13 @@ data/outputs/eval-csv-srt-01-full.srt에서 120초 crop
 자동 gate 예시:
 
 ```bash
-uv run casrt eval-transcript ref.master.json candidate.master.json \
-  --max-practical-cer 0.10 \
-  --min-time-aligned-500ms-ratio 0.90 \
-  --min-channel-time-aligned-accuracy 0.85 \
-  --max-channel-time-aligned-mix-ratio 0.50 \
-  --max-segments-needing-edit-ratio 0.15 \
-  --max-candidate-review-ratio 0.00
+uv run casrt eval-transcript ref.master.json candidate.master.json --product-gate
 ```
 
 모델 승격용 manifest 평가는 reference authority도 gate로 강제한다.
 
 ```bash
-uv run casrt eval-manifest gold.json \
-  --require-reference-type human-reviewed \
-  --max-practical-cer 0.10 \
-  --min-time-aligned-500ms-ratio 0.90 \
-  --min-channel-time-aligned-accuracy 0.85 \
-  --max-channel-time-aligned-mix-ratio 0.50 \
-  --max-segments-needing-edit-ratio 0.15 \
-  --max-candidate-review-ratio 0.00
+uv run casrt eval-manifest gold.json --product-gate
 ```
 
 결과:
@@ -619,6 +606,7 @@ stable-ts에 L/R energy attribution만 붙인 channel 진단:
 - 2026-06-30 `compare-evals` smoke: outputs `/tmp/casrt-quality.Q5OdDf/eval-comparison-current.json` and gated `/tmp/casrt-quality.Q5OdDf/eval-comparison-current-gated.json`. Compared Qwen HF ASR, stable-ts quiet8, stable-ts 10dB, stable-ts + Qwen aligner reports. Ranking by review effort put 10dB first (`61/74`, ratio 82.4%), quiet8 second (`64/74`, ratio 86.5%), Qwen aligner third (`69/74`, ratio 93.2%), Qwen HF ASR fourth (`75/75`, ratio 100%). With product gates, all candidates fail; 10dB additionally fails MIX ratio gate at 58.2%, so default remains quiet8.
 - 2026-06-30 Japanese relaxed CER 포함 재비교: output `/tmp/casrt-quality.Q5OdDf/eval-comparison-current-relaxed-gated.json`. Ranking은 기존과 동일하게 10dB, quiet8, Qwen aligner, Qwen HF 순서다. Japanese relaxed CER는 stable-ts 계열 15.5%, Qwen HF 27.5%로 practical CER보다 낮지만, 모든 후보가 practical CER, time-aligned 500ms, channel accuracy, review effort gate를 실패한다. 10dB는 MIX ratio 58.2%도 실패하므로 default는 계속 quiet8이다.
 - 2026-06-30 unresolved candidate review gate 포함 재비교: output `/tmp/casrt-quality.Q5OdDf/eval-comparison-current-relaxed-review-gated.json`. `--max-candidate-review-ratio 0.00`을 추가해도 ranking은 10dB, quiet8, Qwen aligner, Qwen HF 순서로 유지된다. stable-ts 계열은 `candidate_review_ratio=0.0`이지만 기존 product gate를 실패한다. Qwen HF ASR는 `candidate_review_ratio=1.0`이라 timestamp/alignment 미확정 후보로도 실패한다.
+- 2026-06-30 `--product-gate` preset smoke: output `/tmp/casrt-quality.Q5OdDf/eval-comparison-current-product-gate.json`. Ranking은 기존과 동일하며 모든 후보가 `reference_type 'pseudo-gold' != 'human-reviewed'`를 포함해 실패한다. stable-ts 계열은 candidate review gate는 통과하지만 practical CER, timing, channel/review-effort gate를 실패하고, Qwen HF는 candidate review ratio 100%도 함께 실패한다.
 - 2026-06-30 priority review queue smoke: input `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-quiet8-3case-report-relaxed.json`, output `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-quiet8-review-effort-priority.json`. Result: `sort=priority_score_desc`, `item_count=64`, `reason_counts={text:46, channel:36, timing:41, missing_reference:7}`. Top item은 `01-front120` `seg_000003` vs `seg_000004`, reasons `text/channel/timing`, score `6590.22`로 사람이 먼저 들을 큰 복합 실패를 큐 상단에 올렸다.
 - 2026-06-30 `sweep-channel-attribution` smoke: input manifest `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-mix-3case-gold.json`, audio map `/tmp/casrt-quality.Q5OdDf/review-audio-map.json`, output `/tmp/casrt-quality.Q5OdDf/channel-sweep-smoke-guard`. Settings: 8dB/-40dBFS changed 33/60 segments, review effort 64/74, channel time-aligned accuracy 68.8%, MIX ratio 40.3%; 10dB/-40dBFS changed 20/60, review effort 60/74, channel time-aligned accuracy 75.0%, MIX ratio 62.7%. 10dB+quiet lowers edit count but violates the 50% MIX ratio gate, so default remains 8dB+quiet-side -40dBFS.
 - Qwen3-ForcedAligner를 6dB `stable-ts-cli-attributed` 후보에 적용한 실험은 output dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-qwen-aligner`, report `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-qwen-aligner-3case-report.json`에 있다. Result: practical CER 16.1%, time-aligned 500ms 47.0%, channel time-aligned accuracy 65.0%, candidate MIX ratio 25.8%, review effort 69/74, timing edits 51. 원 stable-ts CLI attributed의 timing/review effort보다 나빠 기본 경로로 쓰지 않는다.

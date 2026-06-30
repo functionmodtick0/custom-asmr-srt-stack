@@ -142,6 +142,7 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 검수 완료 SRT/master는 `casrt freeze-reference`로 시간순 정렬, stable id 재부여, `needs_review=false` 저장을 거쳐 기준본 master JSON으로 고정한다. 이 명령은 검수 자체를 증명하지 않으므로, 사람이 검수한 입력만 `reference_type=human-reviewed` manifest에 넣는다.
 
 모델 승격용 `eval-manifest` 실행에는 `--require-reference-type human-reviewed`를 함께 사용한다. pseudo-gold manifest는 regression/상대 비교 report를 남길 수 있지만 이 gate를 통과하지 못해야 정상이다.
+반복 실험에서는 `--product-gate`를 사용해 human-reviewed reference gate와 문서화된 metric threshold를 한 번에 적용한다. 개별 threshold 인자를 같이 주면 그 값이 product 기본값보다 우선한다.
 
 최소 평가 기준은 다음이다.
 
