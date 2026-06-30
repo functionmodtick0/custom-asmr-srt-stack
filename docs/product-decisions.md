@@ -419,6 +419,7 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - SRT import는 cue text 선두의 `[L]`, `[R]`, `[LR]`, `[MIX]`를 channel metadata로 읽고 본문 텍스트에서 제거한다.
 - `[LR]`은 현재 channel model에서 `MIX`로 저장한다.
 - `slice-case`는 audio와 transcript를 같은 구간으로 자르고 transcript timestamp를 0 기준으로 rebase한다. 경계에서 잘린 segment는 검수 필요 상태로 남긴다.
+- `prepare-review-cases`는 여러 `slice-case` 작업을 plan 파일로 재현 가능하게 실행하고, `audio-map.json`, `case-index.json`, reference/candidate master, eval manifest 산출물을 만든다. 이 명령도 검수 완료를 판정하지 않는다.
 - WAV가 아닌 입력은 ffmpeg로 16-bit PCM WAV로 변환한다.
 - stereo WAV는 `L`, `R`, `MIX` 세 channel 파일로 분리한다.
 - mono WAV는 `MIX`만 만든다.

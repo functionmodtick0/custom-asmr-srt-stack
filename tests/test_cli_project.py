@@ -493,6 +493,142 @@ class ProjectCliTests(unittest.TestCase):
                 ],
             )
 
+    def test_prepare_review_cases_writes_case_outputs_and_eval_manifest(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "source.wav"
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            plan = root / "plan.json"
+            output_dir = root / "cases"
+            write_stereo_samples(audio, [(100, 200), (300, 400), (500, 600), (700, 800)])
+            reference.write_text(
+                "1\n00:00:00,000 --> 00:00:00,002\n前半\n\n"
+                "2\n00:00:00,001 --> 00:00:00,003\n中央\n",
+                encoding="utf-8",
+            )
+            candidate.write_text("1\n00:00:00,001 --> 00:00:00,003\n候補\n", encoding="utf-8")
+            plan.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-case-slice-plan-v1",
+                        "reference_type": "pseudo-gold",
+                        "reference_notes": "stable-ts draft",
+                        "cases": [
+                            {
+                                "id": "front-a",
+                                "audio": "source.wav",
+                                "reference": "reference.srt",
+                                "candidate": "candidate.srt",
+                                "candidate_id": "draft-candidate",
+                                "start_ms": 1,
+                                "end_ms": 3,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(["prepare-review-cases", "--json", str(plan), "-o", str(output_dir)])
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["case_count"], 1)
+            self.assertEqual(report["review_count"], 1)
+            self.assertTrue((output_dir / "audio" / "front-a.wav").exists())
+            self.assertEqual(analyze_wav((output_dir / "audio" / "front-a.wav").read_bytes()).duration_ms, 2)
+            audio_map = json.loads((output_dir / "audio-map.json").read_text(encoding="utf-8"))
+            self.assertEqual(audio_map["items"], [{"case_id": "front-a", "audio": "audio/front-a.wav"}])
+            case_index = json.loads((output_dir / "case-index.json").read_text(encoding="utf-8"))
+            self.assertEqual(case_index["reference_type"], "pseudo-gold")
+            self.assertEqual(case_index["items"][0]["reference_notes"], "stable-ts draft")
+            self.assertEqual(case_index["items"][0]["candidate_id"], "draft-candidate")
+            sliced_reference = json.loads(
+                (output_dir / "references" / "front-a.master.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(sliced_reference["audio"]["duration_ms"], 2)
+            self.assertEqual(sliced_reference["segments"][0]["needs_review"], True)
+            eval_manifest = json.loads((output_dir / "eval-manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(eval_manifest["cases"][0]["reference"], "references/front-a.master.json")
+            self.assertEqual(eval_manifest["cases"][0]["candidate"], "candidates/front-a.master.json")
+
+    def test_prepare_review_cases_rejects_mixed_candidate_plan(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "source.wav"
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            plan = root / "plan.json"
+            output_dir = root / "cases"
+            write_stereo_samples(audio, [(100, 200), (300, 400)])
+            reference.write_text("1\n00:00:00,000 --> 00:00:00,002\n参照\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:00,000 --> 00:00:00,002\n候補\n", encoding="utf-8")
+            plan.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-case-slice-plan-v1",
+                        "cases": [
+                            {
+                                "id": "with-candidate",
+                                "audio": "source.wav",
+                                "reference": "reference.srt",
+                                "candidate": "candidate.srt",
+                                "start_ms": 0,
+                                "end_ms": 2,
+                            },
+                            {
+                                "id": "without-candidate",
+                                "audio": "source.wav",
+                                "reference": "reference.srt",
+                                "start_ms": 0,
+                                "end_ms": 2,
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, _, error = run_cli_with_stderr(
+                ["prepare-review-cases", str(plan), "-o", str(output_dir)]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertIn("cannot mix candidate and non-candidate cases", error)
+            self.assertFalse(output_dir.exists())
+
+    def test_prepare_review_cases_rejects_missing_source_before_output_side_effects(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            plan = root / "plan.json"
+            output_dir = root / "cases"
+            plan.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-case-slice-plan-v1",
+                        "cases": [
+                            {
+                                "id": "missing-source",
+                                "audio": "missing.wav",
+                                "reference": "missing.srt",
+                                "start_ms": 0,
+                                "end_ms": 1000,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, _, error = run_cli_with_stderr(
+                ["prepare-review-cases", str(plan), "-o", str(output_dir)]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertIn("source file does not exist", error)
+            self.assertFalse(output_dir.exists())
+
     def test_eval_transcript_quality_gate_fails_after_emitting_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

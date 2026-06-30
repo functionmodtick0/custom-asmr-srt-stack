@@ -330,6 +330,14 @@ uv run casrt slice-case input.wav input.srt \
 
 `slice-case`는 audio와 transcript를 같은 구간으로 자르고 transcript timestamp를 0 기준으로 되돌립니다. 경계에서 잘린 segment는 사람이 확인하도록 `needs_review=true`로 표시합니다.
 
+여러 검수 case를 한 번에 준비:
+
+```bash
+uv run casrt prepare-review-cases plan.json -o cases --json
+```
+
+`plan.json`은 `custom-asmr-case-slice-plan-v1` 형식이며 각 case의 `id`, `audio`, `reference`, `start_ms`, `end_ms`를 담습니다. 모든 case에 `candidate`가 있으면 `eval-manifest.json`도 함께 생성합니다. 출력에는 `audio-map.json`, `case-index.json`, `audio/*.wav`, `references/*.master.json`이 포함됩니다.
+
 기존 SRT 또는 master JSON을 고정 aligner로 재정렬:
 
 ```bash

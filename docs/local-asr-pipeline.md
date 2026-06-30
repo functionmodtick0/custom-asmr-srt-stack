@@ -653,8 +653,10 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 1. Gold set 운영
    - gold set manifest CLI는 추가됐다.
    - `casrt slice-case`는 긴 원본 audio와 SRT/master에서 matching WAV/master eval case를 자르고 timestamp를 0 기준으로 rebase한다. 경계에서 잘린 segment는 `needs_review=true`로 표시한다.
+   - `casrt prepare-review-cases`는 여러 slice plan을 한 번에 처리해 `audio-map.json`, `case-index.json`, `audio/*.wav`, `references/*.master.json`을 만들고, 모든 case에 candidate가 있으면 `eval-manifest.json`도 만든다.
    - 2026-06-30 실데이터 smoke: `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/uploads/01.淫魔＆魔女との遭遇.wav`와 `eval-01-full-stable-ts.srt`에서 0~60000ms를 잘라 `/tmp/casrt-quality.Q5OdDf/slice-case-smoke/01-front60.wav`와 `/tmp/casrt-quality.Q5OdDf/slice-case-smoke/01-front60.master.json`을 생성했다. Result: duration 60000ms, segments 14, review_count 1.
-   - `/data/uploads`, `/data/outputs`에서 30초~2분 단위 reference case를 늘린다.
+   - 2026-06-30 `prepare-review-cases` 실데이터 smoke: plan `/tmp/casrt-quality.Q5OdDf/prepare-review-cases-smoke-plan.json`, output `/tmp/casrt-quality.Q5OdDf/prepare-review-cases-smoke`. 01/04/07 front60 3개 case를 생성했고 result는 `case_count=3`, total `review_count=2`, audio duration은 모두 60000ms다. Case별 segments/review_count는 01: 14/1, 04: 9/0, 07: 11/1이다.
+   - `/data/uploads`, `/data/outputs`에서 30초~2분 단위 reference case를 늘릴 때는 `custom-asmr-case-slice-plan-v1` plan으로 재현 가능하게 기록한다.
    - 사람이 검수한 파일은 `casrt freeze-reference`로 stable id와 `needs_review=false`를 고정한다.
    - manifest에 `reference_type=human-reviewed`와 검수 메모를 기록한다.
    - CER, timing error, channel accuracy, human edit count를 manifest report로 기록한다.

@@ -285,6 +285,42 @@ uv run casrt slice-case input.wav input.srt \
 - segment id는 `seg_000001`부터 다시 부여한다.
 - 이 명령은 human-reviewed gold를 만들기 위한 case 준비 도구다. 검수 완료 판정은 하지 않으며, 사람이 확인한 뒤 `freeze-reference`와 `reference_type=human-reviewed` manifest를 사용한다.
 
+여러 case를 한 번에 준비할 때는 `prepare-review-cases`를 사용한다.
+
+```json
+{
+  "format": "custom-asmr-case-slice-plan-v1",
+  "reference_type": "pseudo-gold",
+  "reference_notes": "stable-ts draft; requires human review",
+  "cases": [
+    {
+      "id": "01-front60",
+      "audio": "../uploads/01.wav",
+      "reference": "../outputs/01-full.srt",
+      "candidate": "../outputs/01-candidate.srt",
+      "candidate_id": "stable-ts-attributed",
+      "start_ms": 0,
+      "end_ms": 60000
+    }
+  ]
+}
+```
+
+```bash
+uv run casrt prepare-review-cases plan.json -o cases --json
+```
+
+동작:
+
+- plan path는 plan 파일 위치 기준 상대 경로 또는 absolute path를 받는다.
+- output directory가 존재하고 비어 있지 않으면 실패한다.
+- 각 case는 `audio/<id>.wav`와 `references/<id>.master.json`으로 잘린다.
+- `case-index.json`은 `custom-asmr-review-case-set-v1`이고 원본 경로, slice range, output 경로, segment/review count를 보존한다.
+- `audio-map.json`은 `custom-asmr-review-audio-map-v1`이며 `review-pack`에 바로 넣을 수 있다.
+- 모든 case가 `candidate`를 가지면 `candidates/<id>.master.json`과 `eval-manifest.json`을 함께 만든다.
+- candidate가 있는 case와 없는 case를 섞으면 실패한다. 검수 준비와 후보 평가를 같은 plan에서 섞지 않는다.
+- `prepare-review-cases`도 검수 완료 판정을 하지 않는다. 사람이 확인한 뒤 `freeze-reference`와 `reference_type=human-reviewed` manifest를 사용한다.
+
 ### 기존 Transcript Alignment
 
 ```bash

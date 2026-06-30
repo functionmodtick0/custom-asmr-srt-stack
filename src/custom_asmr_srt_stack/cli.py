@@ -13,6 +13,7 @@ from typing import Any
 
 from custom_asmr_srt_stack.alignment import run_alignment_command
 from custom_asmr_srt_stack.audio import normalize_audio_to_wav, slice_wav, split_wav_channels
+from custom_asmr_srt_stack.case_batch import prepare_review_cases
 from custom_asmr_srt_stack.case_slicing import slice_master_document
 from custom_asmr_srt_stack.channel_attribution import (
     CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
@@ -199,6 +200,19 @@ def slice_case(args: argparse.Namespace) -> None:
             f"case sliced: audio={args.audio_output} transcript={args.transcript_output} "
             f"duration_ms={args.end_ms - args.start_ms} segments={len(sliced_master.segments)}"
         ),
+    )
+
+
+def prepare_review_cases_command(args: argparse.Namespace) -> None:
+    report = prepare_review_cases(
+        args.plan,
+        output_dir=args.output,
+        source_language=args.source_language,
+    )
+    emit(
+        args,
+        report,
+        f"review cases prepared: {args.output} cases={report['case_count']} review={report['review_count']}",
     )
 
 
@@ -648,6 +662,16 @@ def build_parser() -> argparse.ArgumentParser:
     slice_case_parser.add_argument("--transcript-output", type=Path, required=True)
     slice_case_parser.add_argument("--source-language", default="ja")
     slice_case_parser.set_defaults(func=slice_case)
+
+    prepare_review_cases_parser = subcommands.add_parser(
+        "prepare-review-cases",
+        parents=[output_parent],
+        help="Prepare multiple sliced review/eval cases from a JSON plan.",
+    )
+    prepare_review_cases_parser.add_argument("plan", type=Path)
+    prepare_review_cases_parser.add_argument("-o", "--output", type=Path, required=True)
+    prepare_review_cases_parser.add_argument("--source-language", default="ja")
+    prepare_review_cases_parser.set_defaults(func=prepare_review_cases_command)
 
     eval_transcript_parser = subcommands.add_parser("eval-transcript", help="Evaluate a candidate transcript.")
     eval_transcript_parser.add_argument("reference", type=Path)
