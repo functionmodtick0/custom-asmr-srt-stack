@@ -142,7 +142,10 @@ def aligned_bounds_ms(result: Any, duration_ms: int) -> tuple[int, int] | None:
 
     start_ms = max(0, min(duration_ms, min(starts)))
     end_ms = max(start_ms + 1, min(duration_ms, max(ends)))
-    if end_ms - start_ms < qwen_min_aligned_duration_ms():
+    aligned_duration_ms = end_ms - start_ms
+    if aligned_duration_ms < qwen_min_aligned_duration_ms():
+        return None
+    if aligned_duration_ms / max(1, duration_ms) < qwen_min_aligned_coverage_ratio():
         return None
     return start_ms, end_ms
 
@@ -283,6 +286,13 @@ def qwen_min_aligned_duration_ms() -> int:
     value = int(os.environ.get("CASRT_QWEN_ALIGNER_MIN_ALIGNED_DURATION_MS", "80"))
     if value < 0:
         raise ValueError("CASRT_QWEN_ALIGNER_MIN_ALIGNED_DURATION_MS must be non-negative")
+    return value
+
+
+def qwen_min_aligned_coverage_ratio() -> float:
+    value = float(os.environ.get("CASRT_QWEN_ALIGNER_MIN_COVERAGE_RATIO", "0.5"))
+    if value < 0 or value > 1:
+        raise ValueError("CASRT_QWEN_ALIGNER_MIN_COVERAGE_RATIO must be between 0 and 1")
     return value
 
 

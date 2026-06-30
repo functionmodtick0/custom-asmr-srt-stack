@@ -161,6 +161,19 @@ class QwenAlignerWorkerTests(unittest.TestCase):
 
         self.assertIsNone(aligned_bounds_ms(result, 1000))
 
+    def test_aligned_bounds_rejects_low_coverage_spans(self):
+        result = FakeAlignResult([FakeAlignItem("ね", 0.100, 0.400)])
+
+        with mock.patch.dict("os.environ", {"CASRT_QWEN_ALIGNER_MIN_COVERAGE_RATIO": "0.75"}, clear=False):
+            self.assertIsNone(aligned_bounds_ms(result, 1000))
+
+    def test_aligned_bounds_rejects_invalid_coverage_ratio(self):
+        result = FakeAlignResult([FakeAlignItem("ね", 0.100, 0.900)])
+
+        with mock.patch.dict("os.environ", {"CASRT_QWEN_ALIGNER_MIN_COVERAGE_RATIO": "1.1"}, clear=False):
+            with self.assertRaisesRegex(ValueError, "must be between 0 and 1"):
+                aligned_bounds_ms(result, 1000)
+
     def test_response_for_stdin_outputs_alignment_contract(self):
         aligner = FakeAligner()
         with tempfile.TemporaryDirectory() as tmpdir:

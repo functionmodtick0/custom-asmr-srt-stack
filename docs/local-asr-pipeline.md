@@ -235,6 +235,8 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
 
 이 command는 `{ audio_file, master }`를 받아 speech segment별 clip을 만들고 `Qwen3ForcedAligner.align(audio, text, language)`로 segment 내부 start/end를 갱신한다. text, channel, kind는 변경하지 않는다. 실행은 local snapshot path, offline env scrub, network-disabled Python socket guard, `local_files_only=True`, `trust_remote_code=False` 조건에서만 허용한다. worker는 `CASRT_ALIGNER_ENV_MODE=offline`, `CASRT_QWEN_ALIGNER_REQUIRE_LOCAL_MODEL_PATH=1`, `CASRT_QWEN_ALIGNER_LOCAL_FILES_ONLY=1`, `CASRT_QWEN_ALIGNER_DISABLE_NETWORK=1`이 모두 없으면 실패한다. `qwen-asr` package version, RECORD hash, RECORD에 기록된 각 설치 파일 hash, `qwen_asr` import origin도 고정값과 다르면 실패한다.
 
+Generic Qwen aligner worker는 두 가지 bounded fallback을 가진다. `CASRT_QWEN_ALIGNER_MIN_ALIGNED_DURATION_MS=80`보다 짧은 span은 비현실적인 timestamp로 보고 원래 segment timing을 유지한다. `CASRT_QWEN_ALIGNER_MIN_COVERAGE_RATIO=0.5`보다 원 segment coverage가 낮은 span도 과도한 trim으로 보고 원래 timing을 유지한다. 둘 다 UI/CLI 옵션으로 노출하지 않고 env 계약으로만 남긴다.
+
 2026-06-30 정적 보안 재검토 결과:
 
 - reviewer: `gpt-5.4 xhigh` subagent
@@ -461,6 +463,7 @@ uv run casrt eval-manifest gold.json \
 - 2026-06-30 `casrt review-effort` 실제 추출:
   - Qwen/Qwen3-ASR-1.7B + Qwen3-ForcedAligner: `/tmp/casrt-quality.Q5OdDf/qwen17-align-review-effort-items.json`, `item_count=77`, `reason_counts={text: 70, timing: 65, channel: 36, missing_reference: 2, extra_candidate: 3}`. Text 오류가 대부분이므로 alignment만으로 구제할 수 없는 후보로 본다.
   - stable-ts CSV channel + Qwen3-ForcedAligner: `/tmp/casrt-quality.Q5OdDf/stable-ts-csv-channel-qwen-aligner-review-effort-items.json`, `item_count=48`, `reason_counts={timing: 47, text: 4, channel: 4}`. Text는 보존되지만 Qwen aligner가 segment span을 자주 줄여 pseudo-reference 기준 timing review가 크게 늘어난다.
+- 2026-06-30 existing artifact 재계산에서 stable-ts CSV channel + Qwen aligner에 coverage fallback을 적용하면 threshold 0.5 기준 `review_effort` 48 -> 33, time-aligned 500ms 62.8% -> 75.7%로 개선된다. threshold 0.9는 `review_effort` 6, time-aligned 96.6%까지 올라가지만 원 timing을 대부분 보존하는 값이라 기본 guard로 쓰지 않는다. 제품 기본값은 과도한 trim만 막는 0.5다.
 
 case별 practical CER:
 
