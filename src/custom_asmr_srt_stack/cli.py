@@ -15,6 +15,7 @@ from custom_asmr_srt_stack.alignment import run_alignment_command
 from custom_asmr_srt_stack.audio import normalize_audio_to_wav, slice_wav, split_wav_channels
 from custom_asmr_srt_stack.case_slicing import slice_master_document
 from custom_asmr_srt_stack.channel_attribution import (
+    CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
     CHANNEL_ATTRIBUTION_THRESHOLD_DB,
     attribute_master_channels_by_energy,
 )
@@ -153,6 +154,7 @@ def attribute_channels(args: argparse.Namespace) -> None:
         left_audio=channels["L"],
         right_audio=channels["R"],
         threshold_db=args.threshold_db,
+        quiet_channel_max_dbfs=args.quiet_channel_max_dbfs,
     )
     write_text(args.output, json.dumps(report.master.to_json(), ensure_ascii=False, indent=2) + "\n")
     emit(
@@ -162,6 +164,7 @@ def attribute_channels(args: argparse.Namespace) -> None:
             "segments": report.segments,
             "changed_segments": report.changed_segments,
             "threshold_db": report.threshold_db,
+            "quiet_channel_max_dbfs": args.quiet_channel_max_dbfs,
         },
         f"channels attributed: {args.output} changed={report.changed_segments}/{report.segments}",
     )
@@ -624,6 +627,12 @@ def build_parser() -> argparse.ArgumentParser:
     attribute_channels_parser.add_argument("-o", "--output", type=Path, required=True)
     attribute_channels_parser.add_argument("--source-language", default="ja")
     attribute_channels_parser.add_argument("--threshold-db", type=float, default=CHANNEL_ATTRIBUTION_THRESHOLD_DB)
+    attribute_channels_parser.add_argument(
+        "--quiet-channel-max-dbfs",
+        type=float,
+        default=CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
+        help="Keep MIX unless the quieter side is at or below this dBFS value.",
+    )
     attribute_channels_parser.set_defaults(func=attribute_channels)
 
     slice_case_parser = subcommands.add_parser(

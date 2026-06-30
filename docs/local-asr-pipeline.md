@@ -228,14 +228,15 @@ Qwen은 `MIX`를 전사한다. 생성된 speech segment에 대해 같은 시간 
 현재 값:
 
 ```text
-L/R 확정 기준: 6.0 dB 이상 차이
+L/R 확정 기준: 8.0 dB 이상 차이
+quieter side gate: -40.0 dBFS 이하
 ```
 
 동작:
 
-- L이 R보다 6dB 이상 크면 `channel: "L"`
-- R이 L보다 6dB 이상 크면 `channel: "R"`
-- 차이가 작으면 `channel: "MIX"`
+- L이 R보다 8dB 이상 크고 R이 -40dBFS 이하이면 `channel: "L"`
+- R이 L보다 8dB 이상 크고 L이 -40dBFS 이하이면 `channel: "R"`
+- 차이가 작거나 양쪽이 모두 충분히 active이면 `channel: "MIX"`
 
 이 기준은 보수적이다. 채널을 틀리게 확정하는 것보다 `MIX`로 남기는 쪽을 우선한다.
 
@@ -245,7 +246,7 @@ L/R 확정 기준: 6.0 dB 이상 차이
 uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.attributed.master.json --json
 ```
 
-이 명령은 `MIX` speech segment만 relabel하며, 이미 `L`/`R`인 segment와 speech가 아닌 segment는 바꾸지 않는다. mono audio나 L/R을 만들 수 없는 audio는 실패한다. `--threshold-db`는 benchmark 재현용 CLI 옵션이고 WebUI에는 노출하지 않는다.
+이 명령은 `MIX` speech segment만 relabel하며, 이미 `L`/`R`인 segment와 speech가 아닌 segment는 바꾸지 않는다. mono audio나 L/R을 만들 수 없는 audio는 실패한다. `--threshold-db`와 `--quiet-channel-max-dbfs`는 benchmark 재현용 CLI 옵션이고 WebUI에는 노출하지 않는다.
 
 ## ForcedAligner 상태
 
@@ -526,8 +527,9 @@ uv run casrt eval-manifest gold.json \
   - stable-ts CSV channel + Qwen3-ForcedAligner pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-qwen-aligner`, clips 48개.
   - stable-ts CSV channel + Qwen3-ForcedAligner coverage05 pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-qwen-aligner-coverage05`, clips 33개.
   - stable-ts CLI attributed 6dB pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-cli-attributed`, clips 66개.
+  - stable-ts CLI attributed 8dB quiet-side pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-cli-attributed-quiet8`, clips 64개.
   - stable-ts CLI attributed 10dB pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-cli-attributed-th10`, clips 61개.
-  - 다섯 pack 모두 `custom-asmr-review-pack-v1` index와 `clips/*.wav` 생성을 확인했다.
+  - 여섯 pack 모두 `custom-asmr-review-pack-v1` index와 `clips/*.wav` 생성을 확인했다.
 
 case별 practical CER:
 
@@ -584,17 +586,19 @@ case별 practical CER:
 
 stable-ts에 L/R energy attribution만 붙인 channel 진단:
 
-| attribution threshold | practical CER | time-aligned 500ms ratio | channel time-aligned accuracy | comparable segments | candidate MIX ratio |
+| attribution setting | practical CER | time-aligned 500ms ratio | channel time-aligned accuracy | comparable segments | candidate MIX ratio |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 3dB | 16.1% | 56.7% | 68.2% | 22 | 17.9% |
-| 6dB | 16.1% | 56.7% | 65.0% | 20 | 23.9% |
-| 10dB | 16.1% | 56.7% | 76.9% | 13 | 58.2% |
+| threshold-only 3dB | 16.1% | 56.7% | 68.2% | 22 | 17.9% |
+| threshold-only 6dB | 16.1% | 56.7% | 65.0% | 20 | 23.9% |
+| threshold-only 10dB | 16.1% | 56.7% | 76.9% | 13 | 58.2% |
+| 8dB + quiet <= -40dBFS | 16.1% | 56.7% | 68.8% | 16 | 40.3% |
 
 2026-06-30 `casrt attribute-channels` 재현:
 
-- 6dB default: input dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-mix`, output dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed`, report `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-3case-report.json`. Result: practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 65.0%, candidate MIX ratio 23.9%, review effort 66/74, channel edits 41.
+- threshold-only 6dB historical run: input dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-mix`, output dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed`, report `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-3case-report.json`. Result: practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 65.0%, candidate MIX ratio 23.9%, review effort 66/74, channel edits 41.
 - 10dB sweep: output dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-th10`, report `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-th10-3case-report.json`. Result: practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 76.9%, candidate MIX ratio 58.2%, review effort 61/74, channel edits 28.
-- 결정: 기본값 6dB는 유지한다. 10dB는 wrong L/R를 줄여 review effort를 낮추지만 MIX ratio가 50% gate를 넘으므로 기본 승격하지 않는다.
+- 8dB + quiet-side -40dBFS default: output dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-quiet8`, report `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-quiet8-3case-report.json`, review queue `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-quiet8-review-effort-items.json`, review pack `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-cli-attributed-quiet8`. Result: practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 68.8%, candidate MIX ratio 40.3%, review effort 64/74, channel edits 36.
+- 결정: 현재 기본값은 8dB + quiet-side -40dBFS gate다. 기존 6dB threshold-only보다 review effort가 66 -> 64로 줄었고 MIX ratio 40.3%로 50% gate 안에 남는다. 10dB threshold-only는 wrong L/R를 더 줄이지만 MIX ratio가 50% gate를 넘으므로 기본 승격하지 않는다.
 - Qwen3-ForcedAligner를 6dB `stable-ts-cli-attributed` 후보에 적용한 실험은 output dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-qwen-aligner`, report `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-qwen-aligner-3case-report.json`에 있다. Result: practical CER 16.1%, time-aligned 500ms 47.0%, channel time-aligned accuracy 65.0%, candidate MIX ratio 25.8%, review effort 69/74, timing edits 51. 원 stable-ts CLI attributed의 timing/review effort보다 나빠 기본 경로로 쓰지 않는다.
 
 window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts baseline에서 실험했다. 100ms window, active threshold -60dBFS, margin 1~10dB, dominant fraction 35~75% sweep 기준 최고 channel time-aligned accuracy는 71.4%였고, segment 전체 RMS 10dB 방식의 76.9%보다 낮았다. 따라서 window 방식은 기본 구현으로 승격하지 않는다.
@@ -625,7 +629,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - Mega-ASR 산출물은 `/tmp/casrt-quality/mega-asr-results/routed`, `/tmp/casrt-quality/mega-asr-results/base-threshold-1p1`, `/tmp/casrt-quality/mega-asr-results/force-lora`에 있다. Report는 각각 `routed-3case-report.json`, `base-threshold-1p1-3case-report.json`, `force-lora-3case-report.json`이다.
 - `Atotti/llm-jp-4-8b-speech-asr`는 일본어 ASR 특화 8B 후보지만 model card상 `speech_llm_ja` 패키지(`git+https://github.com/Atotti/ja-speech-llm.git`)가 필요하다. 현재 설치된 Transformers `5.12.1`와 official main `5.13.0.dev0` 모두 `LlamaForSpeechLM`을 노출하지 않는다. 원격/외부 패키지 코드를 실행해야 하므로 사용자 명시 승인 전에는 자동 검증하지 않는다.
 - `AutoArk-AI/ARK-ASR-3B`는 최신 로컬 후보지만 model card metadata에 `custom_code`가 있다. 외부 모델 저장소 코드를 실행하는 `trust_remote_code=True`는 기본 실험 경로로 쓰지 않고, 사용자 명시 승인이나 first-party package 지원이 있을 때만 검증한다.
-- stable-ts/Whisper계 baseline은 현재 후보 중 text가 가장 좋지만 3-case practical CER 16.1%로 기준 10%를 넘고, time-aligned 500ms ratio도 56.7%로 기준 90%에 못 미친다. L/R energy attribution을 후처리로 붙여도 channel accuracy가 85%에 도달하지 않는다. 따라서 제품 기본 경로로 승격하지 않고 품질 상한 비교용으로만 유지한다. 다만 human-reviewed gold를 만들 때 우선 검수할 후보는 stable-ts CLI attributed 계열이다. 6dB는 기본 channel attribution 재현 pack이고, 10dB는 MIX ratio가 높아 기본값은 아니지만 review effort가 66 -> 61로 낮아 사람 검수 시작점으로 비교할 수 있다.
+- stable-ts/Whisper계 baseline은 현재 후보 중 text가 가장 좋지만 3-case practical CER 16.1%로 기준 10%를 넘고, time-aligned 500ms ratio도 56.7%로 기준 90%에 못 미친다. L/R energy attribution을 후처리로 붙여도 channel accuracy가 85%에 도달하지 않는다. 따라서 제품 기본 경로로 승격하지 않고 품질 상한 비교용으로만 유지한다. 다만 human-reviewed gold를 만들 때 우선 검수할 후보는 stable-ts CLI attributed 계열이다. 8dB + quiet-side gate가 기본 channel attribution pack이고, 10dB는 MIX ratio가 높아 기본값은 아니지만 review effort가 64 -> 61로 낮아 사람 검수 시작점으로 비교할 수 있다.
 - 2026년 공개 파이프라인 조사에서 WhisperJAV는 ASMR/VR/whisper 콘텐츠에 `fidelity` pipeline과 `aggressive` sensitivity를 권장한다. 또한 ChronosJAV는 Qwen ASR, anime-whisper, Kotoba처럼 timestamp 없는 모델의 text generation과 timestamp alignment를 분리한다. 이 방향은 모델 단독 교체보다 VAD/scene detection/alignment를 분리해서 검증해야 함을 뒷받침한다.
 - `TransWithAI/Whisper-Vad-EncDec-ASMR-onnx`는 Whisper encoder 기반 VAD이며 공개 discussion에서 일본어 ASMR 약 500시간으로 학습됐다고 설명된다. ASR 모델이 아니므로 text CER를 직접 개선하지는 않지만, energy splitter보다 ASMR whisper boundary를 더 잘 잡는지 `CASRT_VAD_COMMAND` 후보로 비교한다.
 - ASMR Whisper ONNX VAD는 외부 `inference.py`를 실행하지 않고 `casrt vad whisper-asmr-onnx`로 직접 구현한다. 입력은 CASRT VAD command stdin contract를 따르고 출력은 `{ intervals }`만 반환한다. 전처리는 16kHz mono, 30초 chunk, WhisperFeatureExtractor, ONNX Runtime, sigmoid activation, hysteresis postprocess로 제한한다.
@@ -663,7 +667,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
    - VAD도 WebUI 옵션으로 노출하지 않고 고정/내부 설정으로 둔다.
 
 4. Channel attribution 튜닝
-   - 현재 6dB threshold는 보수적 baseline이다.
+   - 현재 8dB threshold + quiet-side -40dBFS gate는 보수적 baseline이다.
    - gold set 기준으로 threshold와 MIX 유지 비율을 조정한다.
    - 필요하면 segment별 channel confidence를 debug metadata로만 저장한다.
 

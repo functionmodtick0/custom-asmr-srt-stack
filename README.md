@@ -343,7 +343,7 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
 uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.attributed.master.json --json
 ```
 
-기본 threshold는 6dB입니다. 2026-06-30 01/04/07 front120 pseudo-gold에서 stable-ts MIX-only 후보에 적용했을 때 practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 65.0%, MIX ratio 23.9%, review effort 66/74였습니다.
+기본값은 L/R 차이 8dB 이상 및 quieter side -40dBFS 이하입니다. 2026-06-30 01/04/07 front120 pseudo-gold에서 stable-ts MIX-only 후보에 적용했을 때 practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 68.8%, MIX ratio 40.3%, review effort 64/74였습니다.
 
 전사 결과 평가:
 

@@ -416,6 +416,31 @@ class ProjectCliTests(unittest.TestCase):
             self.assertIn("requires stereo audio", error)
             self.assertFalse(output_path.exists())
 
+    def test_attribute_channels_keeps_mix_when_quieter_side_is_active(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "active-both.wav"
+            source = root / "candidate.srt"
+            output_path = root / "attributed.master.json"
+            write_stereo_samples(audio, [(6000, 2000)] * 1000)
+            source.write_text("1\n00:00:00,000 --> 00:00:01,000\n両方\n", encoding="utf-8")
+
+            result, output = run_cli(
+                [
+                    "attribute-channels",
+                    "--json",
+                    str(audio),
+                    str(source),
+                    "-o",
+                    str(output_path),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output)["changed_segments"], 0)
+            attributed = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual(attributed["segments"][0]["channel"], "MIX")
+
     def test_slice_case_writes_rebased_audio_and_transcript(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
