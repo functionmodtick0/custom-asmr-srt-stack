@@ -467,7 +467,8 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - WebUI review-pack viewer는 `custom-asmr-review-pack-v1` `index.json`을 path로 열고, item별 `clip_url`을 통해 pack directory 내부 `clips/*.wav`만 재생한다.
 - Review-pack viewer는 pack 생성 옵션, VAD, threshold, 모델 선택을 추가로 노출하지 않는다. Pack 생성과 priority queue 정렬은 CLI가 담당하고 WebUI는 사람이 듣고 비교하는 화면만 담당한다.
 - WebUI review case editor는 `custom-asmr-review-case-set-v1` `case-index.json`을 path로 열고, case를 선택하면 audio와 reference master를 기존 segment editor에 붙인다.
-- Review case reference 수정은 원 reference master JSON과 `case-index.json`의 `segments`/`review_count`에 자동 저장한다. Human-reviewed 여부는 자동 판정하지 않으며, 승격은 여전히 `freeze-case-references --reference-type human-reviewed`와 manifest gate가 담당한다.
+- Review case reference 수정은 원 reference master JSON과 `case-index.json`의 `segments`/`review_count`에 자동 저장한다. `case 목록`으로 돌아가거나 `다음 case`로 이동할 때도 저장을 즉시 flush한다.
+- `다음 case`는 현재 case 뒤의 `review_count > 0` case를 우선 열고, 없으면 다음 순서 case를 연다. Human-reviewed 여부는 자동 판정하지 않으며, 승격은 여전히 `freeze-case-references --reference-type human-reviewed`와 manifest gate가 담당한다.
 
 ## 열린 결정
 

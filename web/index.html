@@ -61,7 +61,11 @@
               <span id="segmentCount">0 segments</span>
               <span id="selectedLabel">선택 없음</span>
             </div>
-            <button id="retranscribeButton" type="button" class="secondary">선택 재전사</button>
+            <div class="segment-toolbar-actions">
+              <button id="caseListButton" type="button" class="secondary" hidden>case 목록</button>
+              <button id="nextCaseButton" type="button" class="secondary" hidden>다음 case</button>
+              <button id="retranscribeButton" type="button" class="secondary">선택 재전사</button>
+            </div>
           </div>
 
           <div id="segmentList" class="segment-list" aria-live="polite"></div>

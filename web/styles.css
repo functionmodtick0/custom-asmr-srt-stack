@@ -256,6 +256,13 @@ canvas {
   border-bottom: 1px solid var(--line);
 }
 
+.segment-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 #segmentCount {
   display: block;
   font-weight: 700;

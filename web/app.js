@@ -30,6 +30,8 @@ const els = {
   modelButton: document.getElementById("modelButton"),
   startButton: document.getElementById("startButton"),
   retranscribeButton: document.getElementById("retranscribeButton"),
+  caseListButton: document.getElementById("caseListButton"),
+  nextCaseButton: document.getElementById("nextCaseButton"),
   exportMasterButton: document.getElementById("exportMasterButton"),
   exportTranslationButton: document.getElementById("exportTranslationButton"),
   importTranslatedButton: document.getElementById("importTranslatedButton"),
@@ -297,15 +299,21 @@ function render() {
     renderReviewPack();
     return;
   }
-  if (state.reviewCaseSet) {
+  if (state.reviewCaseSet && !state.reviewCaseReference) {
     renderReviewCaseSet();
     return;
   }
 
   const segments = state.master?.segments || [];
-  els.segmentCount.textContent = `${segments.length} segments`;
+  els.segmentCount.textContent = state.reviewCaseReference
+    ? `${state.reviewCaseReference.caseId} · ${segments.length} segments`
+    : `${segments.length} segments`;
   els.selectedLabel.textContent = state.selectedId ? state.selectedId : "선택 없음";
+  els.retranscribeButton.hidden = Boolean(state.reviewCaseReference);
   els.retranscribeButton.disabled = !state.selectedId;
+  els.caseListButton.hidden = !state.reviewCaseReference;
+  els.nextCaseButton.hidden = !state.reviewCaseReference;
+  els.nextCaseButton.disabled = nextReviewCaseIndex() === null;
   els.exportMasterButton.disabled = !state.master;
   els.exportTranslationButton.disabled = !state.master;
   els.exportSrtButton.disabled = !state.master;
@@ -324,6 +332,9 @@ function renderReviewPack() {
   els.selectedLabel.textContent =
     state.reviewPackSelectedIndex === null ? "선택 없음" : reviewPackSelectedLabel(items[state.reviewPackSelectedIndex]);
   els.retranscribeButton.disabled = true;
+  els.retranscribeButton.hidden = false;
+  els.caseListButton.hidden = true;
+  els.nextCaseButton.hidden = true;
   els.exportMasterButton.disabled = true;
   els.exportTranslationButton.disabled = true;
   els.exportSrtButton.disabled = true;
@@ -341,6 +352,9 @@ function renderReviewCaseSet() {
   els.segmentCount.textContent = `${items.length} review cases`;
   els.selectedLabel.textContent = "case 선택";
   els.retranscribeButton.disabled = true;
+  els.retranscribeButton.hidden = false;
+  els.caseListButton.hidden = true;
+  els.nextCaseButton.hidden = true;
   els.exportMasterButton.disabled = true;
   els.exportTranslationButton.disabled = true;
   els.exportSrtButton.disabled = true;
@@ -685,23 +699,37 @@ function scheduleSaveMaster() {
   window.clearTimeout(state.saveTimer);
   if (!state.master) return;
   state.saveTimer = window.setTimeout(() => {
-    safeRun(async () => {
-      if (state.reviewCaseReference) {
-        await apiPost("/api/review-case/save-reference", {
-          case_index_path: state.reviewCaseReference.caseIndexPath,
-          case_id: state.reviewCaseReference.caseId,
-          master: state.master,
-        });
-        return;
-      }
-      if (state.projectId) {
-        await apiPost("/api/projects/save-master", {
-          project_id: state.projectId,
-          master: state.master,
-        });
-      }
-    });
+    safeRun(saveCurrentMasterNow);
   }, 500);
+}
+
+async function saveCurrentMasterNow() {
+  window.clearTimeout(state.saveTimer);
+  if (!state.master) return null;
+  if (state.reviewCaseReference) {
+    const result = await apiPost("/api/review-case/save-reference", {
+      case_index_path: state.reviewCaseReference.caseIndexPath,
+      case_id: state.reviewCaseReference.caseId,
+      master: state.master,
+    });
+    syncReviewCaseItemAfterSave(result);
+    return result;
+  }
+  if (state.projectId) {
+    return apiPost("/api/projects/save-master", {
+      project_id: state.projectId,
+      master: state.master,
+    });
+  }
+  return null;
+}
+
+function syncReviewCaseItemAfterSave(result) {
+  const item = state.reviewCaseSet?.items?.[state.reviewCaseReference?.itemIndex];
+  if (!item) return;
+  item.segments = result.segments;
+  item.review_count = result.review_count;
+  item.reference_master = state.master;
 }
 
 async function startTranscription() {
@@ -760,6 +788,7 @@ async function loadReviewPath() {
     state.reviewPack = null;
     state.reviewPackSelectedIndex = null;
     state.reviewCaseSet = review;
+    state.reviewCaseReference = null;
     render();
     drawWaveform();
     setStatus("Review cases", `${review.items.length}개 case를 불러왔습니다.`);
@@ -786,14 +815,48 @@ function loadReviewCaseItem(index) {
   state.audioBuffer = null;
   state.reviewPack = null;
   state.reviewPackSelectedIndex = null;
-  state.reviewCaseSet = null;
   state.reviewCaseReference = {
     caseIndexPath: caseSet.case_index_path,
     caseId: item.id,
+    itemIndex: index,
   };
   render();
   drawWaveform();
   setStatus("Review case", `${item.id} reference를 열었습니다. 수정은 case reference에 자동 저장됩니다.`);
+}
+
+async function returnToReviewCases() {
+  if (!state.reviewCaseSet) return;
+  await saveCurrentMasterNow();
+  window.clearTimeout(state.stopTimer);
+  els.audioPlayer.removeAttribute("src");
+  els.audioPlayer.load();
+  state.master = null;
+  state.translated = null;
+  state.selectedId = null;
+  state.hasAudio = false;
+  state.audioBuffer = null;
+  state.reviewCaseReference = null;
+  render();
+  drawWaveform();
+  setStatus("Review cases", `${state.reviewCaseSet.items.length}개 case 목록으로 돌아왔습니다.`);
+}
+
+async function openNextReviewCase() {
+  const nextIndex = nextReviewCaseIndex();
+  if (nextIndex === null) return;
+  await saveCurrentMasterNow();
+  loadReviewCaseItem(nextIndex);
+}
+
+function nextReviewCaseIndex() {
+  const items = state.reviewCaseSet?.items || [];
+  const currentIndex = state.reviewCaseReference?.itemIndex;
+  if (currentIndex === undefined || currentIndex === null) return null;
+  for (let index = currentIndex + 1; index < items.length; index += 1) {
+    if ((items[index].review_count || 0) > 0) return index;
+  }
+  return currentIndex + 1 < items.length ? currentIndex + 1 : null;
 }
 
 async function safeRun(task) {
@@ -841,6 +904,8 @@ els.validateModelButton.addEventListener("click", () => safeRun(validateModelSet
 els.saveModelButton.addEventListener("click", saveModelSettings);
 els.importTranslatedButton.addEventListener("click", () => els.translatedInput.click());
 els.loadReviewPackButton.addEventListener("click", () => safeRun(loadReviewPath));
+els.caseListButton.addEventListener("click", () => safeRun(returnToReviewCases));
+els.nextCaseButton.addEventListener("click", () => safeRun(openNextReviewCase));
 els.reviewPackPathInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
