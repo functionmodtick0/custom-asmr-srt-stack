@@ -13,7 +13,12 @@ from typing import Any
 
 from custom_asmr_srt_stack.alignment import alignment_diagnostics, run_alignment_command
 from custom_asmr_srt_stack.audio import normalize_audio_to_wav, slice_wav, split_wav_channels
-from custom_asmr_srt_stack.case_batch import prepare_review_cases, review_case_status
+from custom_asmr_srt_stack.case_batch import (
+    EVAL_MANIFEST_BUILD_FORMAT,
+    build_eval_manifest_from_case_index,
+    prepare_review_cases,
+    review_case_status,
+)
 from custom_asmr_srt_stack.case_slicing import slice_master_document
 from custom_asmr_srt_stack.channel_attribution import (
     CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
@@ -281,6 +286,31 @@ def review_case_status_command(args: argparse.Namespace) -> None:
         )
     if args.fail_on_review and report["reference_review_count"] > 0:
         raise ValueError(f"review case status failed: review_count={report['reference_review_count']}")
+
+
+def build_eval_manifest(args: argparse.Namespace) -> None:
+    manifest = build_eval_manifest_from_case_index(
+        args.case_index,
+        reference_type=args.reference_type,
+        reference_notes=args.reference_notes,
+        fail_on_review=args.fail_on_review,
+        source_language=args.source_language,
+    )
+    write_text(args.output, json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+    report = {
+        "format": EVAL_MANIFEST_BUILD_FORMAT,
+        "output": str(args.output),
+        "case_index": str(args.case_index),
+        "case_count": len(manifest["cases"]),
+        "reference_type": manifest["reference_type"],
+    }
+    if "reference_notes" in manifest:
+        report["reference_notes"] = manifest["reference_notes"]
+    emit(
+        args,
+        report,
+        f"eval manifest built: {args.output} cases={report['case_count']} type={report['reference_type']}",
+    )
 
 
 def eval_transcript(args: argparse.Namespace) -> None:
@@ -873,6 +903,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Return a failing exit code after emitting the report if reference segments still need review.",
     )
     review_case_status_parser.set_defaults(func=review_case_status_command)
+
+    build_eval_manifest_parser = subcommands.add_parser(
+        "build-eval-manifest",
+        parents=[output_parent],
+        help="Build an eval manifest from a prepared review case index with candidates.",
+    )
+    build_eval_manifest_parser.add_argument("case_index", type=Path)
+    build_eval_manifest_parser.add_argument("-o", "--output", type=Path, required=True)
+    build_eval_manifest_parser.add_argument("--source-language", default="ja")
+    build_eval_manifest_parser.add_argument(
+        "--reference-type",
+        help="Override the manifest reference_type, e.g. human-reviewed after manual review.",
+    )
+    build_eval_manifest_parser.add_argument("--reference-notes")
+    build_eval_manifest_parser.add_argument(
+        "--fail-on-review",
+        action="store_true",
+        help="Fail if reference segments still have needs_review=true.",
+    )
+    build_eval_manifest_parser.set_defaults(func=build_eval_manifest)
 
     eval_transcript_parser = subcommands.add_parser("eval-transcript", help="Evaluate a candidate transcript.")
     eval_transcript_parser.add_argument("reference", type=Path)

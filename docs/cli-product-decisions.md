@@ -339,6 +339,28 @@ uv run casrt review-case-status cases/case-index.json --fail-on-issues --fail-on
 - `--fail-on-review`는 reference에 `needs_review=true`가 남아 있으면 report 출력/저장 후 실패한다.
 - 이 명령도 human-reviewed 여부를 추정하지 않는다. `reference_type`은 index에 기록된 값을 집계할 뿐이며, 모델 승격 평가는 여전히 `eval-manifest --require-reference-type human-reviewed`가 담당한다.
 
+candidate가 포함된 준비 case set에서 평가 manifest를 다시 만들 때는 `build-eval-manifest`를 사용한다.
+
+```bash
+uv run casrt build-eval-manifest cases/case-index.json \
+  --reference-type human-reviewed \
+  --reference-notes "manual review pass 2026-06-30" \
+  --fail-on-review \
+  -o cases/eval-manifest.human-reviewed.json \
+  --json
+```
+
+동작:
+
+- 입력은 `custom-asmr-review-case-set-v1` `case-index.json`이다.
+- 모든 case에 `candidate`가 있어야 한다. candidate가 없는 검수 준비 set에서는 실패한다.
+- `review-case-status`와 같은 방식으로 파일 존재 여부와 stale count를 확인하고, 문제가 있으면 manifest를 쓰지 않고 실패한다.
+- `--fail-on-review`는 reference에 `needs_review=true`가 남아 있으면 manifest를 쓰지 않고 실패한다.
+- output file은 `custom-asmr-eval-manifest-v1`이다.
+- `--reference-type`이 있으면 root `reference_type`을 override한다. 사람이 검수한 기준본을 모델 승격에 쓰려면 이 값을 `human-reviewed`로 명시한다.
+- `--reference-type`이 없으면 `case-index.json`의 root/item reference type을 보존한다.
+- 이 명령은 평가를 실행하지 않는다. 생성한 manifest는 `eval-manifest --require-reference-type human-reviewed`와 품질 gate로 별도 평가한다.
+
 ### 기존 Transcript Alignment
 
 ```bash

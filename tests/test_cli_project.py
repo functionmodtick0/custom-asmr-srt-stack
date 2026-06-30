@@ -838,6 +838,119 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(json.loads(status_path.read_text(encoding="utf-8"))["missing_file_count"], 2)
             self.assertIn("review case status failed", error)
 
+    def test_build_eval_manifest_from_prepared_candidate_cases(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "source.wav"
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            plan = root / "plan.json"
+            output_dir = root / "cases"
+            manifest_path = root / "human-reviewed-manifest.json"
+            write_stereo_samples(audio, [(100, 200), (300, 400), (500, 600), (700, 800)])
+            reference.write_text("1\n00:00:00,000 --> 00:00:00,002\n参照\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:00,000 --> 00:00:00,002\n候補\n", encoding="utf-8")
+            plan.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-case-slice-plan-v1",
+                        "reference_type": "pseudo-gold",
+                        "cases": [
+                            {
+                                "id": "front-a",
+                                "audio": "source.wav",
+                                "reference": "reference.srt",
+                                "candidate": "candidate.srt",
+                                "candidate_id": "draft-candidate",
+                                "start_ms": 0,
+                                "end_ms": 2,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            run_cli(["prepare-review-cases", str(plan), "-o", str(output_dir)])
+
+            result, output = run_cli(
+                [
+                    "build-eval-manifest",
+                    "--json",
+                    "--reference-type",
+                    "human-reviewed",
+                    "--reference-notes",
+                    "manual pass complete",
+                    str(output_dir / "case-index.json"),
+                    "-o",
+                    str(manifest_path),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["format"], "custom-asmr-eval-manifest-build-v1")
+            self.assertEqual(report["case_count"], 1)
+            self.assertEqual(report["reference_type"], "human-reviewed")
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["format"], "custom-asmr-eval-manifest-v1")
+            self.assertEqual(manifest["reference_type"], "human-reviewed")
+            self.assertEqual(manifest["reference_notes"], "manual pass complete")
+            self.assertEqual(
+                manifest["cases"][0],
+                {
+                    "id": "front-a",
+                    "reference": "references/front-a.master.json",
+                    "candidate": "candidates/front-a.master.json",
+                    "candidate_id": "draft-candidate",
+                },
+            )
+
+    def test_build_eval_manifest_can_require_clean_references(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "source.wav"
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            plan = root / "plan.json"
+            output_dir = root / "cases"
+            manifest_path = root / "manifest.json"
+            write_stereo_samples(audio, [(100, 200), (300, 400), (500, 600), (700, 800)])
+            reference.write_text("1\n00:00:00,000 --> 00:00:00,002\n参照\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:00,000 --> 00:00:00,002\n候補\n", encoding="utf-8")
+            plan.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-case-slice-plan-v1",
+                        "cases": [
+                            {
+                                "id": "front-a",
+                                "audio": "source.wav",
+                                "reference": "reference.srt",
+                                "candidate": "candidate.srt",
+                                "start_ms": 1,
+                                "end_ms": 3,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            run_cli(["prepare-review-cases", str(plan), "-o", str(output_dir)])
+
+            result, _, error = run_cli_with_stderr(
+                [
+                    "build-eval-manifest",
+                    "--fail-on-review",
+                    str(output_dir / "case-index.json"),
+                    "-o",
+                    str(manifest_path),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertIn("reference review_count=1", error)
+            self.assertFalse(manifest_path.exists())
+
     def test_eval_transcript_quality_gate_fails_after_emitting_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
