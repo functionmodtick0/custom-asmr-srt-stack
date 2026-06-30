@@ -70,6 +70,8 @@ Qwen/Qwen3-ASR-1.7B
 
 외부 runtime이나 downloaded tooling을 실행하는 실험/benchmark는 repo id 대신 고정 snapshot directory를 model id로 넘긴다. 우리 저장소의 일반 wrapper, 테스트, 문서 변경은 subagent 보안 검토 대상이 아니며 behavior test와 자체 리뷰로 검증한다.
 
+큰 local snapshot은 `/tmp`에만 두지 않는다. 재다운로드를 피하기 위해 gitignored `.casrt/models/`를 repo-local persistent cache로 쓰고, digest report는 `.casrt/model-digests/`에 둔다. benchmark에는 그 exact directory와 digest report를 기록한다.
+
 ```text
 Qwen3-ASR-1.7B snapshot: /home/brain-offloaded/.cache/huggingface/hub/models--Qwen--Qwen3-ASR-1.7B/snapshots/7278e1e70fe206f11671096ffdd38061171dd6e5
 Qwen3-ForcedAligner-0.6B snapshot: /home/brain-offloaded/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/c7cbfc2048c462b0d63a45797104fc9db3ad62b7
@@ -126,8 +128,8 @@ worker는 `AutoProcessor`와 `AutoModelForMultimodalLM`을 사용하고, model l
 
 - 모델: `Qwen/Qwen3-ASR-1.7B-hf`
 - revision: `057a3b044fcd31c433e7971ab40d68d20e7eae6d`
-- local dir: `/tmp/casrt-quality.Q5OdDf/models/qwen3-asr-1.7b-hf-057a3b044fcd31c433e7971ab40d68d20e7eae6d`
-- digest report: `/tmp/casrt-quality.Q5OdDf/qwen3-asr-1.7b-hf-local-dir-digest.json`
+- local dir: `.casrt/models/qwen3-asr-1.7b-hf-057a3b044fcd31c433e7971ab40d68d20e7eae6d` (moved to persistent cache on 2026-07-01)
+- digest report: `.casrt/model-digests/qwen3-asr-1.7b-hf-057a3b044fcd31c433e7971ab40d68d20e7eae6d-digest.json`
 - snapshot SHA-256: `9c5e214252ebc2be3d989c83bddc1dc7c8981389e8c27fb99f27516a1dfa556c`
 - `model.safetensors` SHA-256: `2db53c7d81bd9b8cbc6a074e89be2c968a0d373fb4ee68bb1b1e14f7042dfee1`, size 4,076,193,080 bytes.
 - root Transformers 5.12.1 smoke: `qwen3_asr` architecture unknown, fail closed.
@@ -657,7 +659,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
   - `cstr/MOSS-Transcribe-preview-2B-GGUF`는 2026-06-30 공개 GGUF 변환이고 language tag는 `en`, `zh`다. 일본어 tag가 없고 GGUF runtime은 별도 실행 경로가 필요하므로 현재 로컬 ASMR 우선 후보가 아니다.
   - `XiaomiMiMo/MiMo-V2.5-ASR`는 2026-04-24 revision `98641d537df521ac6df05f74090475694d9510b7`의 ASR 후보지만 language tag가 `zh`, `en`, `yue`이고 일본어 tag가 없다. 일본 ASMR 후보 우선순위에서 제외한다.
 - 2026-07-01 live HF metadata refresh:
-  - `ibm-granite/granite-speech-4.1-2b`: revision `de575db64086f84fdc79da4932d1076e965bc546`, tags `transformers`, `safetensors`, `granite_speech`, `automatic-speech-recognition`, `ja`, license Apache-2.0. Model card는 2026-04-29 release, Japanese ASR support, native `transformers>=4.52.1`, and Japanese-tailored synthetic data를 명시한다. 현재 repo env Transformers 5.12.1에서 `transformers.models.granite_speech`와 `AutoModelForSpeechSeq2Seq` import가 가능해 `local-granite-asr` adapter를 추가했다. 실제 evaluation은 exact local snapshot digest 후 수행한다.
+  - `ibm-granite/granite-speech-4.1-2b`: revision `de575db64086f84fdc79da4932d1076e965bc546`, tags `transformers`, `safetensors`, `granite_speech`, `automatic-speech-recognition`, `ja`, license Apache-2.0. Model card는 2026-04-29 release, Japanese ASR support, native `transformers>=4.52.1`, and Japanese-tailored synthetic data를 명시한다. 현재 repo env Transformers 5.12.1에서 `transformers.models.granite_speech`와 `AutoModelForSpeechSeq2Seq` import가 가능해 `local-granite-asr` adapter를 추가했다. Persistent cache는 `.casrt/models/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546`, digest report는 `.casrt/model-digests/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546-digest.json`, snapshot SHA-256은 `67c7d69184b53bae7a2bec077fbc88d8695a72f043fd70831f4e4830dc4752ca`다. 실제 evaluation은 이 exact local snapshot digest 기준으로 수행한다.
   - `ibm-granite/granite-speech-4.1-2b-plus`: revision `1454e6e1e33845ca9280ff65f52cf1141ba6e6e2`, tags `transformers`, `safetensors`, `granite_speech_plus`, multilingual ASR지만 HF card language metadata에 `ja`가 없다. Plus variant는 word-level timestamps/speaker attribution 가능성이 있어 후속 후보로 남기되, 일본어 tag와 worker contract를 먼저 확인한다.
   - `efwkjn/cohere-asr-ja`: revision `8f1794e22b802731bdbf8ce53ff08f96a5af2bb4`, tags `safetensors`, `cohere_asr`, `custom_code`, `ja`, base model `CohereLabs/cohere-transcribe-03-2026`. Current Transformers 5.12.1 has `cohere_asr`, but metadata includes `custom_code`; execution priority는 official Cohere snapshot과 Granite 이후로 둔다.
   - `AutoArk-AI/ARK-ASR-3B`: revision `1e28271b79edc97635783bea65abc89195a09ed3`, tags include `ja`, `safetensors`, `custom_code`; current Transformers 5.12.1 has no `arkasr`, so still external code/runtime review 대상이다.

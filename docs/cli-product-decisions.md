@@ -148,7 +148,7 @@ uv run casrt model digest /path/to/model/snapshots/<commit> \
   --json
 ```
 
-`model digest`는 local directory만 읽고 각 파일 SHA-256과 snapshot 전체 SHA-256을 기록한다. download/evaluation 결과 문서에는 exact revision path와 digest report path를 함께 적는다.
+`model digest`는 local directory만 읽고 각 파일 SHA-256과 snapshot 전체 SHA-256을 기록한다. download/evaluation 결과 문서에는 exact revision path와 digest report path를 함께 적는다. 장기 보관할 model snapshot은 `/tmp`가 아니라 gitignored `.casrt/models/<model>-<revision>` 아래에 둔다. digest report는 `.casrt/model-digests/<model>-<revision>-digest.json`에 둔다. `/tmp`는 다운로드 staging이나 삭제되어도 되는 실험 출력 전용이다.
 
 ### 전체 전사
 
@@ -247,7 +247,7 @@ uv run casrt project transcribe PROJECT_ID \
 ```bash
 uv run casrt project transcribe PROJECT_ID \
   --adapter local-granite-asr \
-  --model-id /path/to/granite-speech-4.1-2b/snapshots/<commit>
+  --model-id .casrt/models/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546
 ```
 
 동작:
@@ -257,7 +257,7 @@ uv run casrt project transcribe PROJECT_ID \
 - `--model-id`는 safetensors weight가 있는 existing local snapshot directory여야 한다. repo id나 cache miss fallback은 실패한다.
 - Granite는 timestamp를 반환하지 않으므로 chunk bounds를 segment timing으로 사용하고, 기존 MIX-first energy chunking과 L/R channel attribution을 적용한다.
 - 기본 prompt는 `<|audio|>transcribe the speech with proper punctuation and capitalization.`이고 `CASRT_GRANITE_ASR_PROMPT`로만 내부 override할 수 있다.
-- 실제 download/evaluation은 exact revision pin과 `casrt model digest` report 기록 전까지 실행하지 않는다.
+- 현재 local snapshot은 `.casrt/models/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546`이고 digest report는 `.casrt/model-digests/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546-digest.json`이다. snapshot SHA-256은 `67c7d69184b53bae7a2bec077fbc88d8695a72f043fd70831f4e4830dc4752ca`다.
 
 고정 VAD command contract:
 

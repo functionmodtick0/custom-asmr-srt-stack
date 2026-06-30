@@ -140,6 +140,15 @@ uv run casrt model digest /path/to/model/snapshots/<commit> \
   --json
 ```
 
+큰 local snapshot은 `/tmp`가 아니라 gitignored `.casrt/models/`에 보관합니다. digest report는 `.casrt/model-digests/`에 둡니다. 현재 재사용 가능한 로컬 캐시는 다음과 같습니다.
+
+```text
+.casrt/models/qwen3-asr-1.7b-hf-057a3b044fcd31c433e7971ab40d68d20e7eae6d
+.casrt/model-digests/qwen3-asr-1.7b-hf-057a3b044fcd31c433e7971ab40d68d20e7eae6d-digest.json
+.casrt/models/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546
+.casrt/model-digests/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546-digest.json
+```
+
 외부 런타임/다운로드 도구 실행처럼 보안 검토가 필요한 로컬 Qwen benchmark는 repo id 대신 Hugging Face cache의 고정 snapshot directory를 `--model-id`에 넣고 다음 env를 켭니다.
 
 ```bash
