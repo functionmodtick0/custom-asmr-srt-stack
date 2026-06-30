@@ -347,6 +347,72 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(aligned["segments"][0]["start_ms"], 120)
             self.assertEqual(aligned["segments"][0]["end_ms"], 900)
 
+    def test_align_transcript_writes_diagnostics_output(self):
+        script = (
+            "import json,sys;"
+            "json.load(sys.stdin);"
+            "print(json.dumps({'segments':[{'id':'seg_000001','start_ms':120,'end_ms':40100}]}))"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "audio.wav"
+            source = root / "candidate.master.json"
+            aligned_path = root / "aligned.master.json"
+            diagnostics_path = root / "alignment-diagnostics.json"
+            audio.write_bytes(b"audio")
+            source.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "audio.wav", "duration_ms": 50000},
+                        "segments": [
+                            {
+                                "id": "seg_000001",
+                                "start_ms": 0,
+                                "end_ms": 1000,
+                                "channel": "MIX",
+                                "kind": "speech",
+                                "text": "長い",
+                                "needs_review": False,
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.dict("os.environ", {"CASRT_ALIGNER_COMMAND": f"{sys.executable} -c {json.dumps(script)}"}):
+                result, output = run_cli(
+                    [
+                        "align-transcript",
+                        str(audio),
+                        str(source),
+                        "-o",
+                        str(aligned_path),
+                        "--diagnostics-output",
+                        str(diagnostics_path),
+                        "--json",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output)["diagnostics_output"], str(diagnostics_path))
+            diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+            self.assertEqual(diagnostics["format"], "custom-asmr-alignment-diagnostics-v1")
+            self.assertEqual(diagnostics["changed_segments"], 1)
+            self.assertEqual(diagnostics["review_flag_changes"], 1)
+            self.assertEqual(diagnostics["max_boundary_delta_ms"], 39100)
+            item = diagnostics["items"][0]
+            self.assertEqual(item["original_start_ms"], 0)
+            self.assertEqual(item["original_end_ms"], 1000)
+            self.assertEqual(item["aligned_start_ms"], 120)
+            self.assertEqual(item["aligned_end_ms"], 40100)
+            self.assertEqual(item["start_delta_ms"], 120)
+            self.assertEqual(item["end_delta_ms"], 39100)
+            self.assertTrue(item["needs_review_after"])
+
     def test_align_transcript_requires_configured_aligner_command(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

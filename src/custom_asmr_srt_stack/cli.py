@@ -11,7 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from custom_asmr_srt_stack.alignment import run_alignment_command
+from custom_asmr_srt_stack.alignment import alignment_diagnostics, run_alignment_command
 from custom_asmr_srt_stack.audio import normalize_audio_to_wav, slice_wav, split_wav_channels
 from custom_asmr_srt_stack.case_batch import prepare_review_cases
 from custom_asmr_srt_stack.case_slicing import slice_master_document
@@ -132,9 +132,30 @@ def align_transcript(args: argparse.Namespace) -> None:
     master = load_transcript_document(args.input, source_language=args.source_language)
     aligned = run_alignment_command(master, audio_file=args.audio, command=shlex.split(command))
     write_text(args.output, json.dumps(aligned.to_json(), ensure_ascii=False, indent=2) + "\n")
+    diagnostics_output = None
+    if args.diagnostics_output is not None:
+        diagnostics_output = str(args.diagnostics_output)
+        write_text(
+            args.diagnostics_output,
+            json.dumps(
+                alignment_diagnostics(
+                    master,
+                    aligned,
+                    audio_file=args.audio,
+                    input_file=args.input,
+                    output_file=args.output,
+                ),
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+        )
+    payload = {"output": str(args.output), "segments": len(aligned.segments), "aligner": "CASRT_ALIGNER_COMMAND"}
+    if diagnostics_output is not None:
+        payload["diagnostics_output"] = diagnostics_output
     emit(
         args,
-        {"output": str(args.output), "segments": len(aligned.segments), "aligner": "CASRT_ALIGNER_COMMAND"},
+        payload,
         f"transcript aligned: {args.output} segments={len(aligned.segments)}",
     )
 
@@ -653,6 +674,11 @@ def build_parser() -> argparse.ArgumentParser:
     align_transcript_parser.add_argument("input", type=Path)
     align_transcript_parser.add_argument("-o", "--output", type=Path, required=True)
     align_transcript_parser.add_argument("--source-language", default="ja")
+    align_transcript_parser.add_argument(
+        "--diagnostics-output",
+        type=Path,
+        help="Write per-segment timing delta diagnostics JSON.",
+    )
     align_transcript_parser.set_defaults(func=align_transcript)
 
     attribute_channels_parser = subcommands.add_parser(

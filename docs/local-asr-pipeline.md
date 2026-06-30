@@ -317,6 +317,7 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
 - output: `/tmp/casrt-quality.Q5OdDf/qwen-aligner-smoke-cli-output.master.json`
 - result: `seg_000001` moved from `980-3800ms` to `1460-2660ms`, matching direct worker smoke
 - note: sandboxed run used `UV_CACHE_DIR=/tmp/casrt-uv-cache` to avoid default uv cache write errors.
+- 2026-06-30 `--diagnostics-output` no-op real-data smoke: input `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-quiet8/01-front120.master.json`, audio `/tmp/casrt-quality.Q5OdDf/01-front120.wav`, output `/tmp/casrt-quality.Q5OdDf/alignment-diagnostics-smoke/01-front120.aligned.master.json`, diagnostics `/tmp/casrt-quality.Q5OdDf/alignment-diagnostics-smoke/01-front120.alignment-diagnostics.json`. Result: `segments=25`, `changed_segments=0`, `review_flag_changes=0`, `max_boundary_delta_ms=0`; output master is byte-identical to input.
 
 현재 판단:
 

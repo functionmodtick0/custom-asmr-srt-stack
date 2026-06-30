@@ -345,6 +345,8 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
   uv run casrt align-transcript audio.wav candidate.master.json -o candidate.aligned.master.json --json
 ```
 
+튜닝/검수용으로는 `--diagnostics-output alignment-diagnostics.json`을 추가해 segment별 original/aligned timing delta를 저장할 수 있습니다.
+
 기존 SRT 또는 master JSON에 L/R energy channel attribution 적용:
 
 ```bash

@@ -326,6 +326,8 @@ uv run casrt prepare-review-cases plan.json -o cases --json
 ```bash
 CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.qwen_aligner_worker --model-id /path/to/Qwen3-ForcedAligner-0.6B/snapshot' \
   uv run casrt align-transcript audio.wav candidate.master.json -o candidate.aligned.master.json --json
+CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.qwen_aligner_worker --model-id /path/to/Qwen3-ForcedAligner-0.6B/snapshot' \
+  uv run casrt align-transcript audio.wav candidate.master.json -o candidate.aligned.master.json --diagnostics-output alignment-diagnostics.json --json
 ```
 
 동작:
@@ -334,6 +336,7 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
 - audio path와 transcript를 `CASRT_ALIGNER_COMMAND`에 넘겨 segment timing을 갱신한다.
 - output은 `master.json`으로 저장한다.
 - text, channel, kind는 aligner contract상 변경하지 않는다.
+- `--diagnostics-output`은 `custom-asmr-alignment-diagnostics-v1` JSON을 쓴다. 각 segment의 original/aligned start/end, start/end/duration delta, review flag 변화를 담으며 WebUI 옵션으로 노출하지 않는다.
 - 이 명령은 기존 후보를 평가 harness에 넣기 위한 도구이며 WebUI 옵션을 늘리지 않는다.
 
 ### 기존 Transcript Channel Attribution

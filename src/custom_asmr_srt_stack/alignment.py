@@ -128,6 +128,70 @@ def run_alignment_command(master: MasterDocument, *, audio_file: Path, command: 
     return merge_alignment_output(master, output)
 
 
+def alignment_diagnostics(
+    original: MasterDocument,
+    aligned: MasterDocument,
+    *,
+    audio_file: Path,
+    input_file: Path,
+    output_file: Path,
+) -> dict[str, Any]:
+    aligned_by_id = {segment.id: segment for segment in aligned.segments}
+    items = []
+    changed_segments = 0
+    review_flag_changes = 0
+    max_boundary_delta_ms = 0
+    for segment in original.segments:
+        aligned_segment = aligned_by_id.get(segment.id)
+        if aligned_segment is None:
+            raise ValueError(f"aligned master is missing segment id {segment.id!r}")
+        start_delta = aligned_segment.start_ms - segment.start_ms
+        end_delta = aligned_segment.end_ms - segment.end_ms
+        duration_delta = (aligned_segment.end_ms - aligned_segment.start_ms) - (segment.end_ms - segment.start_ms)
+        changed = start_delta != 0 or end_delta != 0
+        review_flag_changed = aligned_segment.needs_review != segment.needs_review
+        if changed:
+            changed_segments += 1
+        if review_flag_changed:
+            review_flag_changes += 1
+        max_boundary_delta_ms = max(max_boundary_delta_ms, abs(start_delta), abs(end_delta))
+        items.append(
+            {
+                "id": segment.id,
+                "kind": segment.kind,
+                "channel": segment.channel,
+                "text": segment.text,
+                "original_start_ms": segment.start_ms,
+                "original_end_ms": segment.end_ms,
+                "aligned_start_ms": aligned_segment.start_ms,
+                "aligned_end_ms": aligned_segment.end_ms,
+                "start_delta_ms": start_delta,
+                "end_delta_ms": end_delta,
+                "duration_delta_ms": duration_delta,
+                "changed": changed,
+                "needs_review_before": segment.needs_review,
+                "needs_review_after": aligned_segment.needs_review,
+                "review_flag_changed": review_flag_changed,
+            }
+        )
+
+    unknown_ids = sorted({segment.id for segment in aligned.segments} - {segment.id for segment in original.segments})
+    if unknown_ids:
+        raise ValueError(f"aligned master contains unknown segment ids: {', '.join(unknown_ids)}")
+
+    return {
+        "format": "custom-asmr-alignment-diagnostics-v1",
+        "audio": str(audio_file),
+        "input": str(input_file),
+        "output": str(output_file),
+        "segments": len(original.segments),
+        "changed_segments": changed_segments,
+        "review_flag_changes": review_flag_changes,
+        "max_boundary_delta_ms": max_boundary_delta_ms,
+        "items": items,
+    }
+
+
 def aligner_env() -> dict[str, str] | None:
     mode = os.environ.get("CASRT_ALIGNER_ENV_MODE", "inherit").strip().lower()
     if mode in {"", "inherit"}:
