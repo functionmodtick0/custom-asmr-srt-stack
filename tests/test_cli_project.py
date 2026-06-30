@@ -356,6 +356,29 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(result, 1)
             self.assertIn("channel time-aligned MIX ratio", error)
 
+    def test_eval_transcript_quality_gate_fails_when_review_effort_is_too_high(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\nねえ\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:01,000 --> 00:00:02,000\nね\n", encoding="utf-8")
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "eval-transcript",
+                    "--json",
+                    "--max-segments-needing-edit-ratio",
+                    "0.0",
+                    str(reference),
+                    str(candidate),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(json.loads(output)["review_effort"]["segments_needing_edit"], 1)
+            self.assertIn("segments needing edit ratio", error)
+
     def test_eval_manifest_outputs_aggregated_json_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

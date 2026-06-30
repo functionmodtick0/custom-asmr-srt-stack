@@ -13,6 +13,7 @@ EVAL_FORMAT = "custom-asmr-eval-v1"
 EVAL_MANIFEST_FORMAT = "custom-asmr-eval-manifest-v1"
 EVAL_SUITE_FORMAT = "custom-asmr-eval-suite-v1"
 EVAL_CHANNELS = ("L", "R", "MIX")
+REVIEW_EFFORT_TIMING_THRESHOLD_MS = 500
 
 
 def load_transcript_document(path: Path, *, source_language: str = "ja") -> MasterDocument:
@@ -40,6 +41,7 @@ def evaluate_transcripts(reference: MasterDocument, candidate: MasterDocument) -
     channel_summary = channel_accuracy_summary(paired)
     time_aligned_channel_summary = channel_accuracy_summary(time_aligned_paired)
     review_count = sum(1 for segment in candidate.segments if segment.needs_review)
+    review_effort = review_effort_summary(reference_speech, candidate_speech, time_aligned_paired)
 
     return {
         "format": EVAL_FORMAT,
@@ -55,6 +57,7 @@ def evaluate_transcripts(reference: MasterDocument, candidate: MasterDocument) -
             "candidate_review_count": review_count,
             "candidate_review_ratio": review_count / max(1, len(candidate.segments)),
         },
+        "review_effort": review_effort,
     }
 
 
@@ -178,6 +181,7 @@ def aggregate_eval_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
         "channel": aggregate_channel_reports(reports, "channel"),
         "channel_time_aligned": aggregate_channel_reports(reports, "channel_time_aligned"),
         "review": aggregate_review_reports(reports),
+        "review_effort": aggregate_review_effort_reports(reports),
     }
 
 
@@ -305,6 +309,32 @@ def aggregate_review_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def aggregate_review_effort_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
+    threshold = reports[0]["review_effort"]["timing_threshold_ms"]
+    reference_segments = sum(report["review_effort"]["reference_segments"] for report in reports)
+    candidate_segments = sum(report["review_effort"]["candidate_segments"] for report in reports)
+    matched_reference_segments = sum(report["review_effort"]["matched_reference_segments"] for report in reports)
+    text_edit_segments = sum(report["review_effort"]["text_edit_segments"] for report in reports)
+    channel_edit_segments = sum(report["review_effort"]["channel_edit_segments"] for report in reports)
+    timing_edit_segments = sum(report["review_effort"]["timing_edit_segments"] for report in reports)
+    missing_reference_segments = sum(report["review_effort"]["missing_reference_segments"] for report in reports)
+    extra_candidate_segments = sum(report["review_effort"]["extra_candidate_segments"] for report in reports)
+    segments_needing_edit = sum(report["review_effort"]["segments_needing_edit"] for report in reports)
+    return {
+        "timing_threshold_ms": threshold,
+        "reference_segments": reference_segments,
+        "candidate_segments": candidate_segments,
+        "matched_reference_segments": matched_reference_segments,
+        "text_edit_segments": text_edit_segments,
+        "channel_edit_segments": channel_edit_segments,
+        "timing_edit_segments": timing_edit_segments,
+        "missing_reference_segments": missing_reference_segments,
+        "extra_candidate_segments": extra_candidate_segments,
+        "segments_needing_edit": segments_needing_edit,
+        "segments_needing_edit_ratio": segments_needing_edit / max(1, reference_segments + extra_candidate_segments),
+    }
+
+
 def speech_segments(master: MasterDocument) -> tuple[Segment, ...]:
     return tuple(segment for segment in master.segments if segment.kind == "speech" and segment.text)
 
@@ -361,6 +391,55 @@ def text_error_summary(reference_text: str, candidate_text: str, *, mode: str) -
         "edit_distance": distance,
         "reference_characters": reference_chars,
         "candidate_characters": len(normalized_candidate),
+    }
+
+
+def review_effort_summary(
+    reference_segments: tuple[Segment, ...],
+    candidate_segments: tuple[Segment, ...],
+    paired_segments: list[tuple[Segment, Segment]],
+) -> dict[str, Any]:
+    reference_segments_needing_edit: set[str] = set()
+    matched_reference_ids = {reference.id for reference, _ in paired_segments}
+
+    text_edit_segments = 0
+    channel_edit_segments = 0
+    timing_edit_segments = 0
+    for reference, candidate in paired_segments:
+        if normalize_for_cer(reference.text, mode="practical") != normalize_for_cer(candidate.text, mode="practical"):
+            text_edit_segments += 1
+            reference_segments_needing_edit.add(reference.id)
+        if reference.channel != candidate.channel:
+            channel_edit_segments += 1
+            reference_segments_needing_edit.add(reference.id)
+        if (
+            abs(reference.start_ms - candidate.start_ms) > REVIEW_EFFORT_TIMING_THRESHOLD_MS
+            or abs(reference.end_ms - candidate.end_ms) > REVIEW_EFFORT_TIMING_THRESHOLD_MS
+        ):
+            timing_edit_segments += 1
+            reference_segments_needing_edit.add(reference.id)
+
+    missing_reference_segments = len(reference_segments) - len(matched_reference_ids)
+    extra_candidate_segments = sum(
+        1
+        for candidate in candidate_segments
+        if all(overlap_ms(reference, candidate) == 0 for reference in reference_segments)
+    )
+    segments_needing_edit = (
+        len(reference_segments_needing_edit) + missing_reference_segments + extra_candidate_segments
+    )
+    return {
+        "timing_threshold_ms": REVIEW_EFFORT_TIMING_THRESHOLD_MS,
+        "reference_segments": len(reference_segments),
+        "candidate_segments": len(candidate_segments),
+        "matched_reference_segments": len(paired_segments),
+        "text_edit_segments": text_edit_segments,
+        "channel_edit_segments": channel_edit_segments,
+        "timing_edit_segments": timing_edit_segments,
+        "missing_reference_segments": missing_reference_segments,
+        "extra_candidate_segments": extra_candidate_segments,
+        "segments_needing_edit": segments_needing_edit,
+        "segments_needing_edit_ratio": segments_needing_edit / max(1, len(reference_segments) + extra_candidate_segments),
     }
 
 

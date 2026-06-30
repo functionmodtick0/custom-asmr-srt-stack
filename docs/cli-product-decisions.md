@@ -260,8 +260,9 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 - forced alignment 재평가를 위해 boundary sample 수, max boundary error, 250ms/500ms 이내 boundary ratio를 계산한다.
 - channel attribution 튜닝을 위해 index 기반 `channel`과 time-overlap 기반 `channel_time_aligned`의 L/R/MIX confusion, candidate MIX 유지 비율, L/R channel accuracy를 계산한다.
 - `needs_review` 비율을 계산한다.
+- `review_effort`는 practical text mismatch, channel mismatch, 500ms 초과 timing mismatch, missing reference, extra candidate를 세고, 같은 reference segment의 중복 수정 필요는 한 번만 `segments_needing_edit`에 반영한다.
 - 평가는 모델 기본값 승격이나 threshold 변경 전에 실행한다.
-- `--max-practical-cer`, `--min-time-aligned-500ms-ratio`, `--min-channel-time-aligned-accuracy`, `--max-channel-time-aligned-mix-ratio`를 지정하면 품질 gate로 동작한다. gate 실패 시 report는 stdout/file에 남기고 exit code를 실패로 반환한다.
+- `--max-practical-cer`, `--min-time-aligned-500ms-ratio`, `--min-channel-time-aligned-accuracy`, `--max-channel-time-aligned-mix-ratio`, `--max-segments-needing-edit-ratio`를 지정하면 품질 gate로 동작한다. gate 실패 시 report는 stdout/file에 남기고 exit code를 실패로 반환한다.
 
 여러 샘플을 한 번에 평가할 때는 gold set manifest를 사용한다.
 
@@ -290,7 +291,7 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 - `reference`와 `candidate` 경로는 manifest 파일 위치 기준 상대 경로 또는 absolute path를 받는다.
 - 각 case는 기존 `eval-transcript`와 동일한 리포트를 보존한다.
 - summary CER는 case 평균이 아니라 전체 edit distance / 전체 reference characters로 계산한다.
-- summary timing/channel/review는 전체 paired/boundary/comparable/candidate segment 수 기준으로 가중 집계한다.
+- summary timing/channel/review/review_effort는 전체 paired/boundary/comparable/candidate/reference segment 수 기준으로 가중 집계한다.
 - case `id`는 중복될 수 없다.
 - root 또는 case의 `reference_type`과 `reference_notes`를 report에 보존한다.
 - 제품 의사결정에서는 `reference_type=human-reviewed`만 모델 승격 근거로 쓰고, `pseudo-gold`는 regression/상대 비교로만 사용한다.

@@ -165,6 +165,10 @@ def enforce_quality_gate(metrics: dict[str, Any], args: argparse.Namespace) -> N
         args.max_channel_time_aligned_mix_ratio,
         "--max-channel-time-aligned-mix-ratio",
     )
+    max_segments_needing_edit_ratio = ratio_arg(
+        args.max_segments_needing_edit_ratio,
+        "--max-segments-needing-edit-ratio",
+    )
 
     if max_practical_cer is not None:
         practical_cer = float(metrics["text_practical"]["cer"])
@@ -190,6 +194,13 @@ def enforce_quality_gate(metrics: dict[str, Any], args: argparse.Namespace) -> N
         if mix_ratio > max_channel_time_aligned_mix_ratio:
             failures.append(
                 f"channel time-aligned MIX ratio {mix_ratio:.4f} > {max_channel_time_aligned_mix_ratio:.4f}"
+            )
+
+    if max_segments_needing_edit_ratio is not None:
+        edit_ratio = float(metrics["review_effort"]["segments_needing_edit_ratio"])
+        if edit_ratio > max_segments_needing_edit_ratio:
+            failures.append(
+                f"segments needing edit ratio {edit_ratio:.4f} > {max_segments_needing_edit_ratio:.4f}"
             )
 
     if failures:
@@ -647,6 +658,11 @@ def add_quality_gate_args(parser: argparse.ArgumentParser) -> None:
         "--max-channel-time-aligned-mix-ratio",
         type=float,
         help="Fail if time-aligned candidate MIX ratio is above this 0..1 ratio.",
+    )
+    parser.add_argument(
+        "--max-segments-needing-edit-ratio",
+        type=float,
+        help="Fail if review effort segment edit ratio is above this 0..1 ratio.",
     )
 
 

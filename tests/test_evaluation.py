@@ -62,6 +62,11 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["channel"]["candidate_mix_segments"], 0)
         self.assertEqual(report["channel_time_aligned"]["accuracy"], 0.5)
         self.assertEqual(report["review"]["candidate_review_count"], 1)
+        self.assertEqual(report["review_effort"]["text_edit_segments"], 1)
+        self.assertEqual(report["review_effort"]["channel_edit_segments"], 1)
+        self.assertEqual(report["review_effort"]["timing_edit_segments"], 0)
+        self.assertEqual(report["review_effort"]["segments_needing_edit"], 1)
+        self.assertEqual(report["review_effort"]["segments_needing_edit_ratio"], 0.5)
 
     def test_time_aligned_timing_ignores_non_overlapping_extra_candidate_segments(self):
         reference = master_with_segments(
@@ -85,6 +90,9 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["timing_time_aligned"]["mean_boundary_error_ms"], 100)
         self.assertEqual(report["channel_time_aligned"]["comparable_segments"], 2)
         self.assertEqual(report["channel_time_aligned"]["accuracy"], 1.0)
+        self.assertEqual(report["review_effort"]["extra_candidate_segments"], 1)
+        self.assertEqual(report["review_effort"]["segments_needing_edit"], 1)
+        self.assertEqual(report["review_effort"]["segments_needing_edit_ratio"], 1 / 3)
 
     def test_practical_cer_normalizes_width_spacing_and_punctuation(self):
         self.assertEqual(normalize_for_cer("ね、 魔女ちゃん！？", mode="practical"), "ね魔女ちゃん")
@@ -148,6 +156,9 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["summary"]["timing_time_aligned"]["matched_reference_segments"], 2)
         self.assertEqual(report["summary"]["timing_time_aligned"]["reference_match_ratio"], 1.0)
         self.assertEqual(report["summary"]["timing_time_aligned"]["within_500ms_ratio"], 1.0)
+        self.assertEqual(report["summary"]["review_effort"]["text_edit_segments"], 1)
+        self.assertEqual(report["summary"]["review_effort"]["segments_needing_edit"], 1)
+        self.assertEqual(report["summary"]["review_effort"]["segments_needing_edit_ratio"], 0.5)
         self.assertEqual(report["summary"]["channel"]["paired_segments"], 2)
         self.assertEqual(report["summary"]["channel"]["confusion"]["MIX"]["MIX"], 2)
         self.assertEqual(report["summary"]["channel"]["candidate_mix_ratio"], 1.0)

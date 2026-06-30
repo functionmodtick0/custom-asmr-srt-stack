@@ -302,7 +302,8 @@ uv run casrt eval-transcript reference.srt candidate.json \
   --max-practical-cer 0.10 \
   --min-time-aligned-500ms-ratio 0.90 \
   --min-channel-time-aligned-accuracy 0.85 \
-  --max-channel-time-aligned-mix-ratio 0.50
+  --max-channel-time-aligned-mix-ratio 0.50 \
+  --max-segments-needing-edit-ratio 0.15
 ```
 
 gold set manifest 평가:
@@ -331,10 +332,11 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 uv run casrt eval-manifest gold.json \
   --require-reference-type human-reviewed \
   --max-practical-cer 0.10 \
-  --min-time-aligned-500ms-ratio 0.90
+  --min-time-aligned-500ms-ratio 0.90 \
+  --max-segments-needing-edit-ratio 0.15
 ```
 
-현재 평가는 strict CER, practical CER, segment index 기준 timing 오차, time-overlap 기준 timing ratio, L/R/MIX channel confusion, L/R channel accuracy, review 비율을 계산합니다.
+현재 평가는 strict CER, practical CER, segment index 기준 timing 오차, time-overlap 기준 timing ratio, L/R/MIX channel confusion, L/R channel accuracy, review 비율, segment 단위 `review_effort`를 계산합니다.
 
 ## 테스트
 

@@ -262,6 +262,7 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 - candidate MIX 유지 비율
 - index 기준 `channel` 및 time-overlap 기준 `channel_time_aligned` L/R channel accuracy
 - candidate `needs_review` 비율
+- segment 단위 `review_effort`: practical text mismatch, channel mismatch, 500ms 초과 timing mismatch, missing reference, extra candidate
 
 strict CER는 공백만 제거한다.
 
@@ -345,7 +346,8 @@ uv run casrt eval-transcript ref.master.json candidate.master.json \
   --max-practical-cer 0.10 \
   --min-time-aligned-500ms-ratio 0.90 \
   --min-channel-time-aligned-accuracy 0.85 \
-  --max-channel-time-aligned-mix-ratio 0.50
+  --max-channel-time-aligned-mix-ratio 0.50 \
+  --max-segments-needing-edit-ratio 0.15
 ```
 
 모델 승격용 manifest 평가는 reference authority도 gate로 강제한다.
@@ -356,7 +358,8 @@ uv run casrt eval-manifest gold.json \
   --max-practical-cer 0.10 \
   --min-time-aligned-500ms-ratio 0.90 \
   --min-channel-time-aligned-accuracy 0.85 \
-  --max-channel-time-aligned-mix-ratio 0.50
+  --max-channel-time-aligned-mix-ratio 0.50 \
+  --max-segments-needing-edit-ratio 0.15
 ```
 
 결과:
@@ -395,6 +398,11 @@ uv run casrt eval-manifest gold.json \
 | zhifeixie/Mega-ASR, base-only threshold 1.1, MIX-first, 01/04/07 front120 | 3 | 74 | 64 | 30.8% | 27.3% | 68.2% | 불합격 |
 | zhifeixie/Mega-ASR, forced LoRA, MIX-first, 01/04/07 front120 | 3 | 74 | 81 | 77.6% | 29.5% | 73.1% | 불합격: LoRA가 ASMR에서 악화 |
 | stable-ts baseline, 01/04/07 front120 | 3 | 74 | 60 | 16.1% | 56.7% | n/a | 불합격: text/timing 부족, MIX-only |
+
+2026-06-30 `review_effort` 재평가:
+
+- Qwen/Qwen3-ASR-1.7B + Qwen3-ForcedAligner, 01/04/07 front120: `review_effort.segments_needing_edit=77`, ratio 100.0%. pseudo-gold 기준에서도 전 구간 수정 대상이라 기본 승격 불가다. Report: `/tmp/casrt-quality.Q5OdDf/qwen17-align-review-effort-report.json`.
+- stable-ts CSV channel leakage candidate: `review_effort.segments_needing_edit=2`, ratio 2.7%. 낮은 값은 같은 stable-ts 계열 reference와 candidate를 비교한 누수 결과이므로 모델 품질 근거가 아니고, reference authority gate 필요성을 확인하는 값이다. Report: `/tmp/casrt-quality.Q5OdDf/stable-ts-csv-channel-review-effort-report.json`.
 
 case별 practical CER:
 

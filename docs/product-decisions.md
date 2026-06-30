@@ -147,7 +147,7 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 - channel attribution accuracy
 - L/R/MIX channel confusion과 candidate MIX 유지 비율
 - `needs_review` segment 비율
-- 사람이 실제로 고쳐야 하는 구간 수
+- `review_effort`: practical text mismatch, channel mismatch, 500ms 초과 timing mismatch, missing reference, extra candidate를 합친 사람이 실제로 고쳐야 하는 구간 수
 
 구현 세부 값, 실험 결과, 다음 작업 계획은 [local-asr-pipeline.md](local-asr-pipeline.md)에 기록한다.
 
