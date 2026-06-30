@@ -174,6 +174,9 @@ def local_asr_chunks(model_endpoint: ModelEndpoint, audio_bytes: bytes | None) -
         chunks = run_vad_command(audio_bytes, command=shlex.split(vad_command))
     else:
         chunks = speech_intervals_by_energy(audio_bytes, **qwen_energy_chunk_kwargs())
+        max_energy_chunk_ms = qwen_energy_max_chunk_ms()
+        if max_energy_chunk_ms is not None:
+            chunks = split_long_chunks(chunks, max_energy_chunk_ms)
     return tuple({"start_ms": chunk["start_ms"], "end_ms": chunk["end_ms"]} for chunk in chunks)
 
 
@@ -185,6 +188,29 @@ def qwen_energy_chunk_kwargs() -> dict[str, float | int]:
         "min_speech_ms": int(os.environ.get("CASRT_QWEN_ENERGY_MIN_SPEECH_MS", QWEN_ENERGY_MIN_SPEECH_MS)),
         "pad_ms": int(os.environ.get("CASRT_QWEN_ENERGY_PAD_MS", QWEN_ENERGY_PAD_MS)),
     }
+
+
+def qwen_energy_max_chunk_ms() -> int | None:
+    value = os.environ.get("CASRT_QWEN_ENERGY_MAX_CHUNK_MS", "").strip()
+    if not value:
+        return None
+    max_chunk_ms = int(value)
+    if max_chunk_ms <= 0:
+        raise ValueError("CASRT_QWEN_ENERGY_MAX_CHUNK_MS must be positive")
+    return max_chunk_ms
+
+
+def split_long_chunks(
+    chunks: tuple[dict[str, int], ...] | list[dict[str, int]],
+    max_chunk_ms: int,
+) -> tuple[dict[str, int], ...]:
+    split_chunks: list[dict[str, int]] = []
+    for chunk in chunks:
+        split_chunks.extend(split_interval(chunk["start_ms"], chunk["end_ms"], max_chunk_ms))
+    return tuple(
+        {"index": index, "start_ms": chunk["start_ms"], "end_ms": chunk["end_ms"]}
+        for index, chunk in enumerate(split_chunks)
+    )
 
 
 def transcription_channel_names(channels: Any, model_endpoint: ModelEndpoint) -> list[str]:

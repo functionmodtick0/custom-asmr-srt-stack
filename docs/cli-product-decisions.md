@@ -173,6 +173,7 @@ uv run casrt project transcribe PROJECT_ID \
 - ASMR 품질 경로에서는 MIX 전사를 우선하고 L/R은 channel attribution 근거로 사용한다.
 - `CASRT_VAD_COMMAND`가 설정되어 있으면 고정 VAD command의 interval을 사용한다.
 - `CASRT_VAD_COMMAND`가 설정되어 있지 않으면 MIX energy 기반 speech chunking으로 발화 단위 전사를 시도한다.
+- energy chunking은 `CASRT_QWEN_ENERGY_*` env로만 내부 튜닝한다. `CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 긴 interval을 일정 길이 이하로 자르는 실험 옵션이며, 2026-06-30 01/04/07 front120 평가에서는 기본 승격하지 않는다.
 - L/R energy 차이가 충분할 때만 channel을 L 또는 R로 확정하고, 애매하면 MIX로 남긴다.
 - worker import, model load, inference, response contract 오류는 실패로 표시한다.
 

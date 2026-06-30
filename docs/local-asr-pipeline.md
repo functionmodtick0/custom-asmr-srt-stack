@@ -93,6 +93,7 @@ window_ms: 100
 min_silence_ms: 500
 min_speech_ms: 200
 pad_ms: 200
+max_chunk_ms: unset
 ```
 
 `CASRT_VAD_COMMAND`가 설정되어 있으면 energy splitter 대신 고정 VAD command의 interval을 사용한다.
@@ -120,7 +121,10 @@ CASRT_QWEN_ENERGY_WINDOW_MS
 CASRT_QWEN_ENERGY_MIN_SILENCE_MS
 CASRT_QWEN_ENERGY_MIN_SPEECH_MS
 CASRT_QWEN_ENERGY_PAD_MS
+CASRT_QWEN_ENERGY_MAX_CHUNK_MS
 ```
+
+`CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 긴 energy interval을 고정 길이 이하로 자르는 내부 실험 옵션이다. 기본값은 unset이며 WebUI/CLI 모델 선택 옵션으로 노출하지 않는다.
 
 이 결정의 이유:
 
@@ -309,6 +313,9 @@ uv run casrt eval-transcript ref.master.json candidate.master.json \
 
 | 후보 | cases | reference segments | candidate segments | practical CER | time-aligned 500ms ratio | channel time-aligned accuracy | 판단 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Qwen/Qwen3-ASR-1.7B, energy 500/200, 01/04/07 front120 | 3 | 74 | 81 | 29.5% | 29.5% | 73.1% | 불합격 |
+| Qwen/Qwen3-ASR-1.7B, energy 500/200 + max10000, 01/04/07 front120 | 3 | 74 | 83 | 29.3% | 30.1% | 72.0% | 불합격: 미세 개선, channel 악화 |
+| Qwen/Qwen3-ASR-1.7B, energy 500/200 + max6000, 01/04/07 front120 | 3 | 74 | 96 | 30.3% | 30.1% | 72.0% | 불합격: text 악화 |
 | neosophie/Qwen3-ASR-1.7B-JA, 01/04/07 front120 | 3 | 74 | 81 | 29.6% | 29.5% | 73.1% | 불합격 |
 | neosophie/Qwen3-ASR-1.7B-JA + ASMR ONNX VAD default, 01/04/07 front120 | 3 | 74 | 47 | 30.2% | 17.6% | 73.7% | 불합격: timing 악화 |
 | neosophie/Qwen3-ASR-1.7B-JA + ASMR ONNX VAD t035-pad400-sil400, 01/04/07 front120 | 3 | 74 | 16 | 33.4% | 7.0% | 76.9% | 불합격: 과도한 병합 |
@@ -325,6 +332,15 @@ case별 practical CER:
 
 | 후보 | case | practical CER | time-aligned 500ms ratio | channel time-aligned accuracy |
 | --- | --- | ---: | ---: | ---: |
+| Qwen3-ASR 1.7B energy 500/200 | 01-front120 | 20.4% | 25.0% | 66.7% |
+| Qwen3-ASR 1.7B energy 500/200 | 04-front120 | 21.2% | 37.0% | 60.0% |
+| Qwen3-ASR 1.7B energy 500/200 | 07-front120 | 52.7% | 26.9% | 80.0% |
+| Qwen3-ASR 1.7B max10000 | 01-front120 | 21.3% | 27.1% | 60.0% |
+| Qwen3-ASR 1.7B max10000 | 04-front120 | 20.4% | 37.0% | 60.0% |
+| Qwen3-ASR 1.7B max10000 | 07-front120 | 51.8% | 26.9% | 80.0% |
+| Qwen3-ASR 1.7B max6000 | 01-front120 | 21.9% | 20.8% | 60.0% |
+| Qwen3-ASR 1.7B max6000 | 04-front120 | 22.7% | 41.3% | 60.0% |
+| Qwen3-ASR 1.7B max6000 | 07-front120 | 51.5% | 28.8% | 80.0% |
 | Neosophie | 01-front120 | 20.4% | 25.0% | 66.7% |
 | Neosophie | 04-front120 | 21.3% | 37.0% | 60.0% |
 | Neosophie | 07-front120 | 53.0% | 26.9% | 80.0% |
@@ -372,6 +388,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 결정:
 
 - Qwen 내장 energy 기본값은 `min_silence_ms=500`, `pad_ms=200`으로 낮춘다.
+- `CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 추가했지만 기본값으로 켜지 않는다. `max10000`은 official Qwen 3-case에서 practical CER 29.5% -> 29.3%, time-aligned 500ms 29.5% -> 30.1%로 미세 개선했지만 channel accuracy가 73.1% -> 72.0%로 떨어졌다. `max6000`은 practical CER 30.3%로 악화됐다.
 - `CASRT_QWEN_ASR_CONTEXT`에 긴 glossary를 그대로 넣는 방식은 기본값으로 쓰지 않는다. 짧은 구간에서 glossary 전체를 출력하는 hallucination이 발생했다.
 - Qwen3-ForcedAligner는 channel/timing을 일부 개선했지만 120초 gold 기준으로 기본 승격하지 않는다.
 - 현재 Qwen3-ASR 1.7B 경로만으로는 품질 기준을 만족하지 못한다.
@@ -402,7 +419,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - Neosophie/Qwen3-ASR-JA에 ONNX VAD를 붙인 실제 ASR 산출물은 `/tmp/casrt-quality/projects-neosophie-onnx-vad-default`, `/tmp/casrt-quality/projects-neosophie-onnx-vad-t035-pad400`, `/tmp/casrt-quality/projects-neosophie-onnx-vad-hybrid-rescue500`에 있다. Report는 `/tmp/casrt-quality/neosophie-onnx-vad-default-3case-report.json`, `/tmp/casrt-quality/neosophie-onnx-vad-t035-pad400-3case-report.json`, `/tmp/casrt-quality/neosophie-onnx-vad-hybrid-rescue500-3case-report.json`이다. 결론은 ASMR ONNX VAD를 단독 chunker로 기본 교체하지 않는 것이다.
 - `--energy-rescue-min-ms 500` hybrid는 coverage recall 95.5%와 time-aligned 500ms 31.1%로 energy baseline보다 timing은 조금 높였지만 practical CER가 31.0%로 악화됐다. 따라서 hybrid도 기본 승격하지 않는다.
 - vocal separation은 무조건 적용하지 않는다. WhisperJAV README는 blanket denoise/vocal separation이 Whisper log-Mel feature를 망가뜨릴 수 있다고 경고한다. 반면 WhisperJAV issue에서는 강한 BGM/환경음이 있을 때 UVR/MDX/Demucs류 분리의 필요성이 제기됐다. 따라서 BGM/SFX가 강한 case에서만 별도 실험으로 둔다.
-- 다음 개선은 scene-aware chunking, forced alignment 재평가 순서로 검증한다.
+- 다음 개선은 forced alignment 재평가, channel attribution 재평가 순서로 검증한다.
 
 ## 다음 작업 계획
 

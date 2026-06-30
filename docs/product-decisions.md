@@ -411,6 +411,7 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - `local-qwen-asr`는 `CASRT_VAD_COMMAND`가 있으면 고정 VAD command interval을 사용하고, 없으면 MIX energy 기반 speech chunking을 사용한다.
 - Qwen 내장 energy 기본값은 threshold `-48.0 dBFS`, window `100ms`, min silence `500ms`, min speech `200ms`, pad `200ms`다.
 - Qwen 내장 energy 값은 `CASRT_QWEN_ENERGY_*` env로만 튜닝하고 WebUI 옵션으로 노출하지 않는다.
+- `CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 긴 energy interval을 고정 길이 이하로 자르는 실험 옵션이다. 2026-06-30 01/04/07 front120에서 max10000은 practical CER를 29.5% -> 29.3%로만 낮추고 channel accuracy를 73.1% -> 72.0%로 떨어뜨렸으므로 기본값으로 켜지 않는다.
 - `local-qwen-asr`는 L/R energy 차이로 channel attribution을 수행한다.
 - VAD는 UI에서 선택하지 않는다.
 - VAD command는 stdin으로 `{ audio_file, audio_info }` JSON을 받고 stdout으로 `{ intervals: [{ start_ms, end_ms }] }` JSON을 반환한다.
