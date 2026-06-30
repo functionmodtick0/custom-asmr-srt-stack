@@ -185,6 +185,10 @@ class QwenAsrWorkerTests(unittest.TestCase):
                 socket.socket()
             with self.assertRaisesRegex(OSError, "network access is disabled"):
                 socket.create_connection(("127.0.0.1", 9), timeout=0.1)
+
+            import ssl
+
+            self.assertTrue(hasattr(ssl, "SSLSocket"))
         finally:
             socket.socket = original_socket
             socket.create_connection = original_create_connection

@@ -248,15 +248,18 @@ def disable_python_network_if_requested() -> None:
     if os.environ.get("CASRT_QWEN_ASR_DISABLE_NETWORK", "").strip().lower() not in {"1", "true", "yes"}:
         return
 
-    def blocked_socket(*args: Any, **kwargs: Any) -> Any:
-        del args, kwargs
-        raise OSError("network access is disabled for local Qwen ASR worker")
+    original_socket = socket.socket
+
+    class BlockedSocket(original_socket):  # type: ignore[misc, valid-type]
+        def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+            del args, kwargs
+            raise OSError("network access is disabled for local Qwen ASR worker")
 
     def blocked_create_connection(*args: Any, **kwargs: Any) -> Any:
         del args, kwargs
         raise OSError("network access is disabled for local Qwen ASR worker")
 
-    socket.socket = blocked_socket  # type: ignore[assignment]
+    socket.socket = BlockedSocket
     socket.create_connection = blocked_create_connection  # type: ignore[assignment]
     _NETWORK_DISABLED = True
 
