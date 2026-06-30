@@ -454,6 +454,7 @@ uv run casrt eval-manifest gold.json \
 
 - Qwen/Qwen3-ASR-1.7B + Qwen3-ForcedAligner, 01/04/07 front120: `review_effort.segments_needing_edit=77`, ratio 100.0%. pseudo-gold 기준에서도 전 구간 수정 대상이라 기본 승격 불가다. Report: `/tmp/casrt-quality.Q5OdDf/qwen17-align-review-effort-report.json`.
 - stable-ts CSV channel leakage candidate: `review_effort.segments_needing_edit=2`, ratio 2.7%. 낮은 값은 같은 stable-ts 계열 reference와 candidate를 비교한 누수 결과이므로 모델 품질 근거가 아니고, reference authority gate 필요성을 확인하는 값이다. Report: `/tmp/casrt-quality.Q5OdDf/stable-ts-csv-channel-review-effort-report.json`.
+- stable-ts CSV channel + secured Qwen3-ForcedAligner re-alignment: practical CER 0.0%, time-aligned 500ms ratio 62.8%, channel time-aligned accuracy 86.2%, `review_effort.segments_needing_edit=48`, ratio 64.9%. 같은 stable-ts 계열 pseudo-reference 기준으로는 timing/review_effort가 크게 악화되므로 기본 승격하지 않는다. Report: `/tmp/casrt-quality.Q5OdDf/stable-ts-csv-channel-qwen-aligner-3case-report.json`.
 
 case별 practical CER:
 
