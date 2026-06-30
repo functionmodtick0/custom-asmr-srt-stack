@@ -371,11 +371,12 @@ uv run casrt save-review-case-reference cases/case-index.json case-id edited.mas
 uv run casrt freeze-case-references cases/case-index.json \
   --reference-type human-reviewed \
   --reference-notes "manual review pass" \
+  --fail-on-review \
   -o cases-frozen \
   --json
 ```
 
-`freeze-case-references`는 reference id를 안정화하고 `needs_review=false`로 저장한 새 case set을 만듭니다. 사람이 실제로 검수한 경우에만 `--reference-type human-reviewed`를 사용합니다. 입력 case set에 candidate가 있으면 `eval-manifest.json`도 함께 생성합니다.
+`freeze-case-references`는 reference id를 안정화하고 `needs_review=false`로 저장한 새 case set을 만듭니다. 사람이 실제로 검수한 경우에만 `--reference-type human-reviewed`를 사용합니다. `--fail-on-review`를 같이 쓰면 검수 flag가 남아 있을 때 output을 만들기 전에 실패합니다. 입력 case set에 candidate가 있으면 `eval-manifest.json`도 함께 생성합니다.
 
 candidate가 포함된 case set에서 평가 manifest 재생성:
 

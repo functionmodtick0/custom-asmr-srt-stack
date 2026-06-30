@@ -333,6 +333,7 @@ def freeze_case_references(args: argparse.Namespace) -> None:
         output_dir=args.output,
         reference_type=args.reference_type,
         reference_notes=args.reference_notes,
+        fail_on_review=args.fail_on_review,
         source_language=args.source_language,
     )
     emit(
@@ -1063,6 +1064,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reference authority for the frozen case set. Use human-reviewed only after manual review.",
     )
     freeze_case_references_parser.add_argument("--reference-notes")
+    freeze_case_references_parser.add_argument(
+        "--fail-on-review",
+        action="store_true",
+        help="Fail before writing output if any reference segment still has needs_review=true.",
+    )
     freeze_case_references_parser.set_defaults(func=freeze_case_references)
 
     build_eval_manifest_parser = subcommands.add_parser(

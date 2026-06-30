@@ -1156,6 +1156,55 @@ class ProjectCliTests(unittest.TestCase):
             self.assertIn("review case reference file is missing", error)
             self.assertFalse((root / "missing.master.json").exists())
 
+    def test_freeze_case_references_can_fail_on_remaining_review_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "source.wav"
+            reference = root / "reference.srt"
+            plan = root / "plan.json"
+            prepared_dir = root / "cases"
+            frozen_dir = root / "frozen"
+            write_stereo_samples(audio, [(100, 200), (300, 400), (500, 600), (700, 800)])
+            reference.write_text(
+                "1\n00:00:00,000 --> 00:00:00,002\n前半\n\n"
+                "2\n00:00:00,001 --> 00:00:00,003\n中央\n",
+                encoding="utf-8",
+            )
+            plan.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-case-slice-plan-v1",
+                        "reference_type": "pseudo-gold",
+                        "cases": [
+                            {
+                                "id": "front-a",
+                                "audio": "source.wav",
+                                "reference": "reference.srt",
+                                "start_ms": 1,
+                                "end_ms": 3,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            run_cli(["prepare-review-cases", str(plan), "-o", str(prepared_dir)])
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "freeze-case-references",
+                    "--fail-on-review",
+                    str(prepared_dir / "case-index.json"),
+                    "-o",
+                    str(frozen_dir),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(output, "")
+            self.assertIn("reference review_count=1", error)
+            self.assertFalse(frozen_dir.exists())
+
     def test_freeze_case_references_writes_clean_case_set_and_manifest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

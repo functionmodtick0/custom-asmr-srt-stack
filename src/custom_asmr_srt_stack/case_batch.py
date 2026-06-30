@@ -353,6 +353,7 @@ def freeze_case_references(
     output_dir: Path,
     reference_type: str = "human-reviewed",
     reference_notes: str | None = None,
+    fail_on_review: bool = False,
     source_language: str = "ja",
 ) -> dict[str, Any]:
     if not reference_type:
@@ -403,6 +404,14 @@ def freeze_case_references(
         )
     if any(candidate_flags) and not all(candidate_flags):
         raise ValueError("review case index cannot mix candidate and non-candidate cases")
+    reference_review_count = sum(
+        1
+        for item in prepared_items
+        for segment in item["reference_master"].segments
+        if segment.needs_review
+    )
+    if fail_on_review and reference_review_count > 0:
+        raise ValueError(f"review case index still has reference review_count={reference_review_count}")
 
     prepare_output_dir(output_dir)
     reference_dir = output_dir / "references"
