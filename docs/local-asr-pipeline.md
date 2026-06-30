@@ -656,6 +656,11 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
   - `OpenMOSS-Team/MOSS-Transcribe-preview-2B`는 2026-06-26 공개된 2.4B safetensors ASR 후보이고 exact revision은 `c98175cb20e48bd9be4e95f6c85f2af18899f780`다. 그러나 metadata에 `custom_code`가 있고 language tag가 `en` 중심이라 일본 ASMR 우선순위는 낮다. 실행하려면 외부 model code 검토가 먼저 필요하다.
   - `cstr/MOSS-Transcribe-preview-2B-GGUF`는 2026-06-30 공개 GGUF 변환이고 language tag는 `en`, `zh`다. 일본어 tag가 없고 GGUF runtime은 별도 실행 경로가 필요하므로 현재 로컬 ASMR 우선 후보가 아니다.
   - `XiaomiMiMo/MiMo-V2.5-ASR`는 2026-04-24 revision `98641d537df521ac6df05f74090475694d9510b7`의 ASR 후보지만 language tag가 `zh`, `en`, `yue`이고 일본어 tag가 없다. 일본 ASMR 후보 우선순위에서 제외한다.
+- 2026-07-01 live HF metadata refresh:
+  - `ibm-granite/granite-speech-4.1-2b`: revision `de575db64086f84fdc79da4932d1076e965bc546`, tags `transformers`, `safetensors`, `granite_speech`, `automatic-speech-recognition`, `ja`, license Apache-2.0. Model card는 2026-04-29 release, Japanese ASR support, native `transformers>=4.52.1`, and Japanese-tailored synthetic data를 명시한다. 현재 repo env Transformers 5.12.1에서 `transformers.models.granite_speech`와 `AutoModelForSpeechSeq2Seq` import가 가능해 `local-granite-asr` adapter를 추가했다. 실제 evaluation은 exact local snapshot digest 후 수행한다.
+  - `ibm-granite/granite-speech-4.1-2b-plus`: revision `1454e6e1e33845ca9280ff65f52cf1141ba6e6e2`, tags `transformers`, `safetensors`, `granite_speech_plus`, multilingual ASR지만 HF card language metadata에 `ja`가 없다. Plus variant는 word-level timestamps/speaker attribution 가능성이 있어 후속 후보로 남기되, 일본어 tag와 worker contract를 먼저 확인한다.
+  - `efwkjn/cohere-asr-ja`: revision `8f1794e22b802731bdbf8ce53ff08f96a5af2bb4`, tags `safetensors`, `cohere_asr`, `custom_code`, `ja`, base model `CohereLabs/cohere-transcribe-03-2026`. Current Transformers 5.12.1 has `cohere_asr`, but metadata includes `custom_code`; execution priority는 official Cohere snapshot과 Granite 이후로 둔다.
+  - `AutoArk-AI/ARK-ASR-3B`: revision `1e28271b79edc97635783bea65abc89195a09ed3`, tags include `ja`, `safetensors`, `custom_code`; current Transformers 5.12.1 has no `arkasr`, so still external code/runtime review 대상이다.
 - `zhifeixie/Mega-ASR`는 2026-05 공개 Qwen3-ASR-1.7B 기반 robust ASR 후보이며, noisy/reverberant/clipped/band-limited/overlapping 등 어려운 실제 녹음에서 empty output, omission, repetition, hallucination을 줄이는 것을 목표로 한다. ASMR 전용은 아니지만 현재 07 whisper/침대 구간 실패 양상과 맞닿아 있으므로 다음 우선 모델 실험으로 둔다. 공식 runtime은 `xzf-thu/Mega-ASR` repository 코드와 checkpoint 배치를 요구하므로 `/tmp` 격리 환경에서 실행한다.
 - Mega-ASR runtime은 실행 전 `gpt-5.4 xhigh` subagent가 정적 보안 검토했다. Verdict는 `PASS_WITH_CONSTRAINTS`다. 허용 범위는 `/tmp` 별도 venv, `/tmp` HF cache, Hugging Face allowlist download, Transformers backend만, `infer.py`/`evaluate_wer.py`만, vLLM/webui/training/wandb 금지, safetensors-only checkpoint 강제다. `adapter_model.bin`, `.pt`, `.pth` 또는 router non-safetensors checkpoint를 읽게 되면 미승인으로 간주한다.
 - Mega-ASR 정적 검토에서 확인한 고위험 지점은 `lora_switch.py`의 `adapter_model.bin` fallback `torch.load`와 `router.py`의 non-safetensors `torch.load(weights_only=False)`다. 따라서 실험 전 `mega-asr-merged/adapter_model.safetensors`와 `audio_quality_router/best_acc_model.safetensors` 존재를 확인하고 unsafe fallback 파일은 사용하지 않는다.
@@ -740,6 +745,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
    - `Qwen/Qwen3-ASR-1.7B-hf`는 Transformers main에서 검증했지만 기본 승격하지 않는다. 공식 release에 `qwen3_asr`가 들어오면 runtime 안정성만 재확인하고, 품질 재평가는 human-reviewed gold가 늘어난 뒤에 한다.
    - `microsoft/VibeVoice-ASR`와 `microsoft/VibeVoice-ASR-HF`는 일본어 tag가 있는 최신 로컬 후보지만 현재 repo env의 Transformers 5.12.1에서 전용 class가 없어 보류한다. 공식 release 지원 또는 별도 runtime 검토 후 exact revision local snapshot으로만 평가한다.
    - `mistralai/Voxtral-Mini-4B-Realtime-2602`는 remote code 없이 검증했지만 07 whisper 구간에서 실패해 기본 승격하지 않는다.
+   - `ibm-granite/granite-speech-4.1-2b`는 native Transformers/safetensors/ja 후보로 `local-granite-asr` adapter가 추가됐다. 다음 단계는 exact snapshot download, `casrt model digest`, 5초 smoke, 01/04/07 front120 pseudo-gold 평가다.
    - `Atotti/llm-jp-4-8b-speech-asr`는 ASR 특화 일본어 후보지만 third-party runtime package가 필요하므로 사용자 명시 승인 후 비교한다.
    - `AutoArk-AI/ARK-ASR-3B`, `CohereLabs/cohere-transcribe-03-2026`, `OpenMOSS-Team/MOSS-Transcribe-preview-2B`는 성능 후보로 남기되, custom code/gated/runtime 접근 조건을 먼저 해결해야 한다.
    - `Qwen/Qwen3-ASR-0.6B`는 속도/저사양 후보로 비교한다.
@@ -759,6 +765,10 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - MOSS Transcribe preview model card: https://huggingface.co/OpenMOSS-Team/MOSS-Transcribe-preview-2B
 - MOSS Transcribe GGUF model card: https://huggingface.co/cstr/MOSS-Transcribe-preview-2B-GGUF
 - MiMo V2.5 ASR model card: https://huggingface.co/XiaomiMiMo/MiMo-V2.5-ASR
+- Granite Speech 4.1 2B model card: https://huggingface.co/ibm-granite/granite-speech-4.1-2b
+- Granite Speech 4.1 2B Plus model card: https://huggingface.co/ibm-granite/granite-speech-4.1-2b-plus
+- Cohere ASR Japanese fine-tune model card: https://huggingface.co/efwkjn/cohere-asr-ja
+- ARK-ASR-3B model card: https://huggingface.co/AutoArk-AI/ARK-ASR-3B
 
 ## 문서화 규칙
 

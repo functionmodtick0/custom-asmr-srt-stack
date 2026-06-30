@@ -150,6 +150,17 @@ class TranscriptionAdapterTests(unittest.TestCase):
         self.assertIsNone(endpoint.endpoint_url)
         self.assertIsNone(adapter_max_chunk_ms(endpoint))
 
+    def test_local_granite_asr_adapter_does_not_require_endpoint_url(self):
+        endpoint = ModelEndpoint.from_json(
+            {
+                "adapter": "local-granite-asr",
+                "model_id": "/models/granite-speech-4.1-2b",
+            }
+        )
+
+        self.assertIsNone(endpoint.endpoint_url)
+        self.assertIsNone(adapter_max_chunk_ms(endpoint))
+
     def test_endpoint_adapter_requires_endpoint_url(self):
         with self.assertRaisesRegex(ValueError, "endpoint_url must not be empty"):
             ModelEndpoint.from_json(
@@ -313,6 +324,44 @@ class TranscriptionAdapterTests(unittest.TestCase):
         self.assertEqual(calls, [("/models/cohere-transcribe-03-2026", b"audio", "audio/wav", "MIX", "ja")])
         self.assertEqual(segments[0].text, "ねえ")
 
+    def test_local_granite_asr_adapter_uses_local_transcriber_boundary(self):
+        calls = []
+
+        def fake_local(endpoint, audio_bytes, mime_type, channel, source_language):
+            calls.append((endpoint.model_id, audio_bytes, mime_type, channel, source_language))
+            return parse_model_segments(
+                json.dumps(
+                    {
+                        "segments": [
+                            {
+                                "start_ms": 0,
+                                "end_ms": 10,
+                                "channel": channel,
+                                "kind": "speech",
+                                "text": "ねえ",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+        endpoint = ModelEndpoint(
+            adapter="local-granite-asr",
+            endpoint_url=None,
+            model_id="/models/granite-speech-4.1-2b",
+        )
+        segments = transcribe_audio(
+            endpoint,
+            b"audio",
+            mime_type="audio/wav",
+            channel="MIX",
+            local_transcribe_func=fake_local,
+        )
+
+        self.assertEqual(calls, [("/models/granite-speech-4.1-2b", b"audio", "audio/wav", "MIX", "ja")])
+        self.assertEqual(segments[0].text, "ねえ")
+
     def test_worker_response_is_parsed_as_segments(self):
         segments = parse_worker_response(
             json.dumps(
@@ -421,6 +470,7 @@ class TranscriptionAdapterTests(unittest.TestCase):
             "CASRT_LOCAL_WORKER_ENV_MODE": "offline",
             "CASRT_QWEN_ASR_DTYPE": "bfloat16",
             "CASRT_QWEN_HF_ASR_DTYPE": "float16",
+            "CASRT_GRANITE_ASR_DTYPE": "float32",
             "HF_TOKEN": "secret",
             "HTTP_PROXY": "http://proxy.invalid",
             "PATH": os.defpath,
@@ -452,6 +502,8 @@ class TranscriptionAdapterTests(unittest.TestCase):
         self.assertEqual(worker_env["TRANSFORMERS_OFFLINE"], "1")
         self.assertEqual(worker_env["CASRT_LOCAL_WORKER_ENV_MODE"], "offline")
         self.assertEqual(worker_env["CASRT_COHERE_ASR_DISABLE_NETWORK"], "1")
+        self.assertEqual(worker_env["CASRT_GRANITE_ASR_DISABLE_NETWORK"], "1")
+        self.assertEqual(worker_env["CASRT_GRANITE_ASR_DTYPE"], "float32")
         self.assertEqual(worker_env["CASRT_QWEN_ASR_DTYPE"], "bfloat16")
         self.assertEqual(worker_env["CASRT_QWEN_HF_ASR_DTYPE"], "float16")
         self.assertEqual(worker_env["CASRT_QWEN_HF_ASR_DISABLE_NETWORK"], "1")

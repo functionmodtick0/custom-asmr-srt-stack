@@ -32,6 +32,7 @@ MIX_FIRST_LOCAL_ASR_ADAPTERS = {
     "local-qwen-asr",
     "local-qwen-hf-asr",
     "local-cohere-asr",
+    "local-granite-asr",
 }
 
 

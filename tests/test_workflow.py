@@ -145,6 +145,7 @@ class WorkflowTests(unittest.TestCase):
         for adapter, model_id in (
             ("local-qwen-asr", "Qwen/Qwen3-ASR-1.7B"),
             ("local-qwen-hf-asr", "/models/qwen3-asr-1.7b-hf"),
+            ("local-granite-asr", "/models/granite-speech-4.1-2b"),
         ):
             with self.subTest(adapter=adapter), tempfile.TemporaryDirectory() as tmpdir:
                 root = Path(tmpdir)

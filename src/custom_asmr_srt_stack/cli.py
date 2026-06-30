@@ -902,6 +902,7 @@ def build_parser() -> argparse.ArgumentParser:
             "local-qwen-asr",
             "local-qwen-hf-asr",
             "local-cohere-asr",
+            "local-granite-asr",
         ],
         required=True,
     )

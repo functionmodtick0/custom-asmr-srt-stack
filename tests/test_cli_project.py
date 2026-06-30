@@ -236,6 +236,22 @@ class ProjectCliTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(json.loads(output)["adapter"], "local-cohere-asr")
 
+    def test_model_validate_accepts_local_granite_without_endpoint_url(self):
+        result, output = run_cli(
+            [
+                "model",
+                "validate",
+                "--adapter",
+                "local-granite-asr",
+                "--model-id",
+                "/models/granite-speech-4.1-2b",
+                "--json",
+            ]
+        )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(json.loads(output)["adapter"], "local-granite-asr")
+
     def test_model_validate_accepts_local_qwen_hf_without_endpoint_url(self):
         result, output = run_cli(
             [

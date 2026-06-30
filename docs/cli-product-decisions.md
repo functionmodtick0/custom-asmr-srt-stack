@@ -132,6 +132,14 @@ uv run casrt model validate \
   --model-id /path/to/cohere-transcribe-03-2026/snapshots/<commit>
 ```
 
+로컬 Granite ASR worker도 endpoint URL을 입력하지 않는다. 실제 benchmark는 repo id가 아니라 exact revision의 local snapshot directory를 model id로 사용한다.
+
+```bash
+uv run casrt model validate \
+  --adapter local-granite-asr \
+  --model-id /path/to/granite-speech-4.1-2b/snapshots/<commit>
+```
+
 보안 검토가 필요한 local snapshot은 benchmark 전에 digest report를 남긴다.
 
 ```bash
@@ -232,6 +240,23 @@ uv run casrt project transcribe PROJECT_ID \
 - worker는 `CohereAsrForConditionalGeneration`와 `CohereAsrProcessor`를 명시적으로 사용하고 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로 로드한다.
 - `--model-id`는 safetensors weight가 있는 existing local snapshot directory여야 한다. repo id나 cache miss fallback은 실패한다.
 - Cohere는 timestamp를 반환하지 않으므로 chunk bounds를 segment timing으로 사용하고, 기존 MIX-first energy chunking과 L/R channel attribution을 적용한다.
+- 실제 download/evaluation은 exact revision pin과 `casrt model digest` report 기록 전까지 실행하지 않는다.
+
+로컬 Granite ASR worker:
+
+```bash
+uv run casrt project transcribe PROJECT_ID \
+  --adapter local-granite-asr \
+  --model-id /path/to/granite-speech-4.1-2b/snapshots/<commit>
+```
+
+동작:
+
+- `casrt`가 내부적으로 `python -m custom_asmr_srt_stack.granite_asr_worker` subprocess를 시작한다.
+- worker는 `AutoModelForSpeechSeq2Seq`와 `AutoProcessor`를 사용하고 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로 로드한다.
+- `--model-id`는 safetensors weight가 있는 existing local snapshot directory여야 한다. repo id나 cache miss fallback은 실패한다.
+- Granite는 timestamp를 반환하지 않으므로 chunk bounds를 segment timing으로 사용하고, 기존 MIX-first energy chunking과 L/R channel attribution을 적용한다.
+- 기본 prompt는 `<|audio|>transcribe the speech with proper punctuation and capitalization.`이고 `CASRT_GRANITE_ASR_PROMPT`로만 내부 override할 수 있다.
 - 실제 download/evaluation은 exact revision pin과 `casrt model digest` report 기록 전까지 실행하지 않는다.
 
 고정 VAD command contract:
