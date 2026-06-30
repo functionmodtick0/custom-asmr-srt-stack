@@ -94,7 +94,7 @@ translated.json 가져오기
 SRT 내보내기
 ```
 
-검수 큐를 볼 때는 CLI로 만든 `review-pack` directory 또는 `index.json` 경로를 WebUI의 Review pack 입력에 넣고 엽니다. WebUI는 priority 순서, reason, reference/candidate text를 보여주고 각 `clips/*.wav`를 바로 재생합니다.
+검수 큐를 볼 때는 CLI로 만든 `review-pack` directory, `index.json`, review case directory, `case-index.json` 경로를 WebUI의 Review path 입력에 넣고 엽니다. Review pack은 priority 순서, reason, reference/candidate text와 `clips/*.wav`를 보여줍니다. Review case set은 case를 클릭하면 audio와 reference master를 편집 화면에 붙이고, 수정 내용을 reference file과 `case-index.json` count에 자동 저장합니다.
 
 모델 설정은 UI에서 직접 입력합니다.
 오디오를 먼저 연 뒤 SRT 또는 `master.json`을 열면, 아직 transcript가 없는 현재 오디오 project에 해당 transcript를 연결합니다.
@@ -495,10 +495,11 @@ uv run casrt review-pack review-effort.json --audio-map audio-map.json -o review
 생성된 pack은 WebUI에서도 열 수 있습니다.
 
 ```text
-Review pack: /path/to/review-pack
+Review path: /path/to/review-pack
+Review path: /path/to/review-cases
 ```
 
-WebUI는 pack을 새 project로 저장하지 않고, priority item을 클릭할 때 해당 clip만 재생하는 검수 큐 보기 모드로 다룹니다.
+WebUI는 review pack을 새 project로 저장하지 않고, priority item을 클릭할 때 해당 clip만 재생하는 검수 큐 보기 모드로 다룹니다. Review case set은 사람이 reference를 고치는 편집 모드로 열며, 모델/VAD/threshold 옵션은 추가하지 않습니다.
 
 ## 테스트
 

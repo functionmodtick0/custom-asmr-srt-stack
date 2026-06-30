@@ -287,11 +287,13 @@ canvas {
 .segment-row:hover,
 .segment-row.is-selected,
 .review-pack-row:hover,
-.review-pack-row.is-selected {
+.review-pack-row.is-selected,
+.review-case-row:hover {
   background: rgba(125, 217, 185, 0.06);
 }
 
-.review-pack-row {
+.review-pack-row,
+.review-case-row {
   width: 100%;
   min-height: 108px;
   display: grid;

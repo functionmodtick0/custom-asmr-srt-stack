@@ -321,6 +321,7 @@ uv run casrt prepare-review-cases plan.json -o cases --json
 - 모든 case가 `candidate`를 가지면 `candidates/<id>.master.json`과 `eval-manifest.json`을 함께 만든다.
 - candidate가 있는 case와 없는 case를 섞으면 실패한다. 검수 준비와 후보 평가를 같은 plan에서 섞지 않는다.
 - `prepare-review-cases`도 검수 완료 판정을 하지 않는다. 사람이 확인한 뒤 `freeze-reference`와 `reference_type=human-reviewed` manifest를 사용한다.
+- WebUI는 생성된 `case-index.json`을 Review path로 열어 case reference를 직접 편집할 수 있다. 이 편집은 reference master JSON과 case-index count만 갱신하며, human-reviewed 승격 판정은 CLI gate에 남긴다.
 
 준비된 case set의 파일 누락, stale count, 남은 reference review flag는 `review-case-status`로 확인한다.
 

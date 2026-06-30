@@ -137,10 +137,14 @@ class ServerApiTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            status, response = self.post_json("/api/review-pack/load", {"path": str(pack_dir)})
+            legacy_status, legacy_response = self.post_json("/api/review-pack/load", {"path": str(pack_dir)})
+            status, response = self.post_json("/api/review/load", {"path": str(pack_dir)})
             clip_status, content_type, body = self.get_api(response["items"][0]["clip_url"])
 
+            self.assertEqual(legacy_status, 200)
+            self.assertEqual(legacy_response["format"], "custom-asmr-review-pack-v1")
             self.assertEqual(status, 200)
+            self.assertEqual(response["kind"], "review-pack")
             self.assertEqual(response["format"], "custom-asmr-review-pack-v1")
             self.assertEqual(response["pack_dir"], str(pack_dir.resolve()))
             self.assertIn("/api/review-pack/clip?", response["items"][0]["clip_url"])
@@ -175,6 +179,142 @@ class ServerApiTests(unittest.TestCase):
 
             self.assertEqual(status, 400)
             self.assertIn("inside the pack directory", response["error"])
+
+    def test_review_load_route_opens_case_set_and_serves_audio(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_dir = root / "cases"
+            audio_dir = case_dir / "audio"
+            reference_dir = case_dir / "references"
+            audio_dir.mkdir(parents=True)
+            reference_dir.mkdir()
+            (audio_dir / "front.wav").write_bytes(b"RIFFcaseWAVE")
+            (reference_dir / "front.master.json").write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "front.wav", "duration_ms": 2000},
+                        "segments": [
+                            {
+                                "id": "seg_000001",
+                                "start_ms": 0,
+                                "end_ms": 1000,
+                                "channel": "L",
+                                "kind": "speech",
+                                "text": "ねえ",
+                                "needs_review": True,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (case_dir / "case-index.json").write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "reference_type": "pseudo-gold",
+                        "case_count": 1,
+                        "items": [
+                            {
+                                "id": "front",
+                                "audio": "audio/front.wav",
+                                "reference": "references/front.master.json",
+                                "segments": 1,
+                                "review_count": 1,
+                                "reference_type": "pseudo-gold",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            status, response = self.post_json("/api/review/load", {"path": str(case_dir)})
+            audio_status, content_type, body = self.get_api(response["items"][0]["audio_url"])
+
+            self.assertEqual(status, 200)
+            self.assertEqual(response["kind"], "review-case-set")
+            self.assertEqual(response["case_index_path"], str((case_dir / "case-index.json").resolve()))
+            self.assertEqual(response["items"][0]["reference_master"]["segments"][0]["text"], "ねえ")
+            self.assertEqual(audio_status, 200)
+            self.assertEqual(content_type, "audio/wav")
+            self.assertEqual(body, b"RIFFcaseWAVE")
+
+    def test_review_case_save_reference_updates_master_and_case_index_counts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_dir = root / "cases"
+            reference_dir = case_dir / "references"
+            audio_dir = case_dir / "audio"
+            reference_dir.mkdir(parents=True)
+            audio_dir.mkdir()
+            (audio_dir / "front.wav").write_bytes(b"RIFFcaseWAVE")
+            reference_path = reference_dir / "front.master.json"
+            reference_path.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "front.wav", "duration_ms": 2000},
+                        "segments": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            case_index = case_dir / "case-index.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "reference_type": "pseudo-gold",
+                        "case_count": 1,
+                        "items": [
+                            {
+                                "id": "front",
+                                "audio": "audio/front.wav",
+                                "reference": "references/front.master.json",
+                                "segments": 0,
+                                "review_count": 0,
+                                "reference_type": "pseudo-gold",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            master = {
+                "format": "custom-asmr-master-v1",
+                "source_language": "ja",
+                "audio": {"source_file": "front.wav", "duration_ms": 2000},
+                "segments": [
+                    {
+                        "id": "seg_000001",
+                        "start_ms": 0,
+                        "end_ms": 1000,
+                        "channel": "R",
+                        "kind": "speech",
+                        "text": "修正",
+                        "needs_review": False,
+                    }
+                ],
+            }
+
+            status, response = self.post_json(
+                "/api/review-case/save-reference",
+                {"case_index_path": str(case_index), "case_id": "front", "master": master},
+            )
+            saved_master = json.loads(reference_path.read_text(encoding="utf-8"))
+            saved_index = json.loads(case_index.read_text(encoding="utf-8"))
+
+            self.assertEqual(status, 200)
+            self.assertTrue(response["ok"])
+            self.assertEqual(response["segments"], 1)
+            self.assertEqual(response["review_count"], 0)
+            self.assertEqual(saved_master["segments"][0]["text"], "修正")
+            self.assertEqual(saved_index["items"][0]["segments"], 1)
+            self.assertEqual(saved_index["items"][0]["review_count"], 0)
 
     def test_import_srt_route_persists_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:
