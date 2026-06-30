@@ -1283,6 +1283,49 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(json.loads(output)["review_effort"]["segments_needing_edit"], 1)
             self.assertIn("segments needing edit ratio", error)
 
+    def test_eval_transcript_quality_gate_fails_when_candidate_review_ratio_is_too_high(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.master.json"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\nねえ\n", encoding="utf-8")
+            candidate.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "candidate.wav", "duration_ms": 3000},
+                        "segments": [
+                            {
+                                "id": "seg_000001",
+                                "start_ms": 1000,
+                                "end_ms": 2000,
+                                "channel": "MIX",
+                                "kind": "speech",
+                                "text": "ねえ",
+                                "needs_review": True,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "eval-transcript",
+                    "--json",
+                    "--max-candidate-review-ratio",
+                    "0.0",
+                    str(reference),
+                    str(candidate),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(json.loads(output)["review"]["candidate_review_ratio"], 1.0)
+            self.assertIn("candidate review ratio", error)
+
     def test_eval_manifest_outputs_aggregated_json_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1369,6 +1412,53 @@ class ProjectCliTests(unittest.TestCase):
                 json.loads(comparison_path.read_text(encoding="utf-8"))["items"][0]["label"],
                 "report-good",
             )
+
+    def test_compare_evals_marks_candidate_review_ratio_gate(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.master.json"
+            report_path = root / "report.json"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\nねえ\n", encoding="utf-8")
+            candidate.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "candidate.wav", "duration_ms": 3000},
+                        "segments": [
+                            {
+                                "id": "seg_000001",
+                                "start_ms": 1000,
+                                "end_ms": 2000,
+                                "channel": "MIX",
+                                "kind": "speech",
+                                "text": "ねえ",
+                                "needs_review": True,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            run_cli(["eval-transcript", "-o", str(report_path), str(reference), str(candidate)])
+
+            result, output = run_cli(
+                [
+                    "compare-evals",
+                    "--json",
+                    "--max-candidate-review-ratio",
+                    "0.0",
+                    str(report_path),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            comparison = json.loads(output)
+            self.assertEqual(comparison["quality_gate"], {"max_candidate_review_ratio": 0.0})
+            self.assertEqual(comparison["items"][0]["candidate_review_ratio"], 1.0)
+            self.assertFalse(comparison["items"][0]["gate_passed"])
+            self.assertIn("candidate review ratio", comparison["items"][0]["gate_failures"][0])
 
     def test_review_effort_outputs_items_from_eval_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:

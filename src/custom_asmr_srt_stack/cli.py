@@ -437,12 +437,14 @@ def annotate_comparison_quality_gates(report: dict[str, Any], args: argparse.Nam
         args.max_segments_needing_edit_ratio,
         "--max-segments-needing-edit-ratio",
     )
+    max_candidate_review_ratio = ratio_arg(args.max_candidate_review_ratio, "--max-candidate-review-ratio")
     gate = {
         "max_practical_cer": max_practical_cer,
         "min_time_aligned_500ms_ratio": min_time_aligned_500ms_ratio,
         "min_channel_time_aligned_accuracy": min_channel_time_aligned_accuracy,
         "max_channel_time_aligned_mix_ratio": max_channel_time_aligned_mix_ratio,
         "max_segments_needing_edit_ratio": max_segments_needing_edit_ratio,
+        "max_candidate_review_ratio": max_candidate_review_ratio,
     }
     if all(value is None for value in gate.values()):
         return
@@ -456,6 +458,7 @@ def annotate_comparison_quality_gates(report: dict[str, Any], args: argparse.Nam
             min_channel_time_aligned_accuracy=min_channel_time_aligned_accuracy,
             max_channel_time_aligned_mix_ratio=max_channel_time_aligned_mix_ratio,
             max_segments_needing_edit_ratio=max_segments_needing_edit_ratio,
+            max_candidate_review_ratio=max_candidate_review_ratio,
         )
         item["gate_passed"] = not failures
         item["gate_failures"] = failures
@@ -469,6 +472,7 @@ def comparison_quality_gate_failures(
     min_channel_time_aligned_accuracy: float | None,
     max_channel_time_aligned_mix_ratio: float | None,
     max_segments_needing_edit_ratio: float | None,
+    max_candidate_review_ratio: float | None,
 ) -> list[str]:
     failures: list[str] = []
     if max_practical_cer is not None and item["practical_cer"] > max_practical_cer:
@@ -503,6 +507,14 @@ def comparison_quality_gate_failures(
             "segments needing edit ratio "
             f"{item['segments_needing_edit_ratio']:.4f} > {max_segments_needing_edit_ratio:.4f}"
         )
+    if max_candidate_review_ratio is not None:
+        candidate_review_ratio = item.get("candidate_review_ratio")
+        if candidate_review_ratio is None:
+            failures.append("candidate review ratio is unavailable")
+        elif candidate_review_ratio > max_candidate_review_ratio:
+            failures.append(
+                f"candidate review ratio {candidate_review_ratio:.4f} > {max_candidate_review_ratio:.4f}"
+            )
     return failures
 
 
@@ -539,6 +551,7 @@ def enforce_quality_gate(metrics: dict[str, Any], args: argparse.Namespace) -> N
         args.max_segments_needing_edit_ratio,
         "--max-segments-needing-edit-ratio",
     )
+    max_candidate_review_ratio = ratio_arg(args.max_candidate_review_ratio, "--max-candidate-review-ratio")
 
     if max_practical_cer is not None:
         practical_cer = float(metrics["text_practical"]["cer"])
@@ -571,6 +584,13 @@ def enforce_quality_gate(metrics: dict[str, Any], args: argparse.Namespace) -> N
         if edit_ratio > max_segments_needing_edit_ratio:
             failures.append(
                 f"segments needing edit ratio {edit_ratio:.4f} > {max_segments_needing_edit_ratio:.4f}"
+            )
+
+    if max_candidate_review_ratio is not None:
+        candidate_review_ratio = float(metrics["review"]["candidate_review_ratio"])
+        if candidate_review_ratio > max_candidate_review_ratio:
+            failures.append(
+                f"candidate review ratio {candidate_review_ratio:.4f} > {max_candidate_review_ratio:.4f}"
             )
 
     if failures:
@@ -1212,6 +1232,11 @@ def add_quality_gate_args(parser: argparse.ArgumentParser, *, action_verb: str =
         "--max-segments-needing-edit-ratio",
         type=float,
         help=f"{action_verb} if review effort segment edit ratio is above this 0..1 ratio.",
+    )
+    parser.add_argument(
+        "--max-candidate-review-ratio",
+        type=float,
+        help=f"{action_verb} if unresolved candidate needs_review ratio is above this 0..1 ratio.",
     )
 
 

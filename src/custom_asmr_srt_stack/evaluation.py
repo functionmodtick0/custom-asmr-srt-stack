@@ -202,6 +202,7 @@ def eval_comparison_item(path: Path, report: dict[str, Any]) -> dict[str, Any]:
     text_japanese_relaxed = optional_report_mapping(metrics, "text_japanese_relaxed", path)
     timing_time_aligned = require_report_mapping(metrics, "timing_time_aligned", path)
     channel_time_aligned = require_report_mapping(metrics, "channel_time_aligned", path)
+    review = optional_report_mapping(metrics, "review", path)
     review_effort = require_report_mapping(metrics, "review_effort", path)
     item = {
         "label": path.stem,
@@ -215,6 +216,7 @@ def eval_comparison_item(path: Path, report: dict[str, Any]) -> dict[str, Any]:
         "time_aligned_500ms_ratio": optional_report_number(timing_time_aligned, "within_500ms_ratio", path),
         "channel_time_aligned_accuracy": optional_report_number(channel_time_aligned, "accuracy", path),
         "channel_time_aligned_mix_ratio": require_report_number(channel_time_aligned, "candidate_mix_ratio", path),
+        "candidate_review_ratio": None if review is None else require_report_number(review, "candidate_review_ratio", path),
         "segments_needing_edit": require_report_number(review_effort, "segments_needing_edit", path),
         "segments_needing_edit_ratio": require_report_number(review_effort, "segments_needing_edit_ratio", path),
     }
