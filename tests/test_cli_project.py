@@ -875,6 +875,43 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["cases"][0]["candidate_id"], "qwen-energy")
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["summary"]["text"]["edit_distance"], 1)
 
+    def test_compare_evals_ranks_reports_by_review_effort(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate_good = root / "candidate-good.srt"
+            candidate_bad = root / "candidate-bad.srt"
+            report_good = root / "report-good.json"
+            report_bad = root / "report-bad.json"
+            comparison_path = root / "comparison.json"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\nねえ\n", encoding="utf-8")
+            candidate_good.write_text("1\n00:00:01,000 --> 00:00:02,000\nねえ\n", encoding="utf-8")
+            candidate_bad.write_text("1\n00:00:01,000 --> 00:00:02,000\nね\n", encoding="utf-8")
+            run_cli(["eval-transcript", "-o", str(report_good), str(reference), str(candidate_good)])
+            run_cli(["eval-transcript", "-o", str(report_bad), str(reference), str(candidate_bad)])
+
+            result, output = run_cli(
+                [
+                    "compare-evals",
+                    "--json",
+                    "-o",
+                    str(comparison_path),
+                    str(report_bad),
+                    str(report_good),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            comparison = json.loads(output)
+            self.assertEqual(comparison["format"], "custom-asmr-eval-comparison-v1")
+            self.assertEqual([item["label"] for item in comparison["items"]], ["report-good", "report-bad"])
+            self.assertEqual(comparison["items"][0]["segments_needing_edit_ratio"], 0.0)
+            self.assertGreater(comparison["items"][1]["segments_needing_edit_ratio"], 0.0)
+            self.assertEqual(
+                json.loads(comparison_path.read_text(encoding="utf-8"))["items"][0]["label"],
+                "report-good",
+            )
+
     def test_review_effort_outputs_items_from_eval_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

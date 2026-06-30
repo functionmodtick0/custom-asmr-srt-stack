@@ -13,6 +13,7 @@ EVAL_FORMAT = "custom-asmr-eval-v1"
 EVAL_MANIFEST_FORMAT = "custom-asmr-eval-manifest-v1"
 EVAL_SUITE_FORMAT = "custom-asmr-eval-suite-v1"
 REVIEW_EFFORT_FORMAT = "custom-asmr-review-effort-v1"
+EVAL_COMPARISON_FORMAT = "custom-asmr-eval-comparison-v1"
 EVAL_CHANNELS = ("L", "R", "MIX")
 REVIEW_EFFORT_TIMING_THRESHOLD_MS = 500
 
@@ -146,6 +147,96 @@ def review_effort_items_report(report: dict[str, Any], *, source_report: str | N
     if source_report is not None:
         result["source_report"] = source_report
     return result
+
+
+def compare_eval_reports(report_files: list[Path]) -> dict[str, Any]:
+    if not report_files:
+        raise ValueError("eval comparison requires at least one report")
+    items = [eval_comparison_item(path, json.loads(path.read_text(encoding="utf-8"))) for path in report_files]
+    ranked_items = sorted(
+        items,
+        key=lambda item: (
+            item["segments_needing_edit_ratio"],
+            item["practical_cer"],
+            -(item["time_aligned_500ms_ratio"] if item["time_aligned_500ms_ratio"] is not None else -1.0),
+            -(item["channel_time_aligned_accuracy"] if item["channel_time_aligned_accuracy"] is not None else -1.0),
+            item["label"],
+        ),
+    )
+    return {
+        "format": EVAL_COMPARISON_FORMAT,
+        "report_count": len(ranked_items),
+        "ranked_by": [
+            "segments_needing_edit_ratio",
+            "practical_cer",
+            "time_aligned_500ms_ratio desc",
+            "channel_time_aligned_accuracy desc",
+        ],
+        "items": ranked_items,
+    }
+
+
+def eval_comparison_item(path: Path, report: dict[str, Any]) -> dict[str, Any]:
+    report_format = report.get("format")
+    if report_format == EVAL_FORMAT:
+        metrics = report
+        case_count = 1
+        reference_type = None
+    elif report_format == EVAL_SUITE_FORMAT:
+        metrics = report.get("summary")
+        if not isinstance(metrics, dict):
+            raise ValueError(f"{path}: eval suite summary must be an object")
+        case_count = report.get("case_count")
+        if not isinstance(case_count, int):
+            raise ValueError(f"{path}: eval suite case_count must be an integer")
+        reference_type = report.get("reference_type")
+        if reference_type is not None and not isinstance(reference_type, str):
+            raise ValueError(f"{path}: eval suite reference_type must be a string")
+    else:
+        raise ValueError(f"{path}: unsupported eval report format {report_format!r}")
+
+    text_practical = require_report_mapping(metrics, "text_practical", path)
+    timing_time_aligned = require_report_mapping(metrics, "timing_time_aligned", path)
+    channel_time_aligned = require_report_mapping(metrics, "channel_time_aligned", path)
+    review_effort = require_report_mapping(metrics, "review_effort", path)
+    item = {
+        "label": path.stem,
+        "report": str(path),
+        "report_format": report_format,
+        "case_count": case_count,
+        "practical_cer": require_report_number(text_practical, "cer", path),
+        "time_aligned_500ms_ratio": optional_report_number(timing_time_aligned, "within_500ms_ratio", path),
+        "channel_time_aligned_accuracy": optional_report_number(channel_time_aligned, "accuracy", path),
+        "channel_time_aligned_mix_ratio": require_report_number(channel_time_aligned, "candidate_mix_ratio", path),
+        "segments_needing_edit": require_report_number(review_effort, "segments_needing_edit", path),
+        "segments_needing_edit_ratio": require_report_number(review_effort, "segments_needing_edit_ratio", path),
+    }
+    if reference_type is not None:
+        item["reference_type"] = reference_type
+    return item
+
+
+def require_report_mapping(metrics: dict[str, Any], key: str, path: Path) -> dict[str, Any]:
+    value = metrics.get(key)
+    if not isinstance(value, dict):
+        raise ValueError(f"{path}: eval report {key} must be an object")
+    return value
+
+
+def require_report_number(metrics: dict[str, Any], key: str, path: Path) -> float:
+    value = metrics.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{path}: eval report {key} must be a number")
+    return float(value)
+
+
+def optional_report_number(metrics: dict[str, Any], key: str, path: Path) -> float | None:
+    value = metrics.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{path}: eval report {key} must be a number or null")
+    return float(value)
 
 
 def extract_report_review_effort_items(report: dict[str, Any]) -> list[dict[str, Any]]:

@@ -21,6 +21,7 @@ from custom_asmr_srt_stack.channel_attribution import (
     attribute_master_channels_by_energy,
 )
 from custom_asmr_srt_stack.evaluation import (
+    compare_eval_reports,
     evaluate_manifest,
     evaluate_transcripts,
     load_transcript_document,
@@ -313,6 +314,22 @@ def review_effort(args: argparse.Namespace) -> None:
         (
             f"review_effort_items={report['item_count']} "
             f"reasons={json.dumps(report['reason_counts'], ensure_ascii=False, sort_keys=True)}"
+        ),
+    )
+
+
+def compare_evals(args: argparse.Namespace) -> None:
+    report = compare_eval_reports(args.reports)
+    if args.output is not None:
+        write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    best = report["items"][0]
+    emit(
+        args,
+        report,
+        (
+            f"best={best['label']} "
+            f"review_effort={best['segments_needing_edit_ratio']:.4f} "
+            f"practical_cer={best['practical_cer']:.4f}"
         ),
     )
 
@@ -757,6 +774,15 @@ def build_parser() -> argparse.ArgumentParser:
     review_effort_parser.add_argument("-o", "--output", type=Path)
     review_effort_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
     review_effort_parser.set_defaults(func=review_effort)
+
+    compare_evals_parser = subcommands.add_parser(
+        "compare-evals",
+        help="Rank eval-transcript/eval-manifest reports by review effort and quality metrics.",
+    )
+    compare_evals_parser.add_argument("reports", type=Path, nargs="+")
+    compare_evals_parser.add_argument("-o", "--output", type=Path)
+    compare_evals_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
+    compare_evals_parser.set_defaults(func=compare_evals)
 
     review_pack_parser = subcommands.add_parser(
         "review-pack",

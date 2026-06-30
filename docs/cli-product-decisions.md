@@ -426,6 +426,20 @@ uv run casrt review-effort eval-suite.json --json -o review-effort.json
 - `reason_counts`는 `text`, `channel`, `timing`, `missing_reference`, `extra_candidate`별 수정 후보 수를 세어 다음 실험/검수 작업의 우선순위를 정한다.
 - 이 명령은 transcript를 수정하지 않고, WebUI 옵션을 늘리지 않는다. 품질 반복을 위한 리뷰 큐 JSON만 생성한다.
 
+### Eval Report Comparison
+
+```bash
+uv run casrt compare-evals qwen-report.json stable-report.json quiet8-report.json --json -o comparison.json
+```
+
+동작:
+
+- 입력은 `eval-transcript` 단일 report 또는 `eval-manifest` suite report JSON이다.
+- output format은 `custom-asmr-eval-comparison-v1`이다.
+- 각 report의 practical CER, time-aligned 500ms ratio, channel time-aligned accuracy, candidate MIX ratio, `review_effort` 수정 비율을 한 줄 summary로 뽑는다.
+- ranking은 `segments_needing_edit_ratio`, practical CER, time-aligned 500ms ratio desc, channel time-aligned accuracy desc 순서다.
+- 이 명령은 모델/heuristic 승격을 자동 결정하지 않는다. 사람이 다음 실험 후보를 고르는 비교표만 만든다.
+
 ### Review Pack
 
 ```bash

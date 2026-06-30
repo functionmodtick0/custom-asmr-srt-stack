@@ -406,6 +406,14 @@ uv run casrt eval-manifest gold.json \
 
 현재 평가는 strict CER, practical CER, segment index 기준 timing 오차, time-overlap 기준 timing ratio, L/R/MIX channel confusion, L/R channel accuracy, review 비율, segment 단위 `review_effort`를 계산합니다.
 
+여러 평가 report를 한 번에 비교:
+
+```bash
+uv run casrt compare-evals qwen-report.json stable-report.json quiet8-report.json --json -o comparison.json
+```
+
+`compare-evals`는 `review_effort` 수정 비율, practical CER, timing/channel 지표를 후보별로 뽑고 사람이 다음 실험 후보를 고르기 쉽도록 정렬합니다.
+
 평가 report에서 사람이 바로 볼 수정 큐 JSON도 만들 수 있습니다.
 
 ```bash
