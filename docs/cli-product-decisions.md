@@ -321,6 +321,24 @@ uv run casrt prepare-review-cases plan.json -o cases --json
 - candidate가 있는 case와 없는 case를 섞으면 실패한다. 검수 준비와 후보 평가를 같은 plan에서 섞지 않는다.
 - `prepare-review-cases`도 검수 완료 판정을 하지 않는다. 사람이 확인한 뒤 `freeze-reference`와 `reference_type=human-reviewed` manifest를 사용한다.
 
+준비된 case set의 파일 누락, stale count, 남은 reference review flag는 `review-case-status`로 확인한다.
+
+```bash
+uv run casrt review-case-status cases/case-index.json --json -o cases/status.json
+uv run casrt review-case-status cases/case-index.json --fail-on-issues --fail-on-review
+```
+
+동작:
+
+- 입력은 `custom-asmr-review-case-set-v1` `case-index.json`이다.
+- `audio`, `reference`, optional `candidate` 경로는 `case-index.json` 위치 기준으로 해석한다.
+- output format은 `custom-asmr-review-case-status-v1`이다.
+- 각 case의 파일 존재 여부, reference/candidate segment count, reference/candidate review count를 실제 파일에서 다시 계산한다.
+- `case-index.json`에 기록된 `segments`/`review_count`와 실제 reference가 다르면 `issues`에 남긴다.
+- 기본 exit code는 report 생성을 우선해 성공이다. `--fail-on-issues`는 missing file, parse failure, stale count가 있을 때 report 출력/저장 후 실패한다.
+- `--fail-on-review`는 reference에 `needs_review=true`가 남아 있으면 report 출력/저장 후 실패한다.
+- 이 명령도 human-reviewed 여부를 추정하지 않는다. `reference_type`은 index에 기록된 값을 집계할 뿐이며, 모델 승격 평가는 여전히 `eval-manifest --require-reference-type human-reviewed`가 담당한다.
+
 ### 기존 Transcript Alignment
 
 ```bash

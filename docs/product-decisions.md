@@ -156,6 +156,7 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 - `review-pack`: 수정 큐와 원본 audio를 결합해 `custom-asmr-review-pack-v1` index와 WAV clips를 만들고, human-reviewed gold 제작을 빠르게 한다.
 - `attribute-channels`: 기존 SRT/master transcript와 stereo audio를 받아 `MIX` speech segment에만 L/R energy channel attribution을 적용한다. 기존 text/timing은 변경하지 않는다.
 - `slice-case`: 긴 원본 audio와 SRT/master에서 matching WAV/master case를 만들고, 경계에 걸쳐 잘린 segment를 `needs_review=true`로 표시해 human-reviewed gold 제작을 돕는다.
+- `review-case-status`: `case-index.json`에서 준비된 case set의 파일 존재 여부, stale segment/review count, 남은 reference `needs_review` 수를 실제 파일 기준으로 다시 계산한다. 이 명령은 검수 완료를 자동 판정하지 않고, human-reviewed 승격 판단은 manifest의 `reference_type` gate가 담당한다.
 
 구현 세부 값, 실험 결과, 다음 작업 계획은 [local-asr-pipeline.md](local-asr-pipeline.md)에 기록한다.
 
@@ -421,6 +422,7 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - `[LR]`은 현재 channel model에서 `MIX`로 저장한다.
 - `slice-case`는 audio와 transcript를 같은 구간으로 자르고 transcript timestamp를 0 기준으로 rebase한다. 경계에서 잘린 segment는 검수 필요 상태로 남긴다.
 - `prepare-review-cases`는 여러 `slice-case` 작업을 plan 파일로 재현 가능하게 실행하고, `audio-map.json`, `case-index.json`, reference/candidate master, eval manifest 산출물을 만든다. 이 명령도 검수 완료를 판정하지 않는다.
+- `review-case-status`는 준비된 `case-index.json`의 audio/reference/candidate 파일 존재 여부와 실제 segment/review count를 다시 읽어 `custom-asmr-review-case-status-v1` report를 만든다. 운영 gate로 쓸 때는 `--fail-on-issues`와 `--fail-on-review`를 사용한다.
 - WAV가 아닌 입력은 ffmpeg로 16-bit PCM WAV로 변환한다.
 - stereo WAV는 `L`, `R`, `MIX` 세 channel 파일로 분리한다.
 - mono WAV는 `MIX`만 만든다.

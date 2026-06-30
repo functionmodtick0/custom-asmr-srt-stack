@@ -738,6 +738,106 @@ class ProjectCliTests(unittest.TestCase):
             self.assertIn("source file does not exist", error)
             self.assertFalse(output_dir.exists())
 
+    def test_review_case_status_reports_prepared_case_integrity(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "source.wav"
+            reference = root / "reference.srt"
+            plan = root / "plan.json"
+            output_dir = root / "cases"
+            status_path = root / "status.json"
+            write_stereo_samples(audio, [(100, 200), (300, 400), (500, 600), (700, 800)])
+            reference.write_text(
+                "1\n00:00:00,000 --> 00:00:00,002\n前半\n\n"
+                "2\n00:00:00,001 --> 00:00:00,003\n中央\n",
+                encoding="utf-8",
+            )
+            plan.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-case-slice-plan-v1",
+                        "reference_type": "pseudo-gold",
+                        "cases": [
+                            {
+                                "id": "front-a",
+                                "audio": "source.wav",
+                                "reference": "reference.srt",
+                                "start_ms": 1,
+                                "end_ms": 3,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            run_cli(["prepare-review-cases", str(plan), "-o", str(output_dir)])
+
+            result, output = run_cli(
+                [
+                    "review-case-status",
+                    "--json",
+                    "-o",
+                    str(status_path),
+                    str(output_dir / "case-index.json"),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["format"], "custom-asmr-review-case-status-v1")
+            self.assertTrue(report["ok"])
+            self.assertEqual(report["case_count"], 1)
+            self.assertEqual(report["reference_type_counts"], {"pseudo-gold": 1})
+            self.assertEqual(report["reference_review_count"], 1)
+            self.assertEqual(report["cases_needing_review"], ["front-a"])
+            self.assertEqual(report["items"][0]["reference_segments"], 2)
+            self.assertEqual(report["items"][0]["reference_review_count"], 1)
+            self.assertEqual(json.loads(status_path.read_text(encoding="utf-8"))["case_count"], 1)
+
+    def test_review_case_status_can_fail_after_reporting_missing_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_index = root / "case-index.json"
+            status_path = root / "status.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "reference_type": "human-reviewed",
+                        "items": [
+                            {
+                                "id": "front-a",
+                                "audio": "missing.wav",
+                                "reference": "missing.master.json",
+                                "segments": 1,
+                                "review_count": 0,
+                                "reference_type": "human-reviewed",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "review-case-status",
+                    "--json",
+                    "-o",
+                    str(status_path),
+                    "--fail-on-issues",
+                    str(case_index),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            report = json.loads(output)
+            self.assertFalse(report["ok"])
+            self.assertEqual(report["missing_file_count"], 2)
+            self.assertIn("audio file is missing", report["items"][0]["issues"][0])
+            self.assertEqual(json.loads(status_path.read_text(encoding="utf-8"))["missing_file_count"], 2)
+            self.assertIn("review case status failed", error)
+
     def test_eval_transcript_quality_gate_fails_after_emitting_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

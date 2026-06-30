@@ -13,7 +13,7 @@ from typing import Any
 
 from custom_asmr_srt_stack.alignment import alignment_diagnostics, run_alignment_command
 from custom_asmr_srt_stack.audio import normalize_audio_to_wav, slice_wav, split_wav_channels
-from custom_asmr_srt_stack.case_batch import prepare_review_cases
+from custom_asmr_srt_stack.case_batch import prepare_review_cases, review_case_status
 from custom_asmr_srt_stack.case_slicing import slice_master_document
 from custom_asmr_srt_stack.channel_attribution import (
     CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
@@ -260,6 +260,27 @@ def prepare_review_cases_command(args: argparse.Namespace) -> None:
         report,
         f"review cases prepared: {args.output} cases={report['case_count']} review={report['review_count']}",
     )
+
+
+def review_case_status_command(args: argparse.Namespace) -> None:
+    report = review_case_status(args.case_index, source_language=args.source_language)
+    if args.output is not None:
+        write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    emit(
+        args,
+        report,
+        (
+            f"review case status: cases={report['case_count']} "
+            f"review={report['reference_review_count']} issues={report['case_issue_count']}"
+        ),
+    )
+    if args.fail_on_issues and not report["ok"]:
+        raise ValueError(
+            "review case status failed: "
+            f"missing_files={report['missing_file_count']} case_issues={report['case_issue_count']}"
+        )
+    if args.fail_on_review and report["reference_review_count"] > 0:
+        raise ValueError(f"review case status failed: review_count={report['reference_review_count']}")
 
 
 def eval_transcript(args: argparse.Namespace) -> None:
@@ -832,6 +853,26 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_review_cases_parser.add_argument("-o", "--output", type=Path, required=True)
     prepare_review_cases_parser.add_argument("--source-language", default="ja")
     prepare_review_cases_parser.set_defaults(func=prepare_review_cases_command)
+
+    review_case_status_parser = subcommands.add_parser(
+        "review-case-status",
+        parents=[output_parent],
+        help="Report prepared review case integrity and remaining reference review flags.",
+    )
+    review_case_status_parser.add_argument("case_index", type=Path)
+    review_case_status_parser.add_argument("-o", "--output", type=Path)
+    review_case_status_parser.add_argument("--source-language", default="ja")
+    review_case_status_parser.add_argument(
+        "--fail-on-issues",
+        action="store_true",
+        help="Return a failing exit code after emitting the report if files are missing or counts are stale.",
+    )
+    review_case_status_parser.add_argument(
+        "--fail-on-review",
+        action="store_true",
+        help="Return a failing exit code after emitting the report if reference segments still need review.",
+    )
+    review_case_status_parser.set_defaults(func=review_case_status_command)
 
     eval_transcript_parser = subcommands.add_parser("eval-transcript", help="Evaluate a candidate transcript.")
     eval_transcript_parser.add_argument("reference", type=Path)

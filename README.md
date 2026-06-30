@@ -338,6 +338,14 @@ uv run casrt prepare-review-cases plan.json -o cases --json
 
 `plan.json`은 `custom-asmr-case-slice-plan-v1` 형식이며 각 case의 `id`, `audio`, `reference`, `start_ms`, `end_ms`를 담습니다. 모든 case에 `candidate`가 있으면 `eval-manifest.json`도 함께 생성합니다. 출력에는 `audio-map.json`, `case-index.json`, `audio/*.wav`, `references/*.master.json`이 포함됩니다.
 
+준비된 case set 상태 확인:
+
+```bash
+uv run casrt review-case-status cases/case-index.json --json -o cases/status.json
+```
+
+`review-case-status`는 `case-index.json` 기준으로 audio/reference/candidate 파일 존재 여부, 실제 segment 수, 남은 `needs_review` 수를 다시 계산합니다. `--fail-on-issues`는 파일 누락이나 stale count가 있을 때, `--fail-on-review`는 reference에 검수 flag가 남았을 때 report를 출력/저장한 뒤 실패 exit code를 반환합니다.
+
 기존 SRT 또는 master JSON을 고정 aligner로 재정렬:
 
 ```bash

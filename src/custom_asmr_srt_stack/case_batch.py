@@ -12,6 +12,7 @@ from custom_asmr_srt_stack.review_pack import REVIEW_AUDIO_MAP_FORMAT
 
 CASE_SLICE_PLAN_FORMAT = "custom-asmr-case-slice-plan-v1"
 REVIEW_CASE_SET_FORMAT = "custom-asmr-review-case-set-v1"
+REVIEW_CASE_STATUS_FORMAT = "custom-asmr-review-case-status-v1"
 
 
 def prepare_review_cases(
@@ -162,6 +163,173 @@ def load_case_slice_plan(plan_file: Path) -> dict[str, Any]:
     return data
 
 
+def review_case_status(case_index_file: Path, *, source_language: str = "ja") -> dict[str, Any]:
+    case_index = load_review_case_index(case_index_file)
+    raw_items = case_index.get("items")
+    if not isinstance(raw_items, list):
+        raise ValueError("review case index items must be an array")
+
+    base_dir = case_index_file.parent
+    default_reference_type = case_index.get("reference_type")
+    if default_reference_type is not None and not isinstance(default_reference_type, str):
+        raise ValueError("review case index reference_type must be a string")
+
+    items: list[dict[str, Any]] = []
+    reference_type_counts: dict[str, int] = {}
+    missing_file_count = 0
+    reference_review_count = 0
+    candidate_case_count = 0
+    cases_needing_review: list[str] = []
+    cases_with_issues: list[str] = []
+
+    for index, raw_item in enumerate(raw_items):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"review case index item {index} must be an object")
+        item = review_case_status_item(
+            raw_item,
+            index=index,
+            base_dir=base_dir,
+            default_reference_type=default_reference_type,
+            source_language=source_language,
+        )
+        items.append(item)
+        reference_type_counts[item["reference_type"]] = reference_type_counts.get(item["reference_type"], 0) + 1
+        missing_file_count += item["missing_file_count"]
+        reference_review_count += item["reference_review_count"]
+        if item.get("candidate") is not None:
+            candidate_case_count += 1
+        if item["reference_review_count"] > 0:
+            cases_needing_review.append(item["id"])
+        if item["issues"]:
+            cases_with_issues.append(item["id"])
+
+    return {
+        "format": REVIEW_CASE_STATUS_FORMAT,
+        "case_index": str(case_index_file),
+        "case_count": len(items),
+        "candidate_case_count": candidate_case_count,
+        "reference_type_counts": reference_type_counts,
+        "missing_file_count": missing_file_count,
+        "cases_with_issues": cases_with_issues,
+        "case_issue_count": len(cases_with_issues),
+        "reference_review_count": reference_review_count,
+        "cases_needing_review": cases_needing_review,
+        "ok": missing_file_count == 0 and not cases_with_issues,
+        "items": items,
+    }
+
+
+def load_review_case_index(case_index_file: Path) -> dict[str, Any]:
+    data = json.loads(case_index_file.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("review case index must be a JSON object")
+    if data.get("format") != REVIEW_CASE_SET_FORMAT:
+        raise ValueError(f"review case index format must be {REVIEW_CASE_SET_FORMAT}")
+    return data
+
+
+def review_case_status_item(
+    raw_item: dict[str, Any],
+    *,
+    index: int,
+    base_dir: Path,
+    default_reference_type: str | None,
+    source_language: str,
+) -> dict[str, Any]:
+    case_id = require_index_string(raw_item, "id", index)
+    audio = file_reference_status(require_index_string(raw_item, "audio", index), base_dir=base_dir)
+    reference = file_reference_status(require_index_string(raw_item, "reference", index), base_dir=base_dir)
+    reference_type = raw_item.get("reference_type", default_reference_type) or "unspecified"
+    if not isinstance(reference_type, str):
+        raise ValueError(f"review case index item {index} reference_type must be a string")
+
+    issues: list[str] = []
+    missing_file_count = 0
+    for label, file_status in (("audio", audio), ("reference", reference)):
+        if not file_status["exists"]:
+            missing_file_count += 1
+            issues.append(f"{label} file is missing: {file_status['path']}")
+
+    reference_segments = 0
+    reference_review_count = 0
+    if reference["exists"]:
+        reference_counts, reference_issue = transcript_counts(
+            Path(reference["resolved_path"]),
+            source_language=source_language,
+        )
+        reference_segments = reference_counts["segments"]
+        reference_review_count = reference_counts["review_count"]
+        if reference_issue is not None:
+            issues.append(f"reference {reference_issue}")
+        else:
+            index_segments = raw_item.get("segments")
+            if isinstance(index_segments, int) and index_segments != reference_segments:
+                issues.append(f"reference segment count {reference_segments} != index segments {index_segments}")
+            index_review_count = raw_item.get("review_count")
+            if isinstance(index_review_count, int) and index_review_count != reference_review_count:
+                issues.append(
+                    f"reference review count {reference_review_count} != index review_count {index_review_count}"
+                )
+
+    candidate = None
+    candidate_segments = None
+    candidate_review_count = None
+    candidate_value = raw_item.get("candidate")
+    if candidate_value is not None:
+        if not isinstance(candidate_value, str) or not candidate_value:
+            raise ValueError(f"review case index item {index} candidate must be a non-empty string")
+        candidate = file_reference_status(candidate_value, base_dir=base_dir)
+        if not candidate["exists"]:
+            missing_file_count += 1
+            issues.append(f"candidate file is missing: {candidate['path']}")
+        else:
+            candidate_counts, candidate_issue = transcript_counts(
+                Path(candidate["resolved_path"]),
+                source_language=source_language,
+            )
+            candidate_segments = candidate_counts["segments"]
+            candidate_review_count = candidate_counts["review_count"]
+            if candidate_issue is not None:
+                issues.append(f"candidate {candidate_issue}")
+
+    return {
+        "id": case_id,
+        "reference_type": reference_type,
+        "audio": audio,
+        "reference": reference,
+        "candidate": candidate,
+        "candidate_id": raw_item.get("candidate_id"),
+        "index_segments": raw_item.get("segments"),
+        "index_review_count": raw_item.get("review_count"),
+        "reference_segments": reference_segments,
+        "reference_review_count": reference_review_count,
+        "candidate_segments": candidate_segments,
+        "candidate_review_count": candidate_review_count,
+        "missing_file_count": missing_file_count,
+        "issues": issues,
+    }
+
+
+def file_reference_status(path_value: str, *, base_dir: Path) -> dict[str, Any]:
+    path = resolve_plan_path(base_dir, path_value)
+    return {
+        "path": path_value,
+        "resolved_path": str(path),
+        "exists": path.is_file(),
+    }
+
+
+def transcript_counts(path: Path, *, source_language: str) -> tuple[dict[str, int], str | None]:
+    try:
+        master = load_transcript_document(path, source_language=source_language)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        return {"segments": 0, "review_count": 0}, f"cannot be loaded: {error}"
+    return {
+        "segments": len(master.segments),
+        "review_count": sum(1 for segment in master.segments if segment.needs_review),
+    }, None
+
+
 def validate_case_slice_plan(plan: dict[str, Any]) -> list[dict[str, Any]]:
     if plan.get("format") != CASE_SLICE_PLAN_FORMAT:
         raise ValueError(f"case slice plan format must be {CASE_SLICE_PLAN_FORMAT}")
@@ -252,6 +420,13 @@ def require_case_int(case: dict[str, Any], key: str, index: int) -> int:
         raise ValueError(f"case slice plan case {index} {key} must be an integer")
     if value < 0:
         raise ValueError(f"case slice plan case {index} {key} must be non-negative")
+    return value
+
+
+def require_index_string(item: dict[str, Any], key: str, index: int) -> str:
+    value = item.get(key)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"review case index item {index} {key} must be a non-empty string")
     return value
 
 
