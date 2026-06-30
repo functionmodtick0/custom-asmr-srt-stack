@@ -445,6 +445,7 @@ uv run casrt sweep-channel-attribution eval-manifest.json \
   --threshold-db 6 \
   --threshold-db 8 \
   --threshold-db 10 \
+  --product-gate \
   -o channel-sweep \
   --json
 ```
@@ -457,6 +458,7 @@ uv run casrt sweep-channel-attribution eval-manifest.json \
 - 각 threshold/quiet-side setting별로 attributed candidate master, generated eval manifest, eval report를 만든다.
 - output root에는 `custom-asmr-channel-attribution-sweep-v1` `index.json`과 `comparison.json`을 쓴다.
 - `--threshold-db`와 `--quiet-channel-max-dbfs`는 반복 가능하다. 지정하지 않으면 제품 기본값 8dB와 -40dBFS를 사용한다.
+- `--product-gate` 또는 개별 gate 인자를 지정하면 `comparison.json`의 각 item에 `gate_passed`와 `gate_failures`를 붙이고, 같은 `quality_gate` metadata를 `index.json`에도 보존한다. Sweep 자체는 gate 실패 때문에 실패 exit code를 반환하지 않는다.
 - 이 명령은 threshold를 자동 승격하지 않는다. 사람이 `comparison.json`과 product gate를 보고 기본값 변경 여부를 결정한다.
 - WebUI 옵션으로 노출하지 않는 benchmark/운영 도구다.
 

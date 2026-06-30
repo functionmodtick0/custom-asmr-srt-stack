@@ -417,11 +417,12 @@ uv run casrt sweep-channel-attribution eval-manifest.json \
   --threshold-db 6 \
   --threshold-db 8 \
   --threshold-db 10 \
+  --product-gate \
   -o channel-sweep \
   --json
 ```
 
-`sweep-channel-attribution`은 setting별 attributed candidates, eval reports, `comparison.json`을 생성합니다. 이 명령은 WebUI 옵션을 늘리지 않는 CLI-only benchmark 도구이며 threshold를 자동 승격하지 않습니다.
+`sweep-channel-attribution`은 setting별 attributed candidates, eval reports, `comparison.json`을 생성합니다. `--product-gate` 또는 개별 gate 인자를 함께 넣으면 `comparison.json`과 `index.json`에 gate 결과를 주석으로 남깁니다. 이 명령은 WebUI 옵션을 늘리지 않는 CLI-only benchmark 도구이며 threshold를 자동 승격하지 않습니다.
 
 전사 결과 평가:
 

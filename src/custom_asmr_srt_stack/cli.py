@@ -244,6 +244,13 @@ def sweep_channel_attribution_command(args: argparse.Namespace) -> None:
         quiet_channel_max_dbfs_values=args.quiet_channel_max_dbfs or [CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS],
         source_language=args.source_language,
     )
+    comparison_path = Path(report["comparison"])
+    comparison = json.loads(read_text(comparison_path))
+    annotate_comparison_quality_gates(comparison, args)
+    if "quality_gate" in comparison:
+        write_text(comparison_path, json.dumps(comparison, ensure_ascii=False, indent=2) + "\n")
+        report["quality_gate"] = comparison["quality_gate"]
+        write_text(args.output / "index.json", json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     emit(
         args,
         report,
@@ -993,6 +1000,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Quiet-side gate to test. Repeat for multiple values; default is the product quiet-side gate.",
     )
     sweep_channel_attribution_parser.add_argument("--source-language", default="ja")
+    add_quality_gate_args(sweep_channel_attribution_parser, action_verb="Annotate comparison")
     sweep_channel_attribution_parser.set_defaults(func=sweep_channel_attribution_command)
 
     slice_case_parser = subcommands.add_parser(

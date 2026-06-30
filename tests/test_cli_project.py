@@ -665,6 +665,7 @@ class ProjectCliTests(unittest.TestCase):
                     "3",
                     "--threshold-db",
                     "50",
+                    "--product-gate",
                 ]
             )
 
@@ -672,13 +673,21 @@ class ProjectCliTests(unittest.TestCase):
             report = json.loads(output)
             self.assertEqual(report["format"], "custom-asmr-channel-attribution-sweep-v1")
             self.assertEqual(report["setting_count"], 2)
+            self.assertEqual(report["quality_gate"]["preset"], "local-asmr-v1")
             self.assertEqual([item["changed_segments"] for item in report["items"]], [2, 0])
             comparison = json.loads((output_dir / "comparison.json").read_text(encoding="utf-8"))
+            index = json.loads((output_dir / "index.json").read_text(encoding="utf-8"))
+            self.assertEqual(comparison["quality_gate"]["require_reference_type"], "human-reviewed")
+            self.assertEqual(index["quality_gate"], comparison["quality_gate"])
             self.assertEqual(comparison["items"][0]["label"], "th3_quietm40.eval-report")
             self.assertEqual(comparison["items"][0]["segments_needing_edit"], 0.0)
+            self.assertTrue(comparison["items"][0]["gate_passed"])
             self.assertEqual(comparison["items"][1]["segments_needing_edit"], 2.0)
+            self.assertFalse(comparison["items"][1]["gate_passed"])
+            self.assertTrue(
+                any("channel time-aligned MIX ratio" in failure for failure in comparison["items"][1]["gate_failures"])
+            )
             self.assertTrue((output_dir / "th3_quietm40" / "candidates" / "front-a.master.json").exists())
-            self.assertTrue((output_dir / "index.json").exists())
 
     def test_sweep_channel_attribution_rejects_missing_sources_before_output_side_effects(self):
         with tempfile.TemporaryDirectory() as tmpdir:
