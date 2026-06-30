@@ -9,6 +9,7 @@ import wave
 from pathlib import Path
 from unittest import mock
 
+from custom_asmr_srt_stack.audio import analyze_wav
 from custom_asmr_srt_stack.cli import main
 from custom_asmr_srt_stack.models import Segment
 
@@ -523,6 +524,139 @@ class ProjectCliTests(unittest.TestCase):
                 json.loads(review_report_path.read_text(encoding="utf-8"))["items"][0]["reference_type"],
                 "human-reviewed",
             )
+
+    def test_review_pack_creates_audio_clips_from_review_effort_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_dir = root / "audio"
+            audio_dir.mkdir()
+            audio_path = audio_dir / "front-a.wav"
+            review_path = root / "review-effort.json"
+            audio_map = root / "audio-map.json"
+            pack_dir = root / "review-pack"
+            write_mono_wav(audio_path)
+            review_path.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-effort-v1",
+                        "source_report": "eval-suite.json",
+                        "item_count": 1,
+                        "reason_counts": {"text": 1},
+                        "items": [
+                            {
+                                "case_id": "front-a",
+                                "reference_id": "seg_000001",
+                                "candidate_id": "seg_000001",
+                                "start_ms": 0,
+                                "end_ms": 2,
+                                "reasons": ["text"],
+                                "reference_text": "ねえ",
+                                "candidate_text": "ね",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            audio_map.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-audio-map-v1",
+                        "items": [{"case_id": "front-a", "audio": "audio/front-a.wav"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "review-pack",
+                    "--json",
+                    "--audio-map",
+                    str(audio_map),
+                    "-o",
+                    str(pack_dir),
+                    str(review_path),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["format"], "custom-asmr-review-pack-v1")
+            self.assertEqual(report["clip_count"], 1)
+            self.assertEqual(report["items"][0]["clip_start_ms"], 0)
+            self.assertEqual(report["items"][0]["clip_end_ms"], 2)
+            clip_path = pack_dir / report["items"][0]["clip_file"]
+            self.assertTrue(clip_path.exists())
+            self.assertEqual(analyze_wav(clip_path.read_bytes()).duration_ms, 2)
+            index = json.loads((pack_dir / "index.json").read_text(encoding="utf-8"))
+            self.assertEqual(index["items"][0]["reference_text"], "ねえ")
+
+    def test_review_pack_rejects_single_audio_for_multiple_cases(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "front-a.wav"
+            review_path = root / "review-effort.json"
+            write_mono_wav(audio_path)
+            review_path.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-effort-v1",
+                        "items": [
+                            {"case_id": "front-a", "start_ms": 0, "end_ms": 2, "reasons": ["text"]},
+                            {"case_id": "front-b", "start_ms": 0, "end_ms": 2, "reasons": ["text"]},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, _, error = run_cli_with_stderr(
+                [
+                    "review-pack",
+                    "--audio",
+                    str(audio_path),
+                    "-o",
+                    str(root / "review-pack"),
+                    str(review_path),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertIn("multiple case_id values requires --audio-map", error)
+
+    def test_review_pack_rejects_non_empty_output_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "front-a.wav"
+            review_path = root / "review-effort.json"
+            pack_dir = root / "review-pack"
+            pack_dir.mkdir()
+            (pack_dir / "old.wav").write_bytes(b"stale")
+            write_mono_wav(audio_path)
+            review_path.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-effort-v1",
+                        "items": [{"start_ms": 0, "end_ms": 2, "reasons": ["text"]}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, _, error = run_cli_with_stderr(
+                [
+                    "review-pack",
+                    "--audio",
+                    str(audio_path),
+                    "-o",
+                    str(pack_dir),
+                    str(review_path),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertIn("output directory must be empty", error)
 
     def test_eval_manifest_quality_gate_passes_when_thresholds_are_met(self):
         with tempfile.TemporaryDirectory() as tmpdir:

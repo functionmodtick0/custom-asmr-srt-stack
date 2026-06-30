@@ -368,6 +368,14 @@ uv run casrt review-effort eval-suite.json --json -o review-effort.json
 
 `custom-asmr-review-effort-v1`에는 case id, 후보 id, reference type, 수정 reason, reference/candidate text와 timing delta가 들어갑니다.
 
+수정 큐에서 검수용 audio clip pack도 만들 수 있습니다.
+
+```bash
+uv run casrt review-pack review-effort.json --audio-map audio-map.json -o review-pack --json
+```
+
+`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다.
+
 ## 테스트
 
 ```bash

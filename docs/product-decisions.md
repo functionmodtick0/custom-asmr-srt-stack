@@ -149,6 +149,7 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 - `needs_review` segment 비율
 - `review_effort`: practical text mismatch, channel mismatch, 500ms 초과 timing mismatch, missing reference, extra candidate를 합친 사람이 실제로 고쳐야 하는 구간 수
 - `review_effort.items` export: 평가 report에서 `custom-asmr-review-effort-v1` 수정 큐 JSON을 생성해 사람이 볼 다음 검수/개선 후보를 보존한다.
+- `review-pack`: 수정 큐와 원본 audio를 결합해 `custom-asmr-review-pack-v1` index와 WAV clips를 만들고, human-reviewed gold 제작을 빠르게 한다.
 
 구현 세부 값, 실험 결과, 다음 작업 계획은 [local-asr-pipeline.md](local-asr-pipeline.md)에 기록한다.
 

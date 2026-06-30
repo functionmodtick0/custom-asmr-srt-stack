@@ -335,6 +335,25 @@ uv run casrt review-effort eval-suite.json --json -o review-effort.json
 - `reason_counts`는 `text`, `channel`, `timing`, `missing_reference`, `extra_candidate`별 수정 후보 수를 세어 다음 실험/검수 작업의 우선순위를 정한다.
 - 이 명령은 transcript를 수정하지 않고, WebUI 옵션을 늘리지 않는다. 품질 반복을 위한 리뷰 큐 JSON만 생성한다.
 
+### Review Pack
+
+```bash
+uv run casrt review-pack review-effort.json \
+  --audio-map audio-map.json \
+  -o review-pack \
+  --json
+```
+
+동작:
+
+- 입력은 `custom-asmr-review-effort-v1` report다.
+- `--audio`는 단일 audio file report에 사용하고, `--audio-map`은 manifest case별 audio file에 사용한다. 둘 중 하나만 허용한다. 여러 `case_id`가 있는 report에 `--audio`를 쓰면 실패한다.
+- audio map은 `custom-asmr-review-audio-map-v1` 또는 `{ "case_id": "audio.wav" }` object를 받는다.
+- output directory는 없거나 비어 있어야 한다. 기존 clip과 새 index가 섞이는 것을 막기 위해 non-empty directory에는 쓰지 않는다.
+- 각 item의 `start_ms/end_ms`에 기본 500ms context를 붙이고 audio duration 안으로 clamp해서 `clips/*.wav`를 만든다.
+- `index.json` format은 `custom-asmr-review-pack-v1`이다. 각 item은 원래 review reason/text/timing과 `clip_file`, `clip_start_ms`, `clip_end_ms`, `clip_context_ms`를 보존한다.
+- 이 명령은 human-reviewed gold 제작을 쉽게 하기 위한 CLI-only 도구이며 WebUI 옵션을 늘리지 않는다.
+
 ### 선택 segment 재전사
 
 ```bash

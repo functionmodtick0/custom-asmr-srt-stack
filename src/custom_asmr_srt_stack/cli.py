@@ -21,6 +21,7 @@ from custom_asmr_srt_stack.evaluation import (
 from custom_asmr_srt_stack.model_snapshot import snapshot_digest
 from custom_asmr_srt_stack.models import MasterDocument
 from custom_asmr_srt_stack.projects import ProjectStore
+from custom_asmr_srt_stack.review_pack import build_review_pack
 from custom_asmr_srt_stack.server import run_server
 from custom_asmr_srt_stack.srt import format_srt, parse_srt
 from custom_asmr_srt_stack.translation import export_translation_json, parse_translated_texts
@@ -183,6 +184,20 @@ def review_effort(args: argparse.Namespace) -> None:
             f"review_effort_items={report['item_count']} "
             f"reasons={json.dumps(report['reason_counts'], ensure_ascii=False, sort_keys=True)}"
         ),
+    )
+
+
+def review_pack(args: argparse.Namespace) -> None:
+    report = build_review_pack(
+        json.loads(read_text(args.review_effort)),
+        output_dir=args.output,
+        audio_file=args.audio,
+        audio_map_file=args.audio_map,
+    )
+    emit(
+        args,
+        report,
+        f"review pack: {args.output} clips={report['clip_count']}",
     )
 
 
@@ -553,6 +568,17 @@ def build_parser() -> argparse.ArgumentParser:
     review_effort_parser.add_argument("-o", "--output", type=Path)
     review_effort_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
     review_effort_parser.set_defaults(func=review_effort)
+
+    review_pack_parser = subcommands.add_parser(
+        "review-pack",
+        help="Create audio clips from a review-effort JSON report.",
+    )
+    review_pack_parser.add_argument("review_effort", type=Path)
+    review_pack_parser.add_argument("-o", "--output", type=Path, required=True)
+    review_pack_parser.add_argument("--audio", type=Path, help="Single WAV file for reports without case audio mapping.")
+    review_pack_parser.add_argument("--audio-map", type=Path, help="JSON map from case_id to WAV file.")
+    review_pack_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
+    review_pack_parser.set_defaults(func=review_pack)
 
     serve_web = subcommands.add_parser("serve", help="Run the local WebUI server.")
     serve_web.add_argument("--host", default="127.0.0.1")

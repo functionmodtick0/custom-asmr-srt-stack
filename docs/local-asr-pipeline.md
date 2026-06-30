@@ -245,6 +245,13 @@ Generic Qwen aligner worker는 두 가지 bounded fallback을 가진다. `CASRT_
 - 허용 조건: offline env, local path-only model id, `local_files_only=True`, `trust_remote_code=False`, Python socket network guard, `qwen-asr==0.0.6` RECORD hash, per-file RECORD hash, import origin 검증
 - caution: Python socket guard는 OS-level egress control이 아니며, 실패 요약에는 local path 같은 운영 정보가 남을 수 있다.
 
+2026-06-30 coverage guard 변경 정적 보안 재검토:
+
+- reviewer: `gpt-5.4 xhigh` subagent
+- scope: commit `9723036`, `CASRT_QWEN_ALIGNER_MIN_COVERAGE_RATIO` guard
+- verdict: `PASS`
+- 판단: 실행 경계, local path-only, `local_files_only`, `trust_remote_code=False`, socket guard, package/hash/import-origin 검증, no-traceback contract를 약화하지 않는다. env 값이 잘못되면 fail-open이 아니라 `ValueError`로 실패한다.
+
 2026-06-30 실제 로딩/추론 smoke:
 
 - command: `.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.qwen_aligner_worker --model-id /home/brain-offloaded/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/c7cbfc2048c462b0d63a45797104fc9db3ad62b7`
@@ -318,6 +325,7 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 - segment 단위 `review_effort`: practical text mismatch, channel mismatch, 500ms 초과 timing mismatch, missing reference, extra candidate
 - case별 `review_effort.items`: human review와 heuristic 개선이 어느 segment를 봐야 하는지 알 수 있도록 reasons와 reference/candidate text/channel/timing을 보존한다.
 - `casrt review-effort eval-suite.json --json -o review-effort.json`: suite/single report에서 `custom-asmr-review-effort-v1` 수정 큐를 추출한다. manifest case context와 timing delta를 보존하므로 다음 human review 또는 heuristic 개선 순서를 정하는 기본 산출물이다.
+- `casrt review-pack review-effort.json --audio-map audio-map.json -o review-pack --json`: 수정 큐 item별 audio clip과 `custom-asmr-review-pack-v1` index를 만든다. pseudo-gold 비교에서 발견한 실패 구간을 사람이 빠르게 듣고 human-reviewed reference로 승격하기 위한 표준 산출물이다.
 
 strict CER는 공백만 제거한다.
 
@@ -464,6 +472,11 @@ uv run casrt eval-manifest gold.json \
   - Qwen/Qwen3-ASR-1.7B + Qwen3-ForcedAligner: `/tmp/casrt-quality.Q5OdDf/qwen17-align-review-effort-items.json`, `item_count=77`, `reason_counts={text: 70, timing: 65, channel: 36, missing_reference: 2, extra_candidate: 3}`. Text 오류가 대부분이므로 alignment만으로 구제할 수 없는 후보로 본다.
   - stable-ts CSV channel + Qwen3-ForcedAligner: `/tmp/casrt-quality.Q5OdDf/stable-ts-csv-channel-qwen-aligner-review-effort-items.json`, `item_count=48`, `reason_counts={timing: 47, text: 4, channel: 4}`. Text는 보존되지만 Qwen aligner가 segment span을 자주 줄여 pseudo-reference 기준 timing review가 크게 늘어난다.
 - 2026-06-30 existing artifact 재계산에서 stable-ts CSV channel + Qwen aligner에 coverage fallback을 적용하면 threshold 0.5 기준 `review_effort` 48 -> 33, time-aligned 500ms 62.8% -> 75.7%로 개선된다. threshold 0.9는 `review_effort` 6, time-aligned 96.6%까지 올라가지만 원 timing을 대부분 보존하는 값이라 기본 guard로 쓰지 않는다. 제품 기본값은 과도한 trim만 막는 0.5다.
+- 2026-06-30 `casrt review-pack` 실제 생성:
+  - audio map: `/tmp/casrt-quality.Q5OdDf/review-audio-map.json`
+  - Qwen/Qwen3-ASR-1.7B + Qwen3-ForcedAligner pack: `/tmp/casrt-quality.Q5OdDf/review-pack-qwen17-align`, clips 77개.
+  - stable-ts CSV channel + Qwen3-ForcedAligner pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-qwen-aligner`, clips 48개.
+  - 두 pack 모두 `custom-asmr-review-pack-v1` index와 `clips/*.wav` 생성을 확인했다.
 
 case별 practical CER:
 
