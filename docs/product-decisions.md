@@ -134,7 +134,11 @@ ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한
 
 Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되, 제품의 일본 ASMR 품질 기준 모델 승격 여부는 동일한 gold set 평가 결과로만 결정한다. 현재 Gemma 4 E4B는 기준 미달이다.
 
-평가 없이 모델을 기본값으로 승격하지 않는다. 2026-06-30 audit에서 현재 01/04/07 front120 reference가 stable-ts 기반 pseudo-gold임을 확인했다. pseudo-gold 결과는 regression/상대 비교로만 쓰고, 기본 모델 승격은 `reference_type=human-reviewed` manifest에서 다시 판단한다. 최소 평가 기준은 다음이다.
+평가 없이 모델을 기본값으로 승격하지 않는다. 2026-06-30 audit에서 현재 01/04/07 front120 reference가 stable-ts 기반 pseudo-gold임을 확인했다. pseudo-gold 결과는 regression/상대 비교로만 쓰고, 기본 모델 승격은 `reference_type=human-reviewed` manifest에서 다시 판단한다.
+
+검수 완료 SRT/master는 `casrt freeze-reference`로 시간순 정렬, stable id 재부여, `needs_review=false` 저장을 거쳐 기준본 master JSON으로 고정한다. 이 명령은 검수 자체를 증명하지 않으므로, 사람이 검수한 입력만 `reference_type=human-reviewed` manifest에 넣는다.
+
+최소 평가 기준은 다음이다.
 
 - character error rate
 - segment boundary error와 threshold ratio

@@ -32,6 +32,28 @@
 - 모든 channel 정보는 `segment.channel`에만 저장한다.
 - 번역은 이 파이프라인에서 하지 않는다.
 
+## Human-Reviewed Reference Workflow
+
+제품 품질 판단은 사람이 검수한 기준본만 사용한다. 현재 01/04/07 front120 pseudo-gold는 stable-ts 산출물에서 만든 상대 비교용 기준이고, 모델 승격 근거가 아니다.
+
+검수 흐름:
+
+```text
+후보 transcript 생성
+-> 사람이 SRT 또는 master JSON에서 text, timing, channel을 검수
+-> casrt freeze-reference로 reference master JSON 고정
+-> gold manifest에 reference_type=human-reviewed 기록
+-> eval-manifest 품질 gate로 모델/heuristic 변경 판단
+```
+
+명령:
+
+```bash
+uv run casrt freeze-reference reviewed.srt -o refs/front120.master.json --json
+```
+
+`freeze-reference`는 시간순 정렬, stable id 재부여, `needs_review=false` 저장만 수행한다. 검수 여부를 자동 판정하지 않으므로 사람이 검수하지 않은 pseudo-gold는 `reference_type=pseudo-gold`로만 기록한다.
+
 ## 로컬 Qwen ASR 런타임
 
 기본 adapter:
@@ -470,6 +492,8 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 1. Gold set 운영
    - gold set manifest CLI는 추가됐다.
    - `/data/uploads`, `/data/outputs`에서 30초~2분 단위 reference case를 늘린다.
+   - 사람이 검수한 파일은 `casrt freeze-reference`로 stable id와 `needs_review=false`를 고정한다.
+   - manifest에 `reference_type=human-reviewed`와 검수 메모를 기록한다.
    - CER, timing error, channel accuracy, human edit count를 manifest report로 기록한다.
 
 2. 일본어 평가 정규화 확장

@@ -5,6 +5,7 @@ import base64
 import json
 import mimetypes
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +86,26 @@ def json_to_srt(args: argparse.Namespace) -> None:
 def export_translation(args: argparse.Namespace) -> None:
     master = MasterDocument.from_json(json.loads(read_text(args.input)))
     write_text(args.output, json.dumps(export_translation_json(master), ensure_ascii=False, indent=2) + "\n")
+
+
+def freeze_reference(args: argparse.Namespace) -> None:
+    master = load_transcript_document(args.input, source_language=args.source_language)
+    segments = tuple(
+        replace(segment, id=f"seg_{index + 1:06d}", needs_review=False)
+        for index, segment in enumerate(sorted(master.segments, key=lambda item: (item.start_ms, item.end_ms, item.id)))
+    )
+    frozen = MasterDocument(
+        source_language=master.source_language,
+        source_file=master.source_file,
+        duration_ms=master.duration_ms,
+        segments=segments,
+    )
+    write_text(args.output, json.dumps(frozen.to_json(), ensure_ascii=False, indent=2) + "\n")
+    emit(
+        args,
+        {"output": str(args.output), "segments": len(segments), "reference_type": "human-reviewed"},
+        f"reference frozen: {args.output} segments={len(segments)}",
+    )
 
 
 def eval_transcript(args: argparse.Namespace) -> None:
@@ -418,6 +439,16 @@ def build_parser() -> argparse.ArgumentParser:
     translation_export.add_argument("input", type=Path)
     translation_export.add_argument("-o", "--output", type=Path, required=True)
     translation_export.set_defaults(func=export_translation)
+
+    freeze_reference_parser = subcommands.add_parser(
+        "freeze-reference",
+        parents=[output_parent],
+        help="Freeze a reviewed SRT/master file into reference master JSON.",
+    )
+    freeze_reference_parser.add_argument("input", type=Path)
+    freeze_reference_parser.add_argument("-o", "--output", type=Path, required=True)
+    freeze_reference_parser.add_argument("--source-language", default="ja")
+    freeze_reference_parser.set_defaults(func=freeze_reference)
 
     eval_transcript_parser = subcommands.add_parser("eval-transcript", help="Evaluate a candidate transcript.")
     eval_transcript_parser.add_argument("reference", type=Path)

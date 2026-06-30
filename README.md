@@ -281,6 +281,14 @@ uv run casrt json-to-srt master.json -o export.srt
 uv run casrt json-to-srt master.json --translated translated.json -o export.srt
 ```
 
+검수 완료 SRT 또는 master JSON을 평가 기준본으로 고정:
+
+```bash
+uv run casrt freeze-reference reviewed.srt -o refs/front120.master.json --json
+```
+
+`freeze-reference`는 segment를 시간순으로 정렬하고 `seg_000001` 형식 id를 다시 부여하며 `needs_review=false`로 저장합니다. 이 산출물은 사람이 검수한 reference manifest에서만 모델 승격 근거로 사용합니다.
+
 전사 결과 평가:
 
 ```bash

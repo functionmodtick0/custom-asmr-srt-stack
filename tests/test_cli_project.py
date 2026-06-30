@@ -220,6 +220,72 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["text_practical"]["mode"], "practical")
             self.assertTrue(report_path.exists())
 
+    def test_freeze_reference_sorts_segments_and_clears_review_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "reviewed.master.json"
+            frozen_path = root / "reference.master.json"
+            source.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "sample.wav", "duration_ms": 3000},
+                        "segments": [
+                            {
+                                "id": "draft-b",
+                                "start_ms": 1600,
+                                "end_ms": 2100,
+                                "channel": "R",
+                                "kind": "speech",
+                                "text": "あと",
+                                "needs_review": True,
+                            },
+                            {
+                                "id": "draft-a",
+                                "start_ms": 500,
+                                "end_ms": 1000,
+                                "channel": "L",
+                                "kind": "speech",
+                                "text": "ねえ",
+                                "needs_review": True,
+                            },
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(["freeze-reference", str(source), "-o", str(frozen_path), "--json"])
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["reference_type"], "human-reviewed")
+            self.assertEqual(report["segments"], 2)
+            frozen = json.loads(frozen_path.read_text(encoding="utf-8"))
+            self.assertEqual([segment["id"] for segment in frozen["segments"]], ["seg_000001", "seg_000002"])
+            self.assertEqual([segment["text"] for segment in frozen["segments"]], ["ねえ", "あと"])
+            self.assertFalse(any(segment["needs_review"] for segment in frozen["segments"]))
+
+    def test_freeze_reference_accepts_reviewed_srt(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "reviewed.srt"
+            frozen_path = root / "reference.master.json"
+            source.write_text(
+                "2\n00:00:01,500 --> 00:00:02,000\n[R] あと\n\n"
+                "1\n00:00:00,500 --> 00:00:01,000\n[L] ねえ\n",
+                encoding="utf-8",
+            )
+
+            result, _ = run_cli(["freeze-reference", str(source), "-o", str(frozen_path)])
+
+            self.assertEqual(result, 0)
+            frozen = json.loads(frozen_path.read_text(encoding="utf-8"))
+            self.assertEqual([segment["channel"] for segment in frozen["segments"]], ["L", "R"])
+            self.assertEqual([segment["id"] for segment in frozen["segments"]], ["seg_000001", "seg_000002"])
+
     def test_eval_transcript_quality_gate_fails_after_emitting_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

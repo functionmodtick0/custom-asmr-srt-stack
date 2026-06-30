@@ -228,6 +228,23 @@ uv run casrt project transcribe PROJECT_ID \
 - VAD subprocess는 timeout과 최소 env로 실행하며 HF/API/W&B token을 상속하지 않는다.
 - `--energy-rescue-min-ms`는 energy interval을 유지하고 ONNX-only gap만 추가하는 내부 실험 옵션이다. 2026-06-28 gold 결과에서 text가 악화되어 기본값으로 쓰지 않는다.
 
+### 기준본 고정
+
+```bash
+uv run casrt freeze-reference reviewed.srt -o refs/front120.master.json --json
+uv run casrt freeze-reference reviewed.master.json -o refs/front120.master.json --json
+```
+
+동작:
+
+- 입력은 SRT 또는 `master.json`을 받는다.
+- segment를 `(start_ms, end_ms, id)` 순으로 정렬한다.
+- id를 `seg_000001`부터 다시 부여한다.
+- `needs_review`는 모두 `false`로 저장한다.
+- stdout JSON에는 `reference_type=human-reviewed`를 포함한다.
+- 이 명령은 검수 상태를 추정하지 않는다. 사람이 검수한 파일만 입력으로 넣는 것이 계약이다.
+- pseudo-gold나 모델 산출물을 `freeze-reference`로 고정할 수는 있지만, manifest에는 `reference_type=pseudo-gold`로 기록해야 하며 모델 승격 근거로 쓰지 않는다.
+
 ### 평가
 
 ```bash
