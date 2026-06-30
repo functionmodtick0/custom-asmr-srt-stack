@@ -129,6 +129,8 @@ ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한
 - `Qwen/Qwen3-ASR-0.6B`: 빠른 비교/저사양 후보
 - `Qwen/Qwen3-ForcedAligner-0.6B`: 고정 forced alignment 후보
 
+보안 검토가 필요한 로컬 Qwen benchmark는 repo id를 직접 실행하지 않고 고정 snapshot directory를 model id로 사용한다. 이때 `CASRT_LOCAL_WORKER_ENV_MODE=offline`, `CASRT_QWEN_ASR_REQUIRE_LOCAL_MODEL_PATH=1`, `CASRT_QWEN_ASR_LOCAL_FILES_ONLY=1`, `CASRT_QWEN_ASR_DISABLE_NETWORK=1`을 켜서 worker env를 scrub하고, cache miss/network fallback/custom remote code를 실패로 만든다.
+
 Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되, 제품의 일본 ASMR 품질 기준 모델 승격 여부는 동일한 gold set 평가 결과로만 결정한다. 현재 Gemma 4 E4B는 기준 미달이다.
 
 평가 없이 모델을 기본값으로 승격하지 않는다. 최소 평가 기준은 다음이다.

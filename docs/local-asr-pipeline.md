@@ -46,6 +46,13 @@ local-qwen-asr
 Qwen/Qwen3-ASR-1.7B
 ```
 
+보안 검토를 통과해야 하는 실험/benchmark 실행은 repo id 대신 고정 snapshot directory를 model id로 넘긴다.
+
+```text
+Qwen3-ASR-1.7B snapshot: /home/brain-offloaded/.cache/huggingface/hub/models--Qwen--Qwen3-ASR-1.7B/snapshots/7278e1e70fe206f11671096ffdd38061171dd6e5
+Qwen3-ForcedAligner-0.6B snapshot: /home/brain-offloaded/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/c7cbfc2048c462b0d63a45797104fc9db3ad62b7
+```
+
 Qwen runtime은 `qwen-asr`가 `transformers==4.57.6`을 강하게 고정하므로 root venv와 분리한다.
 
 ```bash
@@ -66,6 +73,25 @@ uv run casrt project transcribe PROJECT_ID \
 ```
 
 Qwen worker는 JSON Lines subprocess protocol을 사용한다. worker import, model load, inference, response contract 오류는 fallback 없이 실패로 표시한다.
+
+보안 검토가 필요한 실험 실행 조건:
+
+```text
+CASRT_LOCAL_WORKER_ENV_MODE=offline
+CASRT_QWEN_ASR_REQUIRE_LOCAL_MODEL_PATH=1
+CASRT_QWEN_ASR_LOCAL_FILES_ONLY=1
+CASRT_QWEN_ASR_DISABLE_NETWORK=1
+HF_HUB_OFFLINE=1
+TRANSFORMERS_OFFLINE=1
+HF_DATASETS_OFFLINE=1
+WANDB_MODE=disabled
+```
+
+- `CASRT_LOCAL_WORKER_ENV_MODE=offline`은 local worker subprocess 환경에서 token/proxy류 env를 제거하고 offline flags를 주입한다.
+- `CASRT_QWEN_ASR_REQUIRE_LOCAL_MODEL_PATH=1`은 `model_id`와 `CASRT_QWEN_ASR_ALIGNER_MODEL_ID`가 존재하는 local directory가 아니면 실패시킨다.
+- `CASRT_QWEN_ASR_LOCAL_FILES_ONLY=1`은 Transformers model load kwargs에 `local_files_only=True`, `trust_remote_code=False`를 붙인다.
+- `CASRT_QWEN_ASR_DISABLE_NETWORK=1`은 Qwen worker process 내부 Python socket 생성을 차단한다.
+- 실험 산출물은 고정 `/tmp/casrt-quality`를 재사용하지 않고, 매 실행마다 새 `0700` directory 아래에 둔다. 원본 fixture tree에는 쓰지 않는다.
 
 ## 오디오 전처리
 

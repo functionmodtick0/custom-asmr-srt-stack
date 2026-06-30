@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 from io import StringIO
 from unittest import mock
@@ -8,6 +9,7 @@ from custom_asmr_srt_stack.transcription import (
     TransformersWorkerClient,
     adapter_max_chunk_ms,
     build_gemini_url,
+    local_worker_env,
     parse_model_segments,
     parse_worker_response,
     transcribe_audio,
@@ -301,6 +303,68 @@ class TranscriptionAdapterTests(unittest.TestCase):
         self.assertEqual(request["type"], "transcribe")
         self.assertEqual(request["model_id"], "google/gemma-4-E4B-it")
         self.assertEqual(request["channel"], "L")
+        self.assertEqual(segments[0].text, "ねえ")
+
+    def test_worker_client_can_use_scrubbed_offline_env(self):
+        response = json.dumps(
+            {
+                "ok": True,
+                "segments": [
+                    {
+                        "start_ms": 0,
+                        "end_ms": 10,
+                        "channel": "MIX",
+                        "kind": "speech",
+                        "text": "ねえ",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        )
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdin = StringIO()
+                self.stdout = StringIO(response + "\n")
+
+            def poll(self):
+                return None
+
+        fake_env = {
+            "CASRT_LOCAL_WORKER_ENV_MODE": "offline",
+            "CASRT_QWEN_ASR_DTYPE": "bfloat16",
+            "HF_TOKEN": "secret",
+            "HTTP_PROXY": "http://proxy.invalid",
+            "PATH": os.defpath,
+            "PYTHONPATH": "src",
+        }
+
+        with mock.patch.dict(os.environ, fake_env, clear=True):
+            expected_env = local_worker_env()
+            with mock.patch(
+                "custom_asmr_srt_stack.transcription.subprocess.Popen",
+                return_value=FakeProcess(),
+            ) as popen:
+                client = TransformersWorkerClient(("worker", "--stdio"))
+                segments = client.transcribe(
+                    ModelEndpoint(
+                        adapter="local-qwen-asr",
+                        endpoint_url=None,
+                        model_id="Qwen/Qwen3-ASR-1.7B",
+                    ),
+                    b"audio",
+                    "audio/wav",
+                    "MIX",
+                    "ja",
+                )
+
+        worker_env = popen.call_args.kwargs["env"]
+        self.assertEqual(worker_env, expected_env)
+        self.assertEqual(worker_env["HF_HUB_OFFLINE"], "1")
+        self.assertEqual(worker_env["TRANSFORMERS_OFFLINE"], "1")
+        self.assertEqual(worker_env["CASRT_QWEN_ASR_DTYPE"], "bfloat16")
+        self.assertNotIn("HF_TOKEN", worker_env)
+        self.assertNotIn("HTTP_PROXY", worker_env)
         self.assertEqual(segments[0].text, "ねえ")
 
     def test_model_output_must_have_valid_timing(self):

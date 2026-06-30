@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import socket
 import sys
 import tempfile
 import traceback
@@ -20,6 +21,7 @@ SOURCE_LANGUAGE_TO_QWEN = {
     "jpn": "Japanese",
     "japanese": "Japanese",
 }
+_NETWORK_DISABLED = False
 
 
 @dataclass(frozen=True)
@@ -83,11 +85,13 @@ class QwenAsrRuntime:
         )
 
     def load_model(self, model_id: str) -> Any:
-        loaded = self._loaded.get(model_id)
+        disable_python_network_if_requested()
+        checked_model_id = qwen_checked_model_path(model_id, "model_id")
+        loaded = self._loaded.get(checked_model_id)
         if loaded is not None:
             return loaded
 
-        log(f"loading local Qwen ASR model: {model_id}")
+        log(f"loading local Qwen ASR model: {checked_model_id}")
         try:
             import torch
             from qwen_asr import Qwen3ASRModel
@@ -105,7 +109,7 @@ class QwenAsrRuntime:
         log(f"using {backend} backend")
         if backend == "vllm":
             model = Qwen3ASRModel.LLM(
-                model=model_id,
+                model=checked_model_id,
                 forced_aligner=aligner_model_id,
                 forced_aligner_kwargs=aligner_kwargs,
                 max_inference_batch_size=qwen_max_inference_batch_size(),
@@ -114,7 +118,7 @@ class QwenAsrRuntime:
             )
         elif backend == "transformers":
             model = Qwen3ASRModel.from_pretrained(
-                model_id,
+                checked_model_id,
                 forced_aligner=aligner_model_id,
                 forced_aligner_kwargs=aligner_kwargs,
                 max_inference_batch_size=qwen_max_inference_batch_size(),
@@ -124,7 +128,7 @@ class QwenAsrRuntime:
         else:
             raise ValueError("CASRT_QWEN_ASR_BACKEND must be transformers or vllm")
 
-        self._loaded[model_id] = model
+        self._loaded[checked_model_id] = model
         log("model loaded")
         return model
 
@@ -162,8 +166,12 @@ def qwen_backend() -> str:
 def qwen_backend_kwargs(torch_module: Any) -> dict[str, Any]:
     kwargs = json_object_env("CASRT_QWEN_ASR_BACKEND_KWARGS")
     if kwargs:
-        return coerce_torch_dtype_kwargs(torch_module, kwargs)
-    return qwen_default_transformers_kwargs(torch_module)
+        result = coerce_torch_dtype_kwargs(torch_module, kwargs)
+    else:
+        result = qwen_default_transformers_kwargs(torch_module)
+    if qwen_backend() == "transformers":
+        return qwen_apply_local_load_kwargs(result)
+    return result
 
 
 def qwen_default_transformers_kwargs(torch_module: Any) -> dict[str, Any]:
@@ -181,8 +189,17 @@ def qwen_default_transformers_kwargs(torch_module: Any) -> dict[str, Any]:
 def qwen_aligner_kwargs(torch_module: Any) -> dict[str, Any]:
     kwargs = json_object_env("CASRT_QWEN_ASR_ALIGNER_KWARGS")
     if kwargs:
-        return coerce_torch_dtype_kwargs(torch_module, kwargs)
-    return qwen_default_transformers_kwargs(torch_module)
+        return qwen_apply_local_load_kwargs(coerce_torch_dtype_kwargs(torch_module, kwargs))
+    return qwen_apply_local_load_kwargs(qwen_default_transformers_kwargs(torch_module))
+
+
+def qwen_apply_local_load_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    if not qwen_local_files_only():
+        return kwargs
+    result = dict(kwargs)
+    result.setdefault("local_files_only", True)
+    result.setdefault("trust_remote_code", False)
+    return result
 
 
 def coerce_torch_dtype_kwargs(torch_module: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -195,7 +212,53 @@ def coerce_torch_dtype_kwargs(torch_module: Any, kwargs: dict[str, Any]) -> dict
 
 def qwen_aligner_model_id() -> str | None:
     value = os.environ.get("CASRT_QWEN_ASR_ALIGNER_MODEL_ID", "").strip()
-    return value or None
+    if not value:
+        return None
+    return qwen_checked_model_path(value, "CASRT_QWEN_ASR_ALIGNER_MODEL_ID")
+
+
+def qwen_require_local_model_paths() -> bool:
+    return os.environ.get("CASRT_QWEN_ASR_REQUIRE_LOCAL_MODEL_PATH", "").strip().lower() in {"1", "true", "yes"}
+
+
+def qwen_local_files_only() -> bool:
+    return qwen_require_local_model_paths() or os.environ.get("CASRT_QWEN_ASR_LOCAL_FILES_ONLY", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def qwen_checked_model_path(value: str, name: str) -> str:
+    if not qwen_require_local_model_paths():
+        return value
+    try:
+        path = Path(value).expanduser().resolve(strict=True)
+    except FileNotFoundError as error:
+        raise ValueError(f"{name} must be an existing local model directory") from error
+    if not path.is_dir():
+        raise ValueError(f"{name} must be an existing local model directory")
+    return str(path)
+
+
+def disable_python_network_if_requested() -> None:
+    global _NETWORK_DISABLED
+    if _NETWORK_DISABLED:
+        return
+    if os.environ.get("CASRT_QWEN_ASR_DISABLE_NETWORK", "").strip().lower() not in {"1", "true", "yes"}:
+        return
+
+    def blocked_socket(*args: Any, **kwargs: Any) -> Any:
+        del args, kwargs
+        raise OSError("network access is disabled for local Qwen ASR worker")
+
+    def blocked_create_connection(*args: Any, **kwargs: Any) -> Any:
+        del args, kwargs
+        raise OSError("network access is disabled for local Qwen ASR worker")
+
+    socket.socket = blocked_socket  # type: ignore[assignment]
+    socket.create_connection = blocked_create_connection  # type: ignore[assignment]
+    _NETWORK_DISABLED = True
 
 
 def qwen_asr_context() -> str:

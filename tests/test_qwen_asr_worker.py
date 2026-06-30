@@ -1,16 +1,22 @@
 import base64
 import io
 import json
+import socket
 import struct
+import tempfile
 import unittest
 import wave
 from dataclasses import dataclass
+from pathlib import Path
 from unittest import mock
 
+import custom_asmr_srt_stack.qwen_asr_worker as qwen_asr_worker
 from custom_asmr_srt_stack.qwen_asr_worker import (
     QwenAsrResult,
     QwenAsrRuntime,
     aligned_bounds_ms,
+    disable_python_network_if_requested,
+    qwen_checked_model_path,
     qwen_backend_kwargs,
     qwen_language,
     response_for_line,
@@ -151,6 +157,38 @@ class QwenAsrWorkerTests(unittest.TestCase):
 
         self.assertIs(kwargs["dtype"], FakeTorch.float16)
         self.assertEqual(kwargs["device_map"], "cuda:0")
+
+    def test_backend_kwargs_add_local_loading_flags_when_local_paths_are_required(self):
+        with mock.patch.dict("os.environ", {"CASRT_QWEN_ASR_REQUIRE_LOCAL_MODEL_PATH": "1"}, clear=False):
+            kwargs = qwen_backend_kwargs(FakeTorch)
+
+        self.assertTrue(kwargs["local_files_only"])
+        self.assertFalse(kwargs["trust_remote_code"])
+
+    def test_local_model_path_requirement_rejects_repo_ids(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_dir = Path(tmpdir) / "model"
+            model_dir.mkdir()
+            with mock.patch.dict("os.environ", {"CASRT_QWEN_ASR_REQUIRE_LOCAL_MODEL_PATH": "1"}, clear=False):
+                self.assertEqual(qwen_checked_model_path(str(model_dir), "model_id"), str(model_dir.resolve()))
+                with self.assertRaisesRegex(ValueError, "existing local model directory"):
+                    qwen_checked_model_path("Qwen/Qwen3-ASR-1.7B", "model_id")
+
+    def test_network_guard_blocks_python_socket_creation(self):
+        original_socket = socket.socket
+        original_create_connection = socket.create_connection
+        try:
+            with mock.patch.dict("os.environ", {"CASRT_QWEN_ASR_DISABLE_NETWORK": "1"}, clear=False):
+                disable_python_network_if_requested()
+
+            with self.assertRaisesRegex(OSError, "network access is disabled"):
+                socket.socket()
+            with self.assertRaisesRegex(OSError, "network access is disabled"):
+                socket.create_connection(("127.0.0.1", 9), timeout=0.1)
+        finally:
+            socket.socket = original_socket
+            socket.create_connection = original_create_connection
+            qwen_asr_worker._NETWORK_DISABLED = False
 
 
 if __name__ == "__main__":

@@ -20,6 +20,36 @@ from custom_asmr_srt_stack.models import Segment, make_segment_id, require_int, 
 ADAPTERS = {"openai-compatible", "gemini", "local-transformers", "local-qwen-asr"}
 LOCAL_ADAPTERS = {"local-transformers", "local-qwen-asr"}
 LOCAL_TRANSFORMERS_MAX_CHUNK_MS = 30_000
+LOCAL_WORKER_ENV_ALLOWLIST = {
+    "CUDA_HOME",
+    "CUDA_VISIBLE_DEVICES",
+    "HF_HOME",
+    "HUGGINGFACE_HUB_CACHE",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LD_LIBRARY_PATH",
+    "NVIDIA_DRIVER_CAPABILITIES",
+    "NVIDIA_VISIBLE_DEVICES",
+    "PATH",
+    "PYTHONPATH",
+    "PYTORCH_CUDA_ALLOC_CONF",
+    "TORCH_HOME",
+    "TRANSFORMERS_CACHE",
+    "USER",
+    "VIRTUAL_ENV",
+    "XDG_CACHE_HOME",
+}
+LOCAL_WORKER_ENV_PREFIXES = ("CASRT_TRANSFORMERS_", "CASRT_QWEN_ASR_")
+LOCAL_WORKER_OFFLINE_ENV = {
+    "CASRT_QWEN_ASR_DISABLE_NETWORK": "1",
+    "HF_DATASETS_OFFLINE": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "WANDB_MODE": "disabled",
+    "TOKENIZERS_PARALLELISM": "false",
+}
+SENSITIVE_ENV_SUBSTRINGS = ("API_KEY", "AUTH", "PASSWORD", "SECRET", "TOKEN")
 
 
 TRANSCRIPTION_PROMPT = """Transcribe this Japanese audio for subtitle editing.
@@ -305,6 +335,7 @@ class TransformersWorkerClient:
             stdout=subprocess.PIPE,
             text=True,
             encoding="utf-8",
+            env=local_worker_env(),
         )
         return self._process
 
@@ -365,6 +396,29 @@ def qwen_asr_worker_command() -> tuple[str, ...]:
             raise ValueError("CASRT_QWEN_ASR_WORKER_COMMAND must not be empty")
         return command
     return (sys.executable, "-m", "custom_asmr_srt_stack.qwen_asr_worker")
+
+
+def local_worker_env() -> dict[str, str] | None:
+    mode = os.environ.get("CASRT_LOCAL_WORKER_ENV_MODE", "inherit").strip().lower()
+    if mode in {"", "inherit"}:
+        return None
+    if mode != "offline":
+        raise ValueError("CASRT_LOCAL_WORKER_ENV_MODE must be inherit or offline")
+
+    env: dict[str, str] = {}
+    for name, value in os.environ.items():
+        if name in LOCAL_WORKER_ENV_ALLOWLIST or name.startswith(LOCAL_WORKER_ENV_PREFIXES):
+            env[name] = value
+
+    for name in list(env):
+        if name == "TOKENIZERS_PARALLELISM":
+            continue
+        if any(part in name for part in SENSITIVE_ENV_SUBSTRINGS):
+            env.pop(name, None)
+
+    env.setdefault("PATH", os.defpath)
+    env.update(LOCAL_WORKER_OFFLINE_ENV)
+    return env
 
 
 def parse_worker_response(response_line: str, *, worker_name: str = "local transformers worker") -> tuple[Segment, ...]:
