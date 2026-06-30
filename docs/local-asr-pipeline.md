@@ -243,6 +243,16 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
 - 허용 조건: offline env, local path-only model id, `local_files_only=True`, `trust_remote_code=False`, Python socket network guard, `qwen-asr==0.0.6` RECORD hash, per-file RECORD hash, import origin 검증
 - caution: Python socket guard는 OS-level egress control이 아니며, 실패 요약에는 local path 같은 운영 정보가 남을 수 있다.
 
+2026-06-30 실제 로딩/추론 smoke:
+
+- command: `.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.qwen_aligner_worker --model-id /home/brain-offloaded/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/c7cbfc2048c462b0d63a45797104fc9db3ad62b7`
+- env: `CASRT_ALIGNER_ENV_MODE=offline`, `CASRT_QWEN_ALIGNER_REQUIRE_LOCAL_MODEL_PATH=1`, `CASRT_QWEN_ALIGNER_LOCAL_FILES_ONLY=1`, `CASRT_QWEN_ALIGNER_DISABLE_NETWORK=1`
+- model snapshot digest report: `/tmp/casrt-quality.Q5OdDf/qwen3-forced-aligner-snapshot-digest.json`
+- model snapshot SHA-256: `5b0efb9cbc06d49988d4593c5d8bc52947ff0dfc20731e230dddb1fe0f8f2573`
+- input: `/tmp/casrt-quality.Q5OdDf/01-front120.wav` + first segment from `ref-01-front120.master.json`
+- result: `seg_000001` moved from `980-3800ms` to `1460-2660ms`
+- output: `/tmp/casrt-quality.Q5OdDf/qwen-aligner-smoke-output.json`
+
 현재 판단:
 
 - 기본 경로로 승격하지 않는다.
