@@ -24,6 +24,8 @@
 
 번역 기능은 제공하지 않습니다.
 
+SRT import는 선두의 `[L]`, `[R]`, `[LR]`, `[MIX]`, `[L:SPEAKER_00]`, `[R:SPEAKER_00]`, `[SPEAKER_00]` 같은 channel/speaker metadata label을 본문 텍스트에서 제거합니다. 채널은 `segment.channel`에만 저장합니다.
+
 ## 요구 사항
 
 - uv

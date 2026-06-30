@@ -539,6 +539,11 @@ uv run casrt eval-manifest gold.json --product-gate
   - result: `clip_count=64`, first item `priority_rank=1`, `clip_url` 생성 확인.
   - first clip GET: `200 audio/wav 1962284 bytes` for `clips/000001__01-front120__text__seg_000003__seg_000004.wav`.
   - 판단: pack 생성은 CLI가 담당하고 WebUI는 local path로 priority 검수 큐를 열어 clip을 재생하는 viewer 역할만 한다. 추가 threshold/model 옵션은 노출하지 않는다.
+- 2026-06-30 real SRT import audit:
+  - `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/outputs/02.敗北確定えっちバトル-c28f819996c9400cb05ec6ccbea1849f.srt` 같은 실제 산출물은 `[L:SPEAKER_01]`, `[R:SPEAKER_00]` prefix를 사용한다.
+  - SRT import는 compound channel/speaker label을 본문 text에서 제거하고 channel metadata만 보존하도록 확장했다. `[SPEAKER_00]` 단독 prefix도 번역 대상 text에서 제거한다.
+  - smoke output: `/tmp/casrt-quality.Q5OdDf/real-02-compound-label-smoke.master.json`; `rg "SPEAKER|\\[L|\\[R|\\[MIX|\\[LR"` 결과 없음, 첫 segment `channel=L`, 둘째 segment `channel=R`.
+  - 목적: 외부 번역용 JSON에 speaker/channel label이 섞이지 않게 유지한다.
 
 case별 practical CER:
 

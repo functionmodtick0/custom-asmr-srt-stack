@@ -9,7 +9,7 @@ TIMESTAMP_RE = re.compile(
     r"^(?P<start>\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*"
     r"(?P<end>\d{2}:\d{2}:\d{2}[,.]\d{3})(?:\s+.*)?$"
 )
-CHANNEL_LABEL_RE = re.compile(r"^\[(?P<label>L|R|LR|MIX)\]\s*", re.IGNORECASE)
+LEADING_METADATA_LABEL_RE = re.compile(r"^\[(?P<body>[A-Za-z0-9_:-]+)\]\s*")
 
 
 def parse_timestamp(value: str) -> int:
@@ -78,13 +78,29 @@ def parse_srt_text_metadata(lines: list[str]) -> tuple[str, str]:
     text_lines = [line.rstrip() for line in lines]
     channel = "MIX"
     if text_lines:
-        match = CHANNEL_LABEL_RE.match(text_lines[0].strip())
-        if match:
-            label = match.group("label").upper()
-            if label in {"L", "R"}:
-                channel = label
-            text_lines[0] = CHANNEL_LABEL_RE.sub("", text_lines[0], count=1).strip()
+        channel, text_lines[0] = strip_leading_srt_metadata(text_lines[0], default_channel=channel)
     return channel, "\n".join(text_lines).strip()
+
+
+def strip_leading_srt_metadata(text: str, *, default_channel: str = "MIX") -> tuple[str, str]:
+    channel = default_channel
+    stripped = text.strip()
+    while True:
+        match = LEADING_METADATA_LABEL_RE.match(stripped)
+        if not match:
+            break
+        body = match.group("body").upper()
+        channel_label = body.split(":", 1)[0]
+        if channel_label in {"L", "R", "LR", "MIX"}:
+            if channel_label in {"L", "R"}:
+                channel = channel_label
+            stripped = stripped[match.end() :].strip()
+            continue
+        if body.startswith("SPEAKER_"):
+            stripped = stripped[match.end() :].strip()
+            continue
+        break
+    return channel, stripped
 
 
 def format_srt(

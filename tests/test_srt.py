@@ -42,6 +42,20 @@ class SrtConversionTests(unittest.TestCase):
         self.assertEqual(master.segments[1].channel, "MIX")
         self.assertEqual(master.segments[1].text, "うん")
 
+    def test_parse_srt_strips_compound_channel_and_speaker_labels(self):
+        master = parse_srt(
+            "1\n00:00:01,000 --> 00:00:02,500\n[L:SPEAKER_01] ねえ\n\n"
+            "2\n00:00:03,000 --> 00:00:04,000\n[SPEAKER_00] うん\n\n"
+            "3\n00:00:05,000 --> 00:00:06,000\n[R][SPEAKER_02] 右だよ\n"
+        )
+
+        self.assertEqual(master.segments[0].channel, "L")
+        self.assertEqual(master.segments[0].text, "ねえ")
+        self.assertEqual(master.segments[1].channel, "MIX")
+        self.assertEqual(master.segments[1].text, "うん")
+        self.assertEqual(master.segments[2].channel, "R")
+        self.assertEqual(master.segments[2].text, "右だよ")
+
     def test_format_srt_exports_text_without_channel_labels(self):
         master = MasterDocument(
             source_language="ja",
