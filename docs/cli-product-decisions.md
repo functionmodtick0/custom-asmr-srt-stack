@@ -397,6 +397,29 @@ uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.att
 - mono audio나 L/R을 만들 수 없는 audio는 실패한다. 잘못된 channel 후처리를 조용히 통과시키지 않는다.
 - stdout JSON에는 `segments`, `changed_segments`, `threshold_db`, `quiet_channel_max_dbfs`, `output`, optional `diagnostics_output`을 포함한다.
 
+여러 case에서 channel attribution threshold를 비교할 때는 `sweep-channel-attribution`을 사용한다.
+
+```bash
+uv run casrt sweep-channel-attribution eval-manifest.json \
+  --audio-map audio-map.json \
+  --threshold-db 6 \
+  --threshold-db 8 \
+  --threshold-db 10 \
+  -o channel-sweep \
+  --json
+```
+
+동작:
+
+- 입력 manifest는 `custom-asmr-eval-manifest-v1`이고 candidate transcript는 channel attribution 전 draft여야 한다.
+- `audio-map`은 `custom-asmr-review-audio-map-v1` 또는 `{ "case_id": "audio.wav" }` object를 받는다.
+- audio/reference/candidate source file이 없으면 output directory를 만들기 전에 실패한다.
+- 각 threshold/quiet-side setting별로 attributed candidate master, generated eval manifest, eval report를 만든다.
+- output root에는 `custom-asmr-channel-attribution-sweep-v1` `index.json`과 `comparison.json`을 쓴다.
+- `--threshold-db`와 `--quiet-channel-max-dbfs`는 반복 가능하다. 지정하지 않으면 제품 기본값 8dB와 -40dBFS를 사용한다.
+- 이 명령은 threshold를 자동 승격하지 않는다. 사람이 `comparison.json`과 product gate를 보고 기본값 변경 여부를 결정한다.
+- WebUI 옵션으로 노출하지 않는 benchmark/운영 도구다.
+
 ### 평가
 
 ```bash

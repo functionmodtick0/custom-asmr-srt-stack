@@ -25,6 +25,7 @@ from custom_asmr_srt_stack.channel_attribution import (
     CHANNEL_ATTRIBUTION_THRESHOLD_DB,
     attribute_master_channels_by_energy,
 )
+from custom_asmr_srt_stack.channel_sweep import sweep_channel_attribution
 from custom_asmr_srt_stack.evaluation import (
     compare_eval_reports,
     evaluate_manifest,
@@ -219,6 +220,22 @@ def attribute_channels(args: argparse.Namespace) -> None:
         args,
         payload,
         f"channels attributed: {args.output} changed={report.changed_segments}/{report.segments}",
+    )
+
+
+def sweep_channel_attribution_command(args: argparse.Namespace) -> None:
+    report = sweep_channel_attribution(
+        args.manifest,
+        audio_map_file=args.audio_map,
+        output_dir=args.output,
+        threshold_db_values=args.threshold_db or [CHANNEL_ATTRIBUTION_THRESHOLD_DB],
+        quiet_channel_max_dbfs_values=args.quiet_channel_max_dbfs or [CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS],
+        source_language=args.source_language,
+    )
+    emit(
+        args,
+        report,
+        f"channel attribution sweep: {args.output} settings={report['setting_count']} cases={report['case_count']}",
     )
 
 
@@ -859,6 +876,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write per-segment L/R energy attribution diagnostics JSON.",
     )
     attribute_channels_parser.set_defaults(func=attribute_channels)
+
+    sweep_channel_attribution_parser = subcommands.add_parser(
+        "sweep-channel-attribution",
+        parents=[output_parent],
+        help="Evaluate channel attribution thresholds over an eval manifest and audio map.",
+    )
+    sweep_channel_attribution_parser.add_argument("manifest", type=Path)
+    sweep_channel_attribution_parser.add_argument("--audio-map", type=Path, required=True)
+    sweep_channel_attribution_parser.add_argument("-o", "--output", type=Path, required=True)
+    sweep_channel_attribution_parser.add_argument(
+        "--threshold-db",
+        type=float,
+        action="append",
+        help="Threshold to test. Repeat for multiple values; default is the product threshold.",
+    )
+    sweep_channel_attribution_parser.add_argument(
+        "--quiet-channel-max-dbfs",
+        type=float,
+        action="append",
+        help="Quiet-side gate to test. Repeat for multiple values; default is the product quiet-side gate.",
+    )
+    sweep_channel_attribution_parser.add_argument("--source-language", default="ja")
+    sweep_channel_attribution_parser.set_defaults(func=sweep_channel_attribution_command)
 
     slice_case_parser = subcommands.add_parser(
         "slice-case",

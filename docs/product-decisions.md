@@ -426,6 +426,7 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - `prepare-review-cases`는 여러 `slice-case` 작업을 plan 파일로 재현 가능하게 실행하고, `audio-map.json`, `case-index.json`, reference/candidate master, eval manifest 산출물을 만든다. 이 명령도 검수 완료를 판정하지 않는다.
 - `review-case-status`는 준비된 `case-index.json`의 audio/reference/candidate 파일 존재 여부와 실제 segment/review count를 다시 읽어 `custom-asmr-review-case-status-v1` report를 만든다. 운영 gate로 쓸 때는 `--fail-on-issues`와 `--fail-on-review`를 사용한다.
 - `build-eval-manifest`는 `case-index.json`의 candidate paths를 평가 manifest로 재생성한다. stale count나 missing file이 있으면 manifest를 쓰지 않는다.
+- `sweep-channel-attribution`은 eval manifest와 audio map으로 여러 L/R attribution threshold를 비교하고 setting별 eval report와 comparison을 만든다. 기본 threshold를 자동 변경하지 않고 WebUI 옵션으로 노출하지 않는다.
 - WAV가 아닌 입력은 ffmpeg로 16-bit PCM WAV로 변환한다.
 - stereo WAV는 `L`, `R`, `MIX` 세 channel 파일로 분리한다.
 - mono WAV는 `MIX`만 만든다.

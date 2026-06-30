@@ -377,6 +377,20 @@ uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.att
 
 튜닝/검수용으로는 `--diagnostics-output channel-diagnostics.json`을 추가해 segment별 L/R dBFS와 판정 이유를 저장할 수 있습니다.
 
+여러 threshold를 같은 eval manifest에서 비교:
+
+```bash
+uv run casrt sweep-channel-attribution eval-manifest.json \
+  --audio-map audio-map.json \
+  --threshold-db 6 \
+  --threshold-db 8 \
+  --threshold-db 10 \
+  -o channel-sweep \
+  --json
+```
+
+`sweep-channel-attribution`은 setting별 attributed candidates, eval reports, `comparison.json`을 생성합니다. 이 명령은 WebUI 옵션을 늘리지 않는 CLI-only benchmark 도구이며 threshold를 자동 승격하지 않습니다.
+
 전사 결과 평가:
 
 ```bash
