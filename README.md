@@ -16,6 +16,7 @@
 - OpenAI-compatible / Gemini 모델 endpoint adapter
 - local Transformers subprocess worker adapter
 - local Qwen ASR subprocess worker adapter
+- local Qwen HF ASR subprocess worker adapter
 - 고정 aligner command hook
 - 선택 segment 재전사
 - 단일 transcript 및 gold set manifest 평가
@@ -94,13 +95,13 @@ SRT 내보내기
 모델 설정은 UI에서 직접 입력합니다.
 
 ```text
-Adapter: openai-compatible, gemini, local-transformers, local-qwen-asr, local-cohere-asr
+Adapter: openai-compatible, gemini, local-transformers, local-qwen-asr, local-qwen-hf-asr, local-cohere-asr
 Endpoint URL
 Model ID
 API Key
 ```
 
-고품질 일본 ASMR 경로는 로컬 처리만 사용합니다. `local-transformers`, `local-qwen-asr`, `local-cohere-asr`는 Endpoint URL과 API Key를 사용하지 않습니다. OpenAI-compatible / Gemini adapter는 기존 호환성과 로컬 HTTP 서버 연결을 위해 남아 있지만 제품 기본 품질 경로는 아닙니다.
+고품질 일본 ASMR 경로는 로컬 처리만 사용합니다. `local-transformers`, `local-qwen-asr`, `local-qwen-hf-asr`, `local-cohere-asr`는 Endpoint URL과 API Key를 사용하지 않습니다. OpenAI-compatible / Gemini adapter는 기존 호환성과 로컬 HTTP 서버 연결을 위해 남아 있지만 제품 기본 품질 경로는 아닙니다.
 
 고정 VAD command를 사용하려면 서버 실행 전에 `CASRT_VAD_COMMAND`를 설정합니다. 이 명령은 stdin으로 `{ audio_file, audio_info }` JSON을 받고 stdout으로 `{ intervals: [{ start_ms, end_ms }] }` JSON을 반환해야 합니다. 설정하지 않으면 로컬 ASR adapter는 내장 energy splitter를 사용합니다.
 
@@ -140,6 +141,18 @@ CASRT_QWEN_ASR_DISABLE_NETWORK=1 \
   uv run casrt project transcribe PROJECT_ID \
     --adapter local-qwen-asr \
     --model-id /path/to/Qwen3-ASR-1.7B/snapshots/<commit>
+```
+
+HF-native Qwen3-ASR worker를 사용할 때도 endpoint URL은 쓰지 않고 local snapshot directory만 넘깁니다.
+
+```bash
+CASRT_LOCAL_WORKER_ENV_MODE=offline \
+CASRT_QWEN_HF_ASR_REQUIRE_LOCAL_MODEL_PATH=1 \
+CASRT_QWEN_HF_ASR_LOCAL_FILES_ONLY=1 \
+CASRT_QWEN_HF_ASR_DISABLE_NETWORK=1 \
+  uv run casrt project transcribe PROJECT_ID \
+    --adapter local-qwen-hf-asr \
+    --model-id /path/to/Qwen3-ASR-1.7B-hf
 ```
 
 고정 aligner command를 사용하려면 서버 실행 전에 `CASRT_ALIGNER_COMMAND`를 설정합니다. 이 명령은 stdin으로 `{ audio_file, master }` JSON을 받고 stdout으로 `{ segments: [{ id, start_ms, end_ms }] }` JSON을 반환해야 합니다.

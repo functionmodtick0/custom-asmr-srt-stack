@@ -103,6 +103,34 @@ uv run casrt project transcribe PROJECT_ID \
 
 Qwen worker는 JSON Lines subprocess protocol을 사용한다. worker import, model load, inference, response contract 오류는 fallback 없이 실패로 표시한다.
 
+## 로컬 Qwen HF ASR 런타임
+
+HF-native Qwen3-ASR는 qwen-asr package 경로와 분리된 adapter를 사용한다.
+
+```text
+local-qwen-hf-asr
+```
+
+실행 조건:
+
+```text
+CASRT_LOCAL_WORKER_ENV_MODE=offline
+CASRT_QWEN_HF_ASR_REQUIRE_LOCAL_MODEL_PATH=1
+CASRT_QWEN_HF_ASR_LOCAL_FILES_ONLY=1
+CASRT_QWEN_HF_ASR_DISABLE_NETWORK=1
+```
+
+worker는 `AutoProcessor`와 `AutoModelForMultimodalLM`을 사용하고, model load는 local snapshot path + `local_files_only=True` + `trust_remote_code=False` + `use_safetensors=True`로 고정한다. Qwen HF ASR는 transcript text만 반환하므로 chunk 전체 timing과 `needs_review=true`를 반환하고, timing 품질은 후속 VAD/alignment 평가에서 본다.
+
+2026-06-30 최신 후보 상태:
+
+- 모델: `Qwen/Qwen3-ASR-1.7B-hf`
+- revision: `057a3b044fcd31c433e7971ab40d68d20e7eae6d`
+- local dir: `/tmp/casrt-quality.Q5OdDf/models/qwen3-asr-1.7b-hf-057a3b044fcd31c433e7971ab40d68d20e7eae6d`
+- digest report: `/tmp/casrt-quality.Q5OdDf/qwen3-asr-1.7b-hf-local-dir-digest.json`
+- snapshot SHA-256: `9c5e214252ebc2be3d989c83bddc1dc7c8981389e8c27fb99f27516a1dfa556c`
+- `model.safetensors` SHA-256: `2db53c7d81bd9b8cbc6a074e89be2c968a0d373fb4ee68bb1b1e14f7042dfee1`, size 4,076,193,080 bytes.
+
 보안 검토가 필요한 실험 실행 조건:
 
 ```text
@@ -560,7 +588,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - `neosophie/Qwen3-ASR-1.7B-JA`는 다운로드 재시도 후 점수화했다. 120초 gold 기준 Qwen3-ASR 1.7B보다 약간 낫지만 practical CER 20.4%라 기본 승격하지 않는다.
 - 01/04/07 front120 확장 gold에서도 Neosophie/Qwen3-ASR-JA는 practical CER 29.6%라 기본 승격하지 않는다. 특히 07의 whisper/침대 ASMR 구간에서 텍스트 인식이 크게 무너졌다.
 - Neosophie full-window와 1.5초 silence 병합 실험은 text와 timing이 모두 악화됐다. 이 샘플에서는 chunk를 길게 잡는 것이 해결책이 아니다.
-- `Qwen/Qwen3-ASR-1.7B-hf`는 Hugging Face metadata상 `automatic-speech-recognition`, `ja` 지원, `transformers` 모델이다. 현재 pinned Transformers는 `qwen3_asr` 아키텍처를 인식하지 못한다. 공식 Transformers main `5.13.0.dev0` ephemeral runtime에서는 `qwen3_asr` support를 확인했지만, weight 다운로드가 Xet/일반 HTTP 양쪽에서 장시간 진행돼 2026-06-28 루프에서는 점수화하지 못했다.
+- `Qwen/Qwen3-ASR-1.7B-hf`는 Hugging Face metadata상 `automatic-speech-recognition`, `ja` 지원, `transformers` 모델이다. 2026-06-30 root Transformers 5.12.1에서 `AutoModelForMultimodalLM`을 확인했고, exact revision weight를 `/tmp` local dir로 다운로드해 digest를 고정했다. `local-qwen-hf-asr` adapter를 추가했으며, in-repo wrapper는 일반 테스트/self-review로 검증하고 실제 01/04/07 front120 benchmark를 진행한다.
 - `mistralai/Voxtral-Mini-4B-Realtime-2602`는 remote model code 없이 Transformers `VoxtralRealtimeForConditionalGeneration`으로 로딩됐다. 8.9GB weight는 단일 HF stream이 느려 HTTP range 8조각 병렬 다운로드로 확보했다. 30초 smoke와 01/04 일부 텍스트는 Qwen보다 자연스러웠지만, 07 whisper/침대 ASMR에서 chunked 입력은 대부분 빈 출력이었고 120초 full-window 입력도 앞부분만 출력해 기본 승격하지 않는다.
 - `mistralai/Voxtral Mini Transcribe 2.0`는 Mistral API batch transcription 제품으로 확인됐고 open-weight 로컬 checkpoint는 확인하지 못했다. 외부 API는 제품 방향이 아니므로 기본 경로에서 제외한다.
 - `google/gemma-4-E4B-it`는 공식 오디오 입력을 지원하고 5초 smoke에서 유의미한 전사를 반환했다. 그러나 01/04/07 front120 확장 gold에서 4-bit practical CER 42.3%, 8-bit practical CER 46.1%로 기준을 크게 벗어났다. 8-bit는 01 smoke와 01 case를 조금 개선했지만 07 whisper/침대 ASMR에서 반복 hallucination이 발생해 전체 지표가 악화됐다. 따라서 기본 승격하지 않는다.

@@ -25,7 +25,12 @@ QWEN_ENERGY_WINDOW_MS = 100
 QWEN_ENERGY_MIN_SILENCE_MS = 500
 QWEN_ENERGY_MIN_SPEECH_MS = 200
 QWEN_ENERGY_PAD_MS = 200
-MIX_FIRST_LOCAL_ASR_ADAPTERS = {"local-transformers", "local-qwen-asr", "local-cohere-asr"}
+MIX_FIRST_LOCAL_ASR_ADAPTERS = {
+    "local-transformers",
+    "local-qwen-asr",
+    "local-qwen-hf-asr",
+    "local-cohere-asr",
+}
 
 
 def analyze_project(store: ProjectStore, project_id: str) -> dict[str, Any]:

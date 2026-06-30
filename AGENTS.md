@@ -23,3 +23,9 @@ Primary documentation targets:
 - `README.md`: current user-facing setup and usage summary
 
 If a decision is made during implementation, document it before considering the task complete. If the decision is only tentative, record it as an open decision or next-step plan rather than leaving it implicit.
+
+## Security Review Scope
+
+Use subagent security review only before executing or adopting external code/runtime surfaces, such as third-party repository code, `trust_remote_code`, new external runtime packages, unsafe model formats, or unreviewed downloaded tooling.
+
+Do not require subagent security review for ordinary in-repository code changes, wrappers, tests, or documentation. Handle those with normal implementation review and behavior tests.

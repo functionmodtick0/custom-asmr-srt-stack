@@ -139,6 +139,17 @@ class TranscriptionAdapterTests(unittest.TestCase):
         self.assertIsNone(endpoint.endpoint_url)
         self.assertIsNone(adapter_max_chunk_ms(endpoint))
 
+    def test_local_qwen_hf_asr_adapter_does_not_require_endpoint_url(self):
+        endpoint = ModelEndpoint.from_json(
+            {
+                "adapter": "local-qwen-hf-asr",
+                "model_id": "/models/qwen3-asr-1.7b-hf",
+            }
+        )
+
+        self.assertIsNone(endpoint.endpoint_url)
+        self.assertIsNone(adapter_max_chunk_ms(endpoint))
+
     def test_endpoint_adapter_requires_endpoint_url(self):
         with self.assertRaisesRegex(ValueError, "endpoint_url must not be empty"):
             ModelEndpoint.from_json(
@@ -224,6 +235,44 @@ class TranscriptionAdapterTests(unittest.TestCase):
         )
 
         self.assertEqual(calls, [("Qwen/Qwen3-ASR-1.7B", b"audio", "audio/wav", "MIX", "ja")])
+        self.assertEqual(segments[0].text, "ねえ")
+
+    def test_local_qwen_hf_asr_adapter_uses_local_transcriber_boundary(self):
+        calls = []
+
+        def fake_local(endpoint, audio_bytes, mime_type, channel, source_language):
+            calls.append((endpoint.model_id, audio_bytes, mime_type, channel, source_language))
+            return parse_model_segments(
+                json.dumps(
+                    {
+                        "segments": [
+                            {
+                                "start_ms": 0,
+                                "end_ms": 10,
+                                "channel": channel,
+                                "kind": "speech",
+                                "text": "ねえ",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+        endpoint = ModelEndpoint(
+            adapter="local-qwen-hf-asr",
+            endpoint_url=None,
+            model_id="/models/qwen3-asr-1.7b-hf",
+        )
+        segments = transcribe_audio(
+            endpoint,
+            b"audio",
+            mime_type="audio/wav",
+            channel="MIX",
+            local_transcribe_func=fake_local,
+        )
+
+        self.assertEqual(calls, [("/models/qwen3-asr-1.7b-hf", b"audio", "audio/wav", "MIX", "ja")])
         self.assertEqual(segments[0].text, "ねえ")
 
     def test_local_cohere_asr_adapter_uses_local_transcriber_boundary(self):
@@ -371,6 +420,7 @@ class TranscriptionAdapterTests(unittest.TestCase):
         fake_env = {
             "CASRT_LOCAL_WORKER_ENV_MODE": "offline",
             "CASRT_QWEN_ASR_DTYPE": "bfloat16",
+            "CASRT_QWEN_HF_ASR_DTYPE": "float16",
             "HF_TOKEN": "secret",
             "HTTP_PROXY": "http://proxy.invalid",
             "PATH": os.defpath,
@@ -402,8 +452,12 @@ class TranscriptionAdapterTests(unittest.TestCase):
         self.assertEqual(worker_env["TRANSFORMERS_OFFLINE"], "1")
         self.assertEqual(worker_env["CASRT_COHERE_ASR_DISABLE_NETWORK"], "1")
         self.assertEqual(worker_env["CASRT_QWEN_ASR_DTYPE"], "bfloat16")
+        self.assertEqual(worker_env["CASRT_QWEN_HF_ASR_DTYPE"], "float16")
+        self.assertEqual(worker_env["CASRT_QWEN_HF_ASR_DISABLE_NETWORK"], "1")
+        self.assertEqual(worker_env["PYTHONNOUSERSITE"], "1")
         self.assertNotIn("HF_TOKEN", worker_env)
         self.assertNotIn("HTTP_PROXY", worker_env)
+        self.assertNotIn("PYTHONPATH", worker_env)
         self.assertEqual(segments[0].text, "ねえ")
 
     def test_model_output_must_have_valid_timing(self):
