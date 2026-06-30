@@ -544,7 +544,7 @@ uv run casrt eval-manifest gold.json --product-gate
   - load API input: `/tmp/casrt-quality.Q5OdDf/all8-front120-review-cases`
   - result: `kind=review-case-set`, `case_count=8`, first case `id=01-front120-existing-srt`, `segments=10`, `review_count=2`.
   - first case audio GET: `200 audio/wav 23040044 bytes`.
-  - 동작: case click은 reference master를 기존 segment editor에 붙이고, edit/save는 reference master JSON과 `case-index.json` count를 갱신한다. `검수 완료`는 현재 `needs_review` segment를 false로 바꾸고 다음 검수 segment로 이동한다. `case 목록`/`다음 case` 이동은 pending save를 flush한다.
+  - 동작: case list는 전체 `needs_review` flag 수와 flag가 남은 case를 표시한다. Case click은 reference master를 기존 segment editor에 붙이고, edit/save는 reference master JSON과 `case-index.json` count를 갱신한다. `검수 완료`는 현재 `needs_review` segment를 false로 바꾸고 다음 검수 segment로 이동한다. `case 목록`/`다음 case` 이동은 pending save를 flush한다.
   - 판단: human-reviewed gold 제작을 돕는 편집 경로이며, 검수 완료 판정은 하지 않는다.
 - 2026-06-30 real SRT import audit:
   - `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/outputs/02.敗北確定えっちバトル-c28f819996c9400cb05ec6ccbea1849f.srt` 같은 실제 산출물은 `[L:SPEAKER_01]`, `[R:SPEAKER_00]` prefix를 사용한다.
@@ -697,6 +697,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
      - result: `case_count=8`, `reference_type_counts={pseudo-gold: 8}`, `missing_file_count=0`, `case_issue_count=0`, `reference_review_count=15`.
      - case별 segments/review_count: 01 `10/2`, 02 `10/1`, 03 `11/2`, 04 `12/2`, 05 `10/2`, 06 `11/2`, 07 `10/2`, 08 `8/2`.
      - `review-case-status --fail-on-review`는 report 출력 후 expected failure로 `review_count=15`를 반환했다.
+     - 2026-07-01 진행률 field smoke: output `/tmp/casrt-review-progress-status.json`, `reference_review_count=15`, `reference_review_case_count=8`, `reference_review_clear_case_count=0`.
      - 판단: 모델 승격용 gold가 아니라, 사람이 WebUI에서 audio/reference를 열어 검수하고 `freeze-case-references --reference-type human-reviewed`로 올릴 시작점이다.
    - `/data/uploads`, `/data/outputs`에서 30초~2분 단위 reference case를 늘릴 때는 `custom-asmr-case-slice-plan-v1` plan으로 재현 가능하게 기록한다.
    - 사람이 검수한 단일 파일은 `casrt freeze-reference`, prepared case set은 `casrt freeze-case-references`로 stable id와 `needs_review=false`를 고정한다.

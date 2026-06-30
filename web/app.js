@@ -353,7 +353,8 @@ function renderReviewPack() {
 
 function renderReviewCaseSet() {
   const items = state.reviewCaseSet.items || [];
-  els.segmentCount.textContent = `${items.length} review cases`;
+  const reviewFlagCount = items.reduce((total, item) => total + (item.review_count || 0), 0);
+  els.segmentCount.textContent = `${items.length} review cases · ${reviewFlagCount} flags`;
   els.selectedLabel.textContent = "case 선택";
   els.retranscribeButton.disabled = true;
   els.retranscribeButton.hidden = false;
@@ -407,7 +408,7 @@ function renderReviewPackItem(item, index) {
 
 function renderReviewCaseItem(item, index) {
   const row = document.createElement("div");
-  row.className = "review-case-row";
+  row.className = `review-case-row${(item.review_count || 0) > 0 ? " needs-review" : ""}`;
   row.dataset.index = String(index);
 
   const meta = document.createElement("div");

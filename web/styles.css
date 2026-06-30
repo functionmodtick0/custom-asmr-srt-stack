@@ -299,7 +299,8 @@ canvas {
   background: rgba(125, 217, 185, 0.06);
 }
 
-.segment-row.needs-review {
+.segment-row.needs-review,
+.review-case-row.needs-review {
   box-shadow: inset 3px 0 0 var(--danger);
 }
 

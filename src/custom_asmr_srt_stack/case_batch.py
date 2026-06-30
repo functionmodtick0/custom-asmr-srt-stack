@@ -182,6 +182,7 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
     reference_type_counts: dict[str, int] = {}
     missing_file_count = 0
     reference_review_count = 0
+    reference_review_clear_case_count = 0
     candidate_case_count = 0
     cases_needing_review: list[str] = []
     cases_with_issues: list[str] = []
@@ -204,6 +205,8 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
             candidate_case_count += 1
         if item["reference_review_count"] > 0:
             cases_needing_review.append(item["id"])
+        elif reference_loaded_without_issues(item):
+            reference_review_clear_case_count += 1
         if item["issues"]:
             cases_with_issues.append(item["id"])
 
@@ -217,10 +220,20 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
         "cases_with_issues": cases_with_issues,
         "case_issue_count": len(cases_with_issues),
         "reference_review_count": reference_review_count,
+        "reference_review_case_count": len(cases_needing_review),
+        "reference_review_clear_case_count": reference_review_clear_case_count,
         "cases_needing_review": cases_needing_review,
         "ok": missing_file_count == 0 and not cases_with_issues,
         "items": items,
     }
+
+
+def reference_loaded_without_issues(item: dict[str, Any]) -> bool:
+    reference = item.get("reference")
+    if not isinstance(reference, dict) or not reference.get("exists"):
+        return False
+    issues = item.get("issues")
+    return isinstance(issues, list) and not any(str(issue).startswith("reference ") for issue in issues)
 
 
 def build_eval_manifest_from_case_index(
