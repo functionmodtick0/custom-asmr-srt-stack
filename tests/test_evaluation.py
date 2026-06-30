@@ -67,6 +67,11 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["review_effort"]["timing_edit_segments"], 0)
         self.assertEqual(report["review_effort"]["segments_needing_edit"], 1)
         self.assertEqual(report["review_effort"]["segments_needing_edit_ratio"], 0.5)
+        self.assertEqual(report["review_effort"]["items"][0]["reference_id"], "seg_000002")
+        self.assertEqual(report["review_effort"]["items"][0]["candidate_id"], "seg_000002")
+        self.assertEqual(report["review_effort"]["items"][0]["reasons"], ["text", "channel"])
+        self.assertEqual(report["review_effort"]["items"][0]["reference_text"], "見つかった")
+        self.assertEqual(report["review_effort"]["items"][0]["candidate_text"], "見つた")
 
     def test_time_aligned_timing_ignores_non_overlapping_extra_candidate_segments(self):
         reference = master_with_segments(
@@ -93,6 +98,36 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["review_effort"]["extra_candidate_segments"], 1)
         self.assertEqual(report["review_effort"]["segments_needing_edit"], 1)
         self.assertEqual(report["review_effort"]["segments_needing_edit_ratio"], 1 / 3)
+        self.assertEqual(report["review_effort"]["items"], [
+            {
+                "reference_id": None,
+                "candidate_id": "seg_000001",
+                "start_ms": 0,
+                "end_ms": 500,
+                "reasons": ["extra_candidate"],
+                "reference_text": "",
+                "candidate_text": "noise",
+                "reference_channel": None,
+                "candidate_channel": "MIX",
+            }
+        ])
+
+    def test_review_effort_items_report_missing_reference_segments(self):
+        reference = master_with_segments(
+            [
+                Segment("seg_000001", 1000, 2000, "L", "speech", "あ"),
+                Segment("seg_000002", 3000, 4000, "R", "speech", "い"),
+            ]
+        )
+        candidate = master_with_segments([Segment("seg_000001", 1000, 2000, "L", "speech", "あ")])
+
+        report = evaluate_transcripts(reference, candidate)
+
+        self.assertEqual(report["review_effort"]["missing_reference_segments"], 1)
+        self.assertEqual(report["review_effort"]["segments_needing_edit"], 1)
+        self.assertEqual(report["review_effort"]["items"][0]["reference_id"], "seg_000002")
+        self.assertEqual(report["review_effort"]["items"][0]["candidate_id"], None)
+        self.assertEqual(report["review_effort"]["items"][0]["reasons"], ["missing_reference"])
 
     def test_practical_cer_normalizes_width_spacing_and_punctuation(self):
         self.assertEqual(normalize_for_cer("ね、 魔女ちゃん！？", mode="practical"), "ね魔女ちゃん")
@@ -159,6 +194,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["summary"]["review_effort"]["text_edit_segments"], 1)
         self.assertEqual(report["summary"]["review_effort"]["segments_needing_edit"], 1)
         self.assertEqual(report["summary"]["review_effort"]["segments_needing_edit_ratio"], 0.5)
+        self.assertNotIn("items", report["summary"]["review_effort"])
         self.assertEqual(report["summary"]["channel"]["paired_segments"], 2)
         self.assertEqual(report["summary"]["channel"]["confusion"]["MIX"]["MIX"], 2)
         self.assertEqual(report["summary"]["channel"]["candidate_mix_ratio"], 1.0)

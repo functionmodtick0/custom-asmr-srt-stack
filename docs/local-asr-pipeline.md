@@ -314,6 +314,7 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 - index 기준 `channel` 및 time-overlap 기준 `channel_time_aligned` L/R channel accuracy
 - candidate `needs_review` 비율
 - segment 단위 `review_effort`: practical text mismatch, channel mismatch, 500ms 초과 timing mismatch, missing reference, extra candidate
+- case별 `review_effort.items`: human review와 heuristic 개선이 어느 segment를 봐야 하는지 알 수 있도록 reasons와 reference/candidate text/channel/timing을 보존한다.
 
 strict CER는 공백만 제거한다.
 

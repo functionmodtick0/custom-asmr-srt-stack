@@ -401,30 +401,65 @@ def review_effort_summary(
 ) -> dict[str, Any]:
     reference_segments_needing_edit: set[str] = set()
     matched_reference_ids = {reference.id for reference, _ in paired_segments}
+    items: list[dict[str, Any]] = []
 
     text_edit_segments = 0
     channel_edit_segments = 0
     timing_edit_segments = 0
     for reference, candidate in paired_segments:
+        reasons: list[str] = []
         if normalize_for_cer(reference.text, mode="practical") != normalize_for_cer(candidate.text, mode="practical"):
             text_edit_segments += 1
             reference_segments_needing_edit.add(reference.id)
+            reasons.append("text")
         if reference.channel != candidate.channel:
             channel_edit_segments += 1
             reference_segments_needing_edit.add(reference.id)
+            reasons.append("channel")
         if (
             abs(reference.start_ms - candidate.start_ms) > REVIEW_EFFORT_TIMING_THRESHOLD_MS
             or abs(reference.end_ms - candidate.end_ms) > REVIEW_EFFORT_TIMING_THRESHOLD_MS
         ):
             timing_edit_segments += 1
             reference_segments_needing_edit.add(reference.id)
+            reasons.append("timing")
+        if reasons:
+            items.append(review_effort_pair_item(reference, candidate, reasons=reasons))
 
     missing_reference_segments = len(reference_segments) - len(matched_reference_ids)
-    extra_candidate_segments = sum(
-        1
-        for candidate in candidate_segments
-        if all(overlap_ms(reference, candidate) == 0 for reference in reference_segments)
-    )
+    for reference in reference_segments:
+        if reference.id not in matched_reference_ids:
+            items.append(
+                {
+                    "reference_id": reference.id,
+                    "candidate_id": None,
+                    "start_ms": reference.start_ms,
+                    "end_ms": reference.end_ms,
+                    "reasons": ["missing_reference"],
+                    "reference_text": reference.text,
+                    "candidate_text": "",
+                    "reference_channel": reference.channel,
+                    "candidate_channel": None,
+                }
+            )
+
+    extra_candidate_segments = 0
+    for candidate in candidate_segments:
+        if all(overlap_ms(reference, candidate) == 0 for reference in reference_segments):
+            extra_candidate_segments += 1
+            items.append(
+                {
+                    "reference_id": None,
+                    "candidate_id": candidate.id,
+                    "start_ms": candidate.start_ms,
+                    "end_ms": candidate.end_ms,
+                    "reasons": ["extra_candidate"],
+                    "reference_text": "",
+                    "candidate_text": candidate.text,
+                    "reference_channel": None,
+                    "candidate_channel": candidate.channel,
+                }
+            )
     segments_needing_edit = (
         len(reference_segments_needing_edit) + missing_reference_segments + extra_candidate_segments
     )
@@ -440,6 +475,25 @@ def review_effort_summary(
         "extra_candidate_segments": extra_candidate_segments,
         "segments_needing_edit": segments_needing_edit,
         "segments_needing_edit_ratio": segments_needing_edit / max(1, len(reference_segments) + extra_candidate_segments),
+        "items": items,
+    }
+
+
+def review_effort_pair_item(reference: Segment, candidate: Segment, *, reasons: list[str]) -> dict[str, Any]:
+    return {
+        "reference_id": reference.id,
+        "candidate_id": candidate.id,
+        "start_ms": min(reference.start_ms, candidate.start_ms),
+        "end_ms": max(reference.end_ms, candidate.end_ms),
+        "reasons": reasons,
+        "reference_text": reference.text,
+        "candidate_text": candidate.text,
+        "reference_channel": reference.channel,
+        "candidate_channel": candidate.channel,
+        "reference_start_ms": reference.start_ms,
+        "reference_end_ms": reference.end_ms,
+        "candidate_start_ms": candidate.start_ms,
+        "candidate_end_ms": candidate.end_ms,
     }
 
 

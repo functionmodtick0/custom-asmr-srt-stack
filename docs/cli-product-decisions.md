@@ -282,6 +282,7 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 - channel attribution 튜닝을 위해 index 기반 `channel`과 time-overlap 기반 `channel_time_aligned`의 L/R/MIX confusion, candidate MIX 유지 비율, L/R channel accuracy를 계산한다.
 - `needs_review` 비율을 계산한다.
 - `review_effort`는 practical text mismatch, channel mismatch, 500ms 초과 timing mismatch, missing reference, extra candidate를 세고, 같은 reference segment의 중복 수정 필요는 한 번만 `segments_needing_edit`에 반영한다.
+- 단일 case report의 `review_effort.items`는 사람이 고쳐야 할 segment와 reasons(`text`, `channel`, `timing`, `missing_reference`, `extra_candidate`)를 담는다. manifest summary에는 큰 리포트 팽창을 피하기 위해 items를 집계하지 않는다.
 - 평가는 모델 기본값 승격이나 threshold 변경 전에 실행한다.
 - `--max-practical-cer`, `--min-time-aligned-500ms-ratio`, `--min-channel-time-aligned-accuracy`, `--max-channel-time-aligned-mix-ratio`, `--max-segments-needing-edit-ratio`를 지정하면 품질 gate로 동작한다. gate 실패 시 report는 stdout/file에 남기고 exit code를 실패로 반환한다.
 
