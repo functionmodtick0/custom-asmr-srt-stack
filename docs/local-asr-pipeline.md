@@ -188,13 +188,17 @@ Qwen/Qwen3-ForcedAligner-0.6B
 
 ```bash
 CASRT_QWEN_ASR_ALIGNER_MODEL_ID=Qwen/Qwen3-ForcedAligner-0.6B
+CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS=80
 ```
+
+`CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS`보다 짧은 aligned span은 비현실적인 timestamp contract 위반으로 보고 해당 clip bounds로 되돌린다. 2026-06-30 forced aligner 3-case 실험에서 1ms segment가 관측되어 추가했다. 기본값은 80ms이며 WebUI/CLI 옵션으로 노출하지 않는다.
 
 현재 판단:
 
 - 기본 경로로 승격하지 않는다.
 - 10초 실데이터 crop에서 일부 timestamp가 초반으로 잘 맞지 않고, token duration이 0인 항목이 있었다.
-- ForcedAligner는 VAD/speech chunking이 안정된 뒤 segment 내부 보정 또는 debug alignment 용도로 다시 평가한다.
+- 2026-06-30 01/04/07 front120에서는 text를 바꾸지 않고 time-aligned 500ms와 channel time-aligned accuracy를 개선했지만 practical CER가 여전히 높고 1ms span이 관측됐다.
+- ForcedAligner는 duration guard 적용 후 다시 평가한다.
 
 ## 평가 Harness
 
@@ -340,6 +344,7 @@ uv run casrt eval-transcript ref.master.json candidate.master.json \
 | 후보 | cases | reference segments | candidate segments | practical CER | time-aligned 500ms ratio | channel time-aligned accuracy | 판단 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | Qwen/Qwen3-ASR-1.7B, energy 500/200, 01/04/07 front120 | 3 | 74 | 81 | 29.5% | 29.5% | 73.1% | 불합격 |
+| Qwen/Qwen3-ASR-1.7B + Qwen3-ForcedAligner, energy 500/200, 01/04/07 front120 | 3 | 74 | 81 | 29.5% | 36.6% | 75.0% | 불합격: timing/channel 개선, text 미달, 1ms span guard 필요 |
 | Qwen/Qwen3-ASR-1.7B, energy 500/200 + max10000, 01/04/07 front120 | 3 | 74 | 83 | 29.3% | 30.1% | 72.0% | 불합격: 미세 개선, channel 악화 |
 | Qwen/Qwen3-ASR-1.7B, energy 500/200 + max6000, 01/04/07 front120 | 3 | 74 | 96 | 30.3% | 30.1% | 72.0% | 불합격: text 악화 |
 | neosophie/Qwen3-ASR-1.7B-JA, 01/04/07 front120 | 3 | 74 | 81 | 29.6% | 29.5% | 73.1% | 불합격 |
@@ -361,6 +366,9 @@ case별 practical CER:
 | Qwen3-ASR 1.7B energy 500/200 | 01-front120 | 20.4% | 25.0% | 66.7% |
 | Qwen3-ASR 1.7B energy 500/200 | 04-front120 | 21.2% | 37.0% | 60.0% |
 | Qwen3-ASR 1.7B energy 500/200 | 07-front120 | 52.7% | 26.9% | 80.0% |
+| Qwen3-ASR 1.7B + ForcedAligner | 01-front120 | 21.7% | 31.2% | 83.3% |
+| Qwen3-ASR 1.7B + ForcedAligner | 04-front120 | 20.4% | 43.2% | 50.0% |
+| Qwen3-ASR 1.7B + ForcedAligner | 07-front120 | 51.8% | 36.0% | 78.6% |
 | Qwen3-ASR 1.7B max10000 | 01-front120 | 21.3% | 27.1% | 60.0% |
 | Qwen3-ASR 1.7B max10000 | 04-front120 | 20.4% | 37.0% | 60.0% |
 | Qwen3-ASR 1.7B max10000 | 07-front120 | 51.8% | 26.9% | 80.0% |
@@ -416,7 +424,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - Qwen 내장 energy 기본값은 `min_silence_ms=500`, `pad_ms=200`으로 낮춘다.
 - `CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 추가했지만 기본값으로 켜지 않는다. `max10000`은 official Qwen 3-case에서 practical CER 29.5% -> 29.3%, time-aligned 500ms 29.5% -> 30.1%로 미세 개선했지만 channel accuracy가 73.1% -> 72.0%로 떨어졌다. `max6000`은 practical CER 30.3%로 악화됐다.
 - `CASRT_QWEN_ASR_CONTEXT`에 긴 glossary를 그대로 넣는 방식은 기본값으로 쓰지 않는다. 짧은 구간에서 glossary 전체를 출력하는 hallucination이 발생했다.
-- Qwen3-ForcedAligner는 channel/timing을 일부 개선했지만 120초 gold 기준으로 기본 승격하지 않는다.
+- Qwen3-ForcedAligner는 official Qwen 3-case에서 text를 바꾸지 않고 time-aligned 500ms 29.5% -> 36.6%, channel time-aligned 73.1% -> 75.0%로 개선했다. 하지만 practical CER 29.5%가 여전히 기준 미달이고 1ms span이 관측되어, `CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS=80` guard 후 다시 재평가한다.
 - 현재 Qwen3-ASR 1.7B 경로만으로는 품질 기준을 만족하지 못한다.
 - `neosophie/Qwen3-ASR-1.7B-JA`는 다운로드 재시도 후 점수화했다. 120초 gold 기준 Qwen3-ASR 1.7B보다 약간 낫지만 practical CER 20.4%라 기본 승격하지 않는다.
 - 01/04/07 front120 확장 gold에서도 Neosophie/Qwen3-ASR-JA는 practical CER 29.6%라 기본 승격하지 않는다. 특히 07의 whisper/침대 ASMR 구간에서 텍스트 인식이 크게 무너졌다.

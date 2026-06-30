@@ -146,6 +146,8 @@ def aligned_bounds_ms(result: Any, duration_ms: int) -> tuple[int, int, bool]:
 
     start_ms = max(0, min(duration_ms, min(starts)))
     end_ms = max(start_ms + 1, min(duration_ms, max(ends)))
+    if end_ms - start_ms < qwen_min_aligned_duration_ms():
+        return 0, duration_ms, False
     return start_ms, end_ms, True
 
 
@@ -274,6 +276,13 @@ def qwen_max_inference_batch_size() -> int:
 
 def qwen_max_new_tokens() -> int:
     return int(os.environ.get("CASRT_QWEN_ASR_MAX_NEW_TOKENS", "512"))
+
+
+def qwen_min_aligned_duration_ms() -> int:
+    value = int(os.environ.get("CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS", "80"))
+    if value < 0:
+        raise ValueError("CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS must be non-negative")
+    return value
 
 
 def json_object_env(name: str) -> dict[str, Any]:

@@ -141,6 +141,33 @@ class QwenAsrWorkerTests(unittest.TestCase):
 
         self.assertEqual(aligned_bounds_ms(result, 1000), (120, 480, True))
 
+    def test_aligned_bounds_reject_implausibly_short_spans(self):
+        result = FakeTranscription(
+            "うん",
+            FakeAlignResult(
+                [
+                    FakeAlignItem("う", 0.12, 0.12),
+                    FakeAlignItem("ん", 0.121, 0.121),
+                ]
+            ),
+        )
+
+        self.assertEqual(aligned_bounds_ms(result, 1000), (0, 1000, False))
+
+    def test_aligned_bounds_minimum_duration_is_configurable(self):
+        result = FakeTranscription(
+            "うん",
+            FakeAlignResult(
+                [
+                    FakeAlignItem("う", 0.12, 0.12),
+                    FakeAlignItem("ん", 0.121, 0.121),
+                ]
+            ),
+        )
+
+        with mock.patch.dict("os.environ", {"CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS": "0"}, clear=False):
+            self.assertEqual(aligned_bounds_ms(result, 1000), (120, 121, True))
+
     def test_aligned_bounds_fall_back_to_clip_when_missing(self):
         self.assertEqual(aligned_bounds_ms(FakeTranscription("ねえ"), 1000), (0, 1000, False))
 

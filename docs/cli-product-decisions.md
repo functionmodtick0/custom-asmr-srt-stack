@@ -172,6 +172,7 @@ uv run casrt project transcribe PROJECT_ID \
 - worker는 모델을 lazy load하고 같은 CLI/WebUI 프로세스 안에서 재사용한다.
 - ASMR 품질 경로에서는 MIX 전사를 우선하고 L/R은 channel attribution 근거로 사용한다.
 - 보안 검토가 필요한 benchmark 실행은 `CASRT_LOCAL_WORKER_ENV_MODE=offline`, `CASRT_QWEN_ASR_REQUIRE_LOCAL_MODEL_PATH=1`, `CASRT_QWEN_ASR_LOCAL_FILES_ONLY=1`, `CASRT_QWEN_ASR_DISABLE_NETWORK=1`을 사용하고 `--model-id`에는 repo id가 아니라 고정 local snapshot directory를 넣는다.
+- `CASRT_QWEN_ASR_ALIGNER_MODEL_ID`가 설정되면 Qwen3-ForcedAligner timestamp를 사용한다. `CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS`보다 짧은 aligned span은 clip bounds로 되돌리며, 이 값은 WebUI/CLI 옵션으로 노출하지 않는다.
 - `CASRT_VAD_COMMAND`가 설정되어 있으면 고정 VAD command의 interval을 사용한다.
 - `CASRT_VAD_COMMAND`가 설정되어 있지 않으면 MIX energy 기반 speech chunking으로 발화 단위 전사를 시도한다.
 - energy chunking은 `CASRT_QWEN_ENERGY_*` env로만 내부 튜닝한다. `CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 긴 interval을 일정 길이 이하로 자르는 실험 옵션이며, 2026-06-30 01/04/07 front120 평가에서는 기본 승격하지 않는다.
