@@ -525,7 +525,9 @@ uv run casrt eval-manifest gold.json \
   - Qwen/Qwen3-ASR-1.7B + Qwen3-ForcedAligner pack: `/tmp/casrt-quality.Q5OdDf/review-pack-qwen17-align`, clips 77개.
   - stable-ts CSV channel + Qwen3-ForcedAligner pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-qwen-aligner`, clips 48개.
   - stable-ts CSV channel + Qwen3-ForcedAligner coverage05 pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-qwen-aligner-coverage05`, clips 33개.
-  - 세 pack 모두 `custom-asmr-review-pack-v1` index와 `clips/*.wav` 생성을 확인했다.
+  - stable-ts CLI attributed 6dB pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-cli-attributed`, clips 66개.
+  - stable-ts CLI attributed 10dB pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-cli-attributed-th10`, clips 61개.
+  - 다섯 pack 모두 `custom-asmr-review-pack-v1` index와 `clips/*.wav` 생성을 확인했다.
 
 case별 practical CER:
 
@@ -623,7 +625,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - Mega-ASR 산출물은 `/tmp/casrt-quality/mega-asr-results/routed`, `/tmp/casrt-quality/mega-asr-results/base-threshold-1p1`, `/tmp/casrt-quality/mega-asr-results/force-lora`에 있다. Report는 각각 `routed-3case-report.json`, `base-threshold-1p1-3case-report.json`, `force-lora-3case-report.json`이다.
 - `Atotti/llm-jp-4-8b-speech-asr`는 일본어 ASR 특화 8B 후보지만 model card상 `speech_llm_ja` 패키지(`git+https://github.com/Atotti/ja-speech-llm.git`)가 필요하다. 현재 설치된 Transformers `5.12.1`와 official main `5.13.0.dev0` 모두 `LlamaForSpeechLM`을 노출하지 않는다. 원격/외부 패키지 코드를 실행해야 하므로 사용자 명시 승인 전에는 자동 검증하지 않는다.
 - `AutoArk-AI/ARK-ASR-3B`는 최신 로컬 후보지만 model card metadata에 `custom_code`가 있다. 외부 모델 저장소 코드를 실행하는 `trust_remote_code=True`는 기본 실험 경로로 쓰지 않고, 사용자 명시 승인이나 first-party package 지원이 있을 때만 검증한다.
-- stable-ts/Whisper계 baseline은 현재 후보 중 text가 가장 좋지만 3-case practical CER 16.1%로 기준 10%를 넘고, time-aligned 500ms ratio도 56.7%로 기준 90%에 못 미친다. L/R energy attribution을 후처리로 붙여도 channel accuracy가 85%에 도달하지 않는다. 따라서 제품 기본 경로로 승격하지 않고 품질 상한 비교용으로만 유지한다.
+- stable-ts/Whisper계 baseline은 현재 후보 중 text가 가장 좋지만 3-case practical CER 16.1%로 기준 10%를 넘고, time-aligned 500ms ratio도 56.7%로 기준 90%에 못 미친다. L/R energy attribution을 후처리로 붙여도 channel accuracy가 85%에 도달하지 않는다. 따라서 제품 기본 경로로 승격하지 않고 품질 상한 비교용으로만 유지한다. 다만 human-reviewed gold를 만들 때 우선 검수할 후보는 stable-ts CLI attributed 계열이다. 6dB는 기본 channel attribution 재현 pack이고, 10dB는 MIX ratio가 높아 기본값은 아니지만 review effort가 66 -> 61로 낮아 사람 검수 시작점으로 비교할 수 있다.
 - 2026년 공개 파이프라인 조사에서 WhisperJAV는 ASMR/VR/whisper 콘텐츠에 `fidelity` pipeline과 `aggressive` sensitivity를 권장한다. 또한 ChronosJAV는 Qwen ASR, anime-whisper, Kotoba처럼 timestamp 없는 모델의 text generation과 timestamp alignment를 분리한다. 이 방향은 모델 단독 교체보다 VAD/scene detection/alignment를 분리해서 검증해야 함을 뒷받침한다.
 - `TransWithAI/Whisper-Vad-EncDec-ASMR-onnx`는 Whisper encoder 기반 VAD이며 공개 discussion에서 일본어 ASMR 약 500시간으로 학습됐다고 설명된다. ASR 모델이 아니므로 text CER를 직접 개선하지는 않지만, energy splitter보다 ASMR whisper boundary를 더 잘 잡는지 `CASRT_VAD_COMMAND` 후보로 비교한다.
 - ASMR Whisper ONNX VAD는 외부 `inference.py`를 실행하지 않고 `casrt vad whisper-asmr-onnx`로 직접 구현한다. 입력은 CASRT VAD command stdin contract를 따르고 출력은 `{ intervals }`만 반환한다. 전처리는 16kHz mono, 30초 chunk, WhisperFeatureExtractor, ONNX Runtime, sigmoid activation, hysteresis postprocess로 제한한다.
