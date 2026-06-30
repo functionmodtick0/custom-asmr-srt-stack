@@ -683,6 +683,13 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
    - 2026-06-30 `review-case-status` 실데이터 smoke: input `/tmp/casrt-quality.Q5OdDf/prepare-review-cases-smoke/case-index.json`, output `/tmp/casrt-quality.Q5OdDf/prepare-review-cases-smoke/status.json`. Result: `case_count=3`, `candidate_case_count=0`, `reference_type_counts={pseudo-gold: 3}`, `missing_file_count=0`, `case_issue_count=0`, `reference_review_count=2`, `cases_needing_review=[01-front60, 07-front60]`.
    - 2026-06-30 `build-eval-manifest` 실데이터 smoke: plan `/tmp/casrt-quality.Q5OdDf/build-eval-manifest-smoke-plan.json`, output dir `/tmp/casrt-quality.Q5OdDf/build-eval-manifest-smoke-cases`, rebuilt manifest `/tmp/casrt-quality.Q5OdDf/build-eval-manifest-smoke-cases/eval-manifest.rebuilt.json`. Result: `case_count=1`, `candidate_case_count=1`, `reference_type=pseudo-gold`, `reference_review_count=1`, `missing_file_count=0`, `case_issue_count=0`. `--reference-type human-reviewed --fail-on-review`는 expected failure로 `review_count=1`을 막았고 output file을 만들지 않았다.
    - 2026-06-30 `freeze-case-references` 실데이터 smoke: input `/tmp/casrt-quality.Q5OdDf/build-eval-manifest-smoke-cases/case-index.json`, output `/tmp/casrt-quality.Q5OdDf/freeze-case-references-smoke`, `reference_type=pseudo-gold`로 실행했다. Result: `case_count=1`, frozen `review_count=0`, generated `audio-map.json`, `case-index.json`, `eval-manifest.json`. `review-case-status --fail-on-review`는 `reference_review_count=0`, `missing_file_count=0`, `case_issue_count=0`으로 통과했고, generated manifest 평가 report는 `/tmp/casrt-quality.Q5OdDf/freeze-case-references-smoke/eval-report.json`에 저장했다.
+   - 2026-06-30 8개 실제 원본 front120 review case set 생성:
+     - plan: `/tmp/casrt-quality.Q5OdDf/all8-front120-review-cases-plan.json`
+     - output: `/tmp/casrt-quality.Q5OdDf/all8-front120-review-cases`
+     - source: `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/uploads`의 01~08 wav와 기존 `/data/outputs` SRT 산출물.
+     - result: `case_count=8`, `reference_type_counts={pseudo-gold: 8}`, `missing_file_count=0`, `case_issue_count=0`, `reference_review_count=15`.
+     - case별 segments/review_count: 01 `10/2`, 02 `10/1`, 03 `11/2`, 04 `12/2`, 05 `10/2`, 06 `11/2`, 07 `10/2`, 08 `8/2`.
+     - 판단: 모델 승격용 gold가 아니라, 사람이 WebUI에서 audio/reference를 열어 검수하고 `freeze-case-references --reference-type human-reviewed`로 올릴 시작점이다.
    - `/data/uploads`, `/data/outputs`에서 30초~2분 단위 reference case를 늘릴 때는 `custom-asmr-case-slice-plan-v1` plan으로 재현 가능하게 기록한다.
    - 사람이 검수한 단일 파일은 `casrt freeze-reference`, prepared case set은 `casrt freeze-case-references`로 stable id와 `needs_review=false`를 고정한다.
    - manifest에 `reference_type=human-reviewed`와 검수 메모를 기록한다.
