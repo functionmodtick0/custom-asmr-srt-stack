@@ -127,6 +127,8 @@ ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한
 - stable-ts/Whisper계 산출물은 2026-06-28 01/04/07 front120 pseudo-gold에서 practical CER 16.1%, time-aligned 500ms ratio 56.7%였다. reference 자체가 stable-ts 유래이므로 실제 품질 근거로 승격하지 않고, 비교 baseline으로만 유지한다.
 - `google/gemma-4-E4B-it`: 공식 오디오 입력을 지원하는 최신 로컬 multimodal 후보. 2026-06-28 smoke 전사는 성공했지만 01/04/07 front120 gold에서 4-bit practical CER 42.3%, 8-bit practical CER 46.1%라 기본 승격하지 않는다.
 - `zhifeixie/Mega-ASR`: Qwen3-ASR-1.7B 기반 robust ASR 후보. 2026-06-28 01/04/07 front120 gold에서 routed practical CER 30.9%, base-only threshold 1.1 practical CER 30.8%, forced LoRA practical CER 77.6%라 기본 승격하지 않는다.
+- `microsoft/VibeVoice-ASR`와 `microsoft/VibeVoice-ASR-HF`: 2026년 공개된 일본어 tag 포함 최신 local ASR 후보. Exact revisions는 각각 `d0c9efdb8d614685062c04425d91e01b6f37d944`, `f22241c2062b3b25272bf117397e03d73381037a`다. 현재 repo env의 Transformers 5.12.1에는 필요한 VibeVoice class가 없으므로 기본 경로에 넣지 않는다. 공식 release 지원 또는 별도 runtime 검토 후 exact revision local snapshot으로만 평가한다.
+- `OpenMOSS-Team/MOSS-Transcribe-preview-2B`와 `cstr/MOSS-Transcribe-preview-2B-GGUF`: 2026-06 신규 ASR 후보지만 일본어 tag가 없거나 `custom_code`/별도 GGUF runtime이 필요하다. 일본 ASMR 우선 후보가 아니며 실행 전 외부 코드/runtime 검토가 필요하다.
 - `TransWithAI/Whisper-Vad-EncDec-ASMR-onnx`: ASR 모델이 아니라 VAD 후보. 공개 discussion 기준 일본어 ASMR 약 500시간으로 학습된 Whisper encoder 기반 VAD다. `casrt vad whisper-asmr-onnx` command로 붙이며, WebUI 옵션으로 노출하지 않고 `CASRT_VAD_COMMAND` 뒤에 붙일 내부 후보로 둔다. 실행은 `gpt-5.4 xhigh` 정적 보안 검토의 `PASS_WITH_CONSTRAINTS` 조건을 따른다. 2026-06-28 01/04/07 front120 gold에서 단독 chunker default practical CER 30.2%, tuned practical CER 33.4%, energy-rescue hybrid practical CER 31.0%라 energy baseline 29.6%보다 나빠 기본 교체하지 않는다.
 - `Qwen/Qwen3-ASR-0.6B`: 빠른 비교/저사양 후보
 - `Qwen/Qwen3-ForcedAligner-0.6B`: 고정 forced alignment 후보

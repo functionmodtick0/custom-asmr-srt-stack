@@ -621,6 +621,12 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - Gemma E4B 실험 산출물은 `/tmp/casrt-quality/gemma-e4b-4bit-bounded-results`, `/tmp/casrt-quality/gemma-e4b-8bit-bounded-results`, report는 `/tmp/casrt-quality/gemma-e4b-4bit-bounded-3case-report.json`, `/tmp/casrt-quality/gemma-e4b-8bit-bounded-3case-report.json`에 있다.
 - `CohereLabs/cohere-transcribe-03-2026`는 2026년 2B local ASR 후보이며 일본어 포함 14개 언어를 지원한다. 공식 card는 Transformers native, safetensors, no timestamps/diarization, VAD 필요를 명시한다. Root Transformers 5.12.1에 Cohere ASR class가 있어 `local-cohere-asr` adapter를 구현한다. 다만 gated/custom_code repo이므로 실제 download/evaluation은 exact revision pin과 `casrt model digest` report 기록 후, local snapshot path + `trust_remote_code=False` + `local_files_only=True` + `use_safetensors=True` 조건에서만 한다.
 - Cohere exact revision은 `b1eacc2686a3d08ceaae5f24a88b1d519620bc09`로 확인했다. `model.safetensors` LFS SHA-256은 `987bd3e141c7bfdb5a78f5db11397ee7737308357e6cc0a3f36a4979b158137a`, size는 4,131,862,976 bytes다. 2026-06-30 anonymous download는 gated 403으로 실패했다. 사용자가 HF access를 승인한 뒤 같은 revision을 받아 `casrt model digest`를 기록해야 평가 가능하다.
+- 2026-06-30 live HF metadata refresh:
+  - `microsoft/VibeVoice-ASR`는 `automatic-speech-recognition`, `transformers`, `safetensors`, `ja` tag가 있고 exact revision은 `d0c9efdb8d614685062c04425d91e01b6f37d944`다. Config architecture는 `VibeVoiceForASRTraining`, model type은 `vibevoice`, BF16 parameter count는 8.67B다. 현재 repo env의 Transformers 5.12.1에는 `VibeVoiceForASRTraining`가 없어 바로 실행하지 않는다.
+  - `microsoft/VibeVoice-ASR-HF`는 `audio-text-to-text`, `transformers`, `safetensors`, `ja` tag가 있고 exact revision은 `f22241c2062b3b25272bf117397e03d73381037a`다. HF metadata상 `AutoModel`을 가리키지만 현재 repo env에는 VibeVoice 전용 audio-text-to-text class가 없어 바로 실행하지 않는다.
+  - `OpenMOSS-Team/MOSS-Transcribe-preview-2B`는 2026-06-26 공개된 2.4B safetensors ASR 후보이고 exact revision은 `c98175cb20e48bd9be4e95f6c85f2af18899f780`다. 그러나 metadata에 `custom_code`가 있고 language tag가 `en` 중심이라 일본 ASMR 우선순위는 낮다. 실행하려면 외부 model code 검토가 먼저 필요하다.
+  - `cstr/MOSS-Transcribe-preview-2B-GGUF`는 2026-06-30 공개 GGUF 변환이고 language tag는 `en`, `zh`다. 일본어 tag가 없고 GGUF runtime은 별도 실행 경로가 필요하므로 현재 로컬 ASMR 우선 후보가 아니다.
+  - `XiaomiMiMo/MiMo-V2.5-ASR`는 2026-04-24 revision `98641d537df521ac6df05f74090475694d9510b7`의 ASR 후보지만 language tag가 `zh`, `en`, `yue`이고 일본어 tag가 없다. 일본 ASMR 후보 우선순위에서 제외한다.
 - `zhifeixie/Mega-ASR`는 2026-05 공개 Qwen3-ASR-1.7B 기반 robust ASR 후보이며, noisy/reverberant/clipped/band-limited/overlapping 등 어려운 실제 녹음에서 empty output, omission, repetition, hallucination을 줄이는 것을 목표로 한다. ASMR 전용은 아니지만 현재 07 whisper/침대 구간 실패 양상과 맞닿아 있으므로 다음 우선 모델 실험으로 둔다. 공식 runtime은 `xzf-thu/Mega-ASR` repository 코드와 checkpoint 배치를 요구하므로 `/tmp` 격리 환경에서 실행한다.
 - Mega-ASR runtime은 실행 전 `gpt-5.4 xhigh` subagent가 정적 보안 검토했다. Verdict는 `PASS_WITH_CONSTRAINTS`다. 허용 범위는 `/tmp` 별도 venv, `/tmp` HF cache, Hugging Face allowlist download, Transformers backend만, `infer.py`/`evaluate_wer.py`만, vLLM/webui/training/wandb 금지, safetensors-only checkpoint 강제다. `adapter_model.bin`, `.pt`, `.pth` 또는 router non-safetensors checkpoint를 읽게 되면 미승인으로 간주한다.
 - Mega-ASR 정적 검토에서 확인한 고위험 지점은 `lora_switch.py`의 `adapter_model.bin` fallback `torch.load`와 `router.py`의 non-safetensors `torch.load(weights_only=False)`다. 따라서 실험 전 `mega-asr-merged/adapter_model.safetensors`와 `audio_quality_router/best_acc_model.safetensors` 존재를 확인하고 unsafe fallback 파일은 사용하지 않는다.
@@ -680,9 +686,10 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
    - `zhifeixie/Mega-ASR`는 검증 완료 후보지만 기본 승격하지 않는다.
    - `neosophie/Qwen3-ASR-1.7B-JA`는 검증 완료 후보지만 기본 승격하지 않는다.
    - `Qwen/Qwen3-ASR-1.7B-hf`는 Transformers main에서 검증했지만 기본 승격하지 않는다. 공식 release에 `qwen3_asr`가 들어오면 runtime 안정성만 재확인하고, 품질 재평가는 human-reviewed gold가 늘어난 뒤에 한다.
+   - `microsoft/VibeVoice-ASR`와 `microsoft/VibeVoice-ASR-HF`는 일본어 tag가 있는 최신 로컬 후보지만 현재 repo env의 Transformers 5.12.1에서 전용 class가 없어 보류한다. 공식 release 지원 또는 별도 runtime 검토 후 exact revision local snapshot으로만 평가한다.
    - `mistralai/Voxtral-Mini-4B-Realtime-2602`는 remote code 없이 검증했지만 07 whisper 구간에서 실패해 기본 승격하지 않는다.
    - `Atotti/llm-jp-4-8b-speech-asr`는 ASR 특화 일본어 후보지만 third-party runtime package가 필요하므로 사용자 명시 승인 후 비교한다.
-   - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 성능 후보로 남기되, custom code/gated 접근 조건을 먼저 해결해야 한다.
+   - `AutoArk-AI/ARK-ASR-3B`, `CohereLabs/cohere-transcribe-03-2026`, `OpenMOSS-Team/MOSS-Transcribe-preview-2B`는 성능 후보로 남기되, custom code/gated/runtime 접근 조건을 먼저 해결해야 한다.
    - `Qwen/Qwen3-ASR-0.6B`는 속도/저사양 후보로 비교한다.
    - Gemma 4 E4B는 공식 오디오 입력과 smoke 전사는 성공했지만 01/04/07 front120 gold 기준을 만족하지 못해 기본 승격하지 않는다.
    - Whisper 계열 도메인 fine-tune은 제품 기본이 아니라 비교 baseline으로만 본다.
@@ -695,6 +702,11 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - WhisperJAV vocal separation issue: https://github.com/meizhong986/WhisperJAV/issues/224
 - ASMR-trained Whisper VAD discussion: https://github.com/CrispStrobe/CrispASR/issues/36
 - Qwen3-ASR user report thread: https://www.reddit.com/r/LocalLLaMA/comments/1rq118c/qwen3_asr_seems_to_outperform_whisper_in_almost/
+- VibeVoice-ASR model card: https://huggingface.co/microsoft/VibeVoice-ASR
+- VibeVoice-ASR-HF model card: https://huggingface.co/microsoft/VibeVoice-ASR-HF
+- MOSS Transcribe preview model card: https://huggingface.co/OpenMOSS-Team/MOSS-Transcribe-preview-2B
+- MOSS Transcribe GGUF model card: https://huggingface.co/cstr/MOSS-Transcribe-preview-2B-GGUF
+- MiMo V2.5 ASR model card: https://huggingface.co/XiaomiMiMo/MiMo-V2.5-ASR
 
 ## 문서화 규칙
 
