@@ -434,6 +434,71 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(json.loads(output)["summary"]["text_practical"]["edit_distance"], 1)
             self.assertEqual(error, "")
 
+    def test_eval_manifest_reference_type_gate_passes_for_human_reviewed_cases(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            manifest = root / "gold.json"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\nねえ\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:01,000 --> 00:00:02,000\nねえ\n", encoding="utf-8")
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-manifest-v1",
+                        "reference_type": "human-reviewed",
+                        "cases": [{"id": "sample", "reference": "reference.srt", "candidate": "candidate.srt"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                ["eval-manifest", "--json", "--require-reference-type", "human-reviewed", str(manifest)]
+            )
+
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output)["cases"][0]["reference_type"], "human-reviewed")
+            self.assertEqual(error, "")
+
+    def test_eval_manifest_reference_type_gate_fails_after_emitting_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            manifest = root / "gold.json"
+            report_path = root / "report.json"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\nねえ\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:01,000 --> 00:00:02,000\nねえ\n", encoding="utf-8")
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-manifest-v1",
+                        "reference_type": "pseudo-gold",
+                        "cases": [{"id": "sample", "reference": "reference.srt", "candidate": "candidate.srt"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "eval-manifest",
+                    "--json",
+                    "-o",
+                    str(report_path),
+                    "--require-reference-type",
+                    "human-reviewed",
+                    str(manifest),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(json.loads(output)["cases"][0]["reference_type"], "pseudo-gold")
+            self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["reference_type"], "pseudo-gold")
+            self.assertIn("reference type gate failed", error)
+            self.assertIn("sample reference_type 'pseudo-gold' != 'human-reviewed'", error)
+
     def test_transcribe_and_retranscribe_project_cli(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

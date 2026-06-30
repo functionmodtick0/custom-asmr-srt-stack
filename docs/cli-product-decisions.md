@@ -295,6 +295,7 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 - root 또는 case의 `reference_type`과 `reference_notes`를 report에 보존한다.
 - 제품 의사결정에서는 `reference_type=human-reviewed`만 모델 승격 근거로 쓰고, `pseudo-gold`는 regression/상대 비교로만 사용한다.
 - `eval-manifest`의 품질 gate는 summary metric 기준으로 판단한다.
+- `--require-reference-type human-reviewed`를 지정하면 모든 case의 effective `reference_type`이 일치해야 하며, 실패해도 report는 stdout/file에 먼저 남긴다.
 
 ### 선택 segment 재전사
 

@@ -147,6 +147,7 @@ def eval_manifest(args: argparse.Namespace) -> None:
         ),
     )
     enforce_quality_gate(report["summary"], args)
+    enforce_reference_type_gate(report, args)
 
 
 def enforce_quality_gate(metrics: dict[str, Any], args: argparse.Namespace) -> None:
@@ -193,6 +194,21 @@ def enforce_quality_gate(metrics: dict[str, Any], args: argparse.Namespace) -> N
 
     if failures:
         raise ValueError("quality gate failed: " + "; ".join(failures))
+
+
+def enforce_reference_type_gate(report: dict[str, Any], args: argparse.Namespace) -> None:
+    required = getattr(args, "require_reference_type", None)
+    if required is None:
+        return
+
+    failures = []
+    for case in report.get("cases", []):
+        case_type = case.get("reference_type") or "unspecified"
+        if case_type != required:
+            failures.append(f"{case.get('id', '<unknown>')} reference_type {case_type!r} != {required!r}")
+
+    if failures:
+        raise ValueError("reference type gate failed: " + "; ".join(failures))
 
 
 def ratio_arg(value: float | None, name: str) -> float | None:
@@ -463,6 +479,10 @@ def build_parser() -> argparse.ArgumentParser:
     eval_manifest_parser.add_argument("manifest", type=Path)
     eval_manifest_parser.add_argument("-o", "--output", type=Path)
     eval_manifest_parser.add_argument("--source-language", default="ja")
+    eval_manifest_parser.add_argument(
+        "--require-reference-type",
+        help="Fail if any manifest case has a different effective reference_type.",
+    )
     eval_manifest_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
     add_quality_gate_args(eval_manifest_parser)
     eval_manifest_parser.set_defaults(func=eval_manifest)

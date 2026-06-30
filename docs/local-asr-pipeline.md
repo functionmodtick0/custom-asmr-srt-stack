@@ -348,6 +348,17 @@ uv run casrt eval-transcript ref.master.json candidate.master.json \
   --max-channel-time-aligned-mix-ratio 0.50
 ```
 
+모델 승격용 manifest 평가는 reference authority도 gate로 강제한다.
+
+```bash
+uv run casrt eval-manifest gold.json \
+  --require-reference-type human-reviewed \
+  --max-practical-cer 0.10 \
+  --min-time-aligned-500ms-ratio 0.90 \
+  --min-channel-time-aligned-accuracy 0.85 \
+  --max-channel-time-aligned-mix-ratio 0.50
+```
+
 결과:
 
 | 후보 | segments | practical CER | time-aligned 500ms ratio | channel time-aligned accuracy | 판단 |

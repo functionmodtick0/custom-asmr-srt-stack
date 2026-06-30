@@ -325,6 +325,15 @@ gold set manifest 평가:
 uv run casrt eval-manifest gold.json --json -o eval-suite.json
 ```
 
+모델 승격용 평가에서는 reference authority도 gate로 건다.
+
+```bash
+uv run casrt eval-manifest gold.json \
+  --require-reference-type human-reviewed \
+  --max-practical-cer 0.10 \
+  --min-time-aligned-500ms-ratio 0.90
+```
+
 현재 평가는 strict CER, practical CER, segment index 기준 timing 오차, time-overlap 기준 timing ratio, L/R/MIX channel confusion, L/R channel accuracy, review 비율을 계산합니다.
 
 ## 테스트
