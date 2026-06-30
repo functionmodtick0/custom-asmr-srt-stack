@@ -251,6 +251,8 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 ```json
 {
   "format": "custom-asmr-eval-manifest-v1",
+  "reference_type": "human-reviewed",
+  "reference_notes": "Corrected in editor pass 2026-06-30",
   "cases": [
     {
       "id": "front10",
@@ -273,6 +275,8 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 - summary CER는 case 평균이 아니라 전체 edit distance / 전체 reference characters로 계산한다.
 - summary timing/channel/review는 전체 paired/boundary/comparable/candidate segment 수 기준으로 가중 집계한다.
 - case `id`는 중복될 수 없다.
+- root 또는 case의 `reference_type`과 `reference_notes`를 report에 보존한다.
+- 제품 의사결정에서는 `reference_type=human-reviewed`만 모델 승격 근거로 쓰고, `pseudo-gold`는 regression/상대 비교로만 사용한다.
 - `eval-manifest`의 품질 gate는 summary metric 기준으로 판단한다.
 
 ### 선택 segment 재전사

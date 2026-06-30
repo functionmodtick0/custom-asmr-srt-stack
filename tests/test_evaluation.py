@@ -106,6 +106,8 @@ class EvaluationTests(unittest.TestCase):
                 json.dumps(
                     {
                         "format": "custom-asmr-eval-manifest-v1",
+                        "reference_type": "pseudo-gold",
+                        "reference_notes": "stable-ts baseline",
                         "cases": [
                             {"id": "front-a", "reference": "refs/a.srt", "candidate": "candidates/a.srt"},
                             {
@@ -113,6 +115,8 @@ class EvaluationTests(unittest.TestCase):
                                 "reference": "refs/b.srt",
                                 "candidate": "candidates/b.srt",
                                 "candidate_id": "qwen-energy",
+                                "reference_type": "human-reviewed",
+                                "reference_notes": "spot checked",
                             },
                         ],
                     }
@@ -123,9 +127,15 @@ class EvaluationTests(unittest.TestCase):
             report = evaluate_manifest(manifest)
 
         self.assertEqual(report["format"], EVAL_SUITE_FORMAT)
+        self.assertEqual(report["reference_type"], "pseudo-gold")
+        self.assertEqual(report["reference_notes"], "stable-ts baseline")
         self.assertEqual(report["case_count"], 2)
         self.assertEqual(report["cases"][0]["candidate_id"], "a")
+        self.assertEqual(report["cases"][0]["reference_type"], "pseudo-gold")
+        self.assertEqual(report["cases"][0]["reference_notes"], "stable-ts baseline")
         self.assertEqual(report["cases"][1]["candidate_id"], "qwen-energy")
+        self.assertEqual(report["cases"][1]["reference_type"], "human-reviewed")
+        self.assertEqual(report["cases"][1]["reference_notes"], "spot checked")
         self.assertEqual(report["summary"]["text"]["edit_distance"], 1)
         self.assertEqual(report["summary"]["text"]["reference_characters"], 6)
         self.assertAlmostEqual(report["summary"]["text"]["cer"], 1 / 6)

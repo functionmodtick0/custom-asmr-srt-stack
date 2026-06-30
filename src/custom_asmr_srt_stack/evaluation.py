@@ -62,6 +62,8 @@ def evaluate_manifest(manifest_path: Path, *, source_language: str = "ja") -> di
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     cases = validate_eval_manifest(manifest)
     base_dir = manifest_path.parent
+    manifest_reference_type = optional_manifest_string(manifest, "reference_type") or "unspecified"
+    manifest_reference_notes = optional_manifest_string(manifest, "reference_notes")
     evaluated_cases = []
     reports = []
 
@@ -77,20 +79,27 @@ def evaluate_manifest(manifest_path: Path, *, source_language: str = "ja") -> di
             {
                 "id": case_id,
                 "candidate_id": case.get("candidate_id") or Path(case["candidate"]).stem,
+                "reference_type": case.get("reference_type") or manifest_reference_type,
                 "reference": case["reference"],
                 "candidate": case["candidate"],
                 "report": report,
             }
         )
+        if case.get("reference_notes") or manifest_reference_notes:
+            evaluated_cases[-1]["reference_notes"] = case.get("reference_notes") or manifest_reference_notes
 
-    return {
+    result = {
         "format": EVAL_SUITE_FORMAT,
         "manifest_format": EVAL_MANIFEST_FORMAT,
         "manifest": str(manifest_path),
+        "reference_type": manifest_reference_type,
         "case_count": len(evaluated_cases),
         "cases": evaluated_cases,
         "summary": aggregate_eval_reports(reports),
     }
+    if manifest_reference_notes:
+        result["reference_notes"] = manifest_reference_notes
+    return result
 
 
 def validate_eval_manifest(manifest: Any) -> list[dict[str, str]]:
@@ -121,8 +130,27 @@ def validate_eval_manifest(manifest: Any) -> list[dict[str, str]]:
             if not isinstance(candidate_id, str) or not candidate_id:
                 raise ValueError(f"eval manifest case {index} candidate_id must be a non-empty string")
             normalized["candidate_id"] = candidate_id
+        reference_type = case.get("reference_type")
+        if reference_type is not None:
+            if not isinstance(reference_type, str) or not reference_type:
+                raise ValueError(f"eval manifest case {index} reference_type must be a non-empty string")
+            normalized["reference_type"] = reference_type
+        reference_notes = case.get("reference_notes")
+        if reference_notes is not None:
+            if not isinstance(reference_notes, str) or not reference_notes:
+                raise ValueError(f"eval manifest case {index} reference_notes must be a non-empty string")
+            normalized["reference_notes"] = reference_notes
         normalized_cases.append(normalized)
     return normalized_cases
+
+
+def optional_manifest_string(manifest: dict[str, Any], key: str) -> str | None:
+    value = manifest.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"eval manifest {key} must be a non-empty string")
+    return value
 
 
 def require_manifest_string(case: dict[str, Any], key: str, index: int) -> str:

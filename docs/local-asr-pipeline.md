@@ -340,7 +340,9 @@ uv run casrt eval-transcript ref.master.json candidate.master.json \
 | neosophie/Qwen3-ASR-1.7B-JA, full 120s | 1 | 28.6% | 4.0% | n/a | 불합격: 과도한 병합 |
 | neosophie/Qwen3-ASR-1.7B-JA, energy 1500/200 | 1 | 27.3% | 4.0% | n/a | 불합격: 과도한 병합 |
 
-확장 gold 결과:
+확장 pseudo-gold 결과:
+
+주의: 현재 01/04/07 front120 reference는 `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/outputs/eval-csv-srt-*-full.srt`에서 만든 pseudo-gold다. 해당 CSV/SRT의 `source_backend`는 stable-ts이며, 사람 검수 ground truth가 아니다. 따라서 아래 수치는 실제 정확도라기보다 stable-ts 계열 pseudo-reference와의 일치도다. stable-ts CSV channel을 candidate로 다시 넣으면 practical CER 0%, timing 100%, channel 93.1%가 나오므로 이것은 benchmark leakage로 간주하고 모델 승격 근거로 쓰지 않는다.
 
 | 후보 | cases | reference segments | candidate segments | practical CER | time-aligned 500ms ratio | channel time-aligned accuracy | 판단 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
@@ -430,6 +432,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - `CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 추가했지만 기본값으로 켜지 않는다. `max10000`은 official Qwen 3-case에서 practical CER 29.5% -> 29.3%, time-aligned 500ms 29.5% -> 30.1%로 미세 개선했지만 channel accuracy가 73.1% -> 72.0%로 떨어졌다. `max6000`은 practical CER 30.3%로 악화됐다.
 - `CASRT_QWEN_ASR_CONTEXT`에 긴 glossary를 그대로 넣는 방식은 기본값으로 쓰지 않는다. 짧은 구간에서 glossary 전체를 출력하는 hallucination이 발생했다.
 - Qwen3-ForcedAligner는 official Qwen 3-case에서 text를 바꾸지 않고 time-aligned 500ms 29.5% -> 36.6%, channel time-aligned 73.1% -> 75.0%로 개선했다. `CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS=80` guard 적용 후 80ms 미만 span은 제거됐고 time-aligned 500ms는 36.1%, channel time-aligned는 75.0%다. practical CER 29.5%가 여전히 기준 미달이므로 text 병목은 별도 모델/전처리/후처리로 풀어야 한다.
+- 2026-06-30 audit에서 01/04/07 front120 reference가 stable-ts 기반 pseudo-gold임을 확인했다. `eval-manifest`는 `reference_type`과 `reference_notes`를 report에 보존한다. 제품 기본 모델 승격은 `reference_type=human-reviewed` gold에서 다시 판단해야 한다.
 - 현재 Qwen3-ASR 1.7B 경로만으로는 품질 기준을 만족하지 못한다.
 - `neosophie/Qwen3-ASR-1.7B-JA`는 다운로드 재시도 후 점수화했다. 120초 gold 기준 Qwen3-ASR 1.7B보다 약간 낫지만 practical CER 20.4%라 기본 승격하지 않는다.
 - 01/04/07 front120 확장 gold에서도 Neosophie/Qwen3-ASR-JA는 practical CER 29.6%라 기본 승격하지 않는다. 특히 07의 whisper/침대 ASMR 구간에서 텍스트 인식이 크게 무너졌다.
