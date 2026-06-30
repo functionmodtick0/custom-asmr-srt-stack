@@ -152,6 +152,22 @@ class ProjectCliTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(json.loads(output)["adapter"], "local-transformers")
 
+    def test_model_validate_accepts_local_cohere_without_endpoint_url(self):
+        result, output = run_cli(
+            [
+                "model",
+                "validate",
+                "--adapter",
+                "local-cohere-asr",
+                "--model-id",
+                "/models/cohere-transcribe-03-2026",
+                "--json",
+            ]
+        )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(json.loads(output)["adapter"], "local-cohere-asr")
+
     def test_eval_transcript_outputs_json_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

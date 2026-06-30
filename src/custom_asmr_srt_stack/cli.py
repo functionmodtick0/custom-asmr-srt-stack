@@ -379,7 +379,7 @@ def build_parser() -> argparse.ArgumentParser:
     model_parent = argparse.ArgumentParser(add_help=False)
     model_parent.add_argument(
         "--adapter",
-        choices=["openai-compatible", "gemini", "local-transformers", "local-qwen-asr"],
+        choices=["openai-compatible", "gemini", "local-transformers", "local-qwen-asr", "local-cohere-asr"],
         required=True,
     )
     model_parent.add_argument("--endpoint-url")

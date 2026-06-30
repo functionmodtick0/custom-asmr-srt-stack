@@ -92,15 +92,15 @@ SRT 내보내기
 모델 설정은 UI에서 직접 입력합니다.
 
 ```text
-Adapter: openai-compatible, gemini, local-transformers, local-qwen-asr
+Adapter: openai-compatible, gemini, local-transformers, local-qwen-asr, local-cohere-asr
 Endpoint URL
 Model ID
 API Key
 ```
 
-고품질 일본 ASMR 경로는 로컬 처리만 사용합니다. `local-transformers`와 `local-qwen-asr`는 Endpoint URL과 API Key를 사용하지 않습니다. OpenAI-compatible / Gemini adapter는 기존 호환성과 로컬 HTTP 서버 연결을 위해 남아 있지만 제품 기본 품질 경로는 아닙니다.
+고품질 일본 ASMR 경로는 로컬 처리만 사용합니다. `local-transformers`, `local-qwen-asr`, `local-cohere-asr`는 Endpoint URL과 API Key를 사용하지 않습니다. OpenAI-compatible / Gemini adapter는 기존 호환성과 로컬 HTTP 서버 연결을 위해 남아 있지만 제품 기본 품질 경로는 아닙니다.
 
-고정 VAD command를 사용하려면 서버 실행 전에 `CASRT_VAD_COMMAND`를 설정합니다. 이 명령은 stdin으로 `{ audio_file, audio_info }` JSON을 받고 stdout으로 `{ intervals: [{ start_ms, end_ms }] }` JSON을 반환해야 합니다. 설정하지 않으면 `local-qwen-asr`는 내장 energy splitter를 사용합니다.
+고정 VAD command를 사용하려면 서버 실행 전에 `CASRT_VAD_COMMAND`를 설정합니다. 이 명령은 stdin으로 `{ audio_file, audio_info }` JSON을 받고 stdout으로 `{ intervals: [{ start_ms, end_ms }] }` JSON을 반환해야 합니다. 설정하지 않으면 로컬 ASR adapter는 내장 energy splitter를 사용합니다.
 
 ```bash
 CASRT_VAD_COMMAND='python3 path/to/vad.py' \
@@ -119,6 +119,8 @@ CASRT_VAD_COMMAND='/tmp/casrt-vad-venv/bin/casrt vad whisper-asmr-onnx --model /
 내장 energy splitter는 `CASRT_QWEN_ENERGY_*` env로 내부 튜닝할 수 있지만 WebUI 옵션으로 노출하지 않습니다. `CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 긴 interval을 자르는 실험 옵션이며 현재 실데이터 평가에서는 기본값으로 켜지 않습니다.
 
 Qwen3-ForcedAligner는 `CASRT_QWEN_ASR_ALIGNER_MODEL_ID`로 내부 실험할 수 있습니다. `CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS`보다 짧은 timestamp span은 clip bounds로 되돌리며, 이 값도 WebUI 옵션으로 노출하지 않습니다.
+
+`local-cohere-asr`는 Cohere Transcribe 03-2026을 위한 로컬 후보입니다. repo id가 아니라 exact revision의 local snapshot directory를 `--model-id`로 받아야 하며, worker는 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로만 로드합니다. 실제 모델 다운로드/평가는 revision pin과 file digest 기록 전까지 실행하지 않습니다.
 
 실데이터 benchmark처럼 보안 검토가 필요한 로컬 Qwen 실행은 repo id 대신 Hugging Face cache의 고정 snapshot directory를 `--model-id`에 넣고 다음 env를 켭니다.
 
@@ -216,7 +218,7 @@ uv run casrt project transcribe PROJECT_ID \
   --model-id Qwen/Qwen3-ASR-1.7B
 ```
 
-전사는 `project analyze`가 저장한 L/R 또는 MIX 채널을 chunk 단위로 잘라 모델에 보낸 뒤, 결과 타임스탬프를 원본 timeline으로 되돌려 저장합니다. `local-transformers`와 `local-qwen-asr`는 로컬 ASMR 경로로서 L/R이 있어도 MIX-first로 전사하고, L/R은 channel attribution에만 사용합니다.
+전사는 `project analyze`가 저장한 L/R 또는 MIX 채널을 chunk 단위로 잘라 모델에 보낸 뒤, 결과 타임스탬프를 원본 timeline으로 되돌려 저장합니다. `local-transformers`, `local-qwen-asr`, `local-cohere-asr`는 로컬 ASMR 경로로서 L/R이 있어도 MIX-first로 전사하고, L/R은 channel attribution에만 사용합니다.
 
 로컬 ASR 경로는 MIX-first 전사, energy-based speech chunking, L/R energy 기반 channel attribution을 사용합니다. 세부 값과 실험 결과는 [docs/local-asr-pipeline.md](docs/local-asr-pipeline.md)에 기록합니다.
 

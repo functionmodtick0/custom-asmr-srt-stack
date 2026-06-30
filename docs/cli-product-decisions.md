@@ -115,6 +115,14 @@ uv run casrt model validate \
   --model-id Qwen/Qwen3-ASR-1.7B
 ```
 
+로컬 Cohere ASR worker도 endpoint URL을 입력하지 않는다. 실제 benchmark는 repo id가 아니라 exact revision의 local snapshot directory를 model id로 사용한다.
+
+```bash
+uv run casrt model validate \
+  --adapter local-cohere-asr \
+  --model-id /path/to/cohere-transcribe-03-2026/snapshots/<commit>
+```
+
 ### 전체 전사
 
 ```bash
@@ -129,7 +137,7 @@ uv run casrt project transcribe PROJECT_ID \
 
 - project가 아직 분석되지 않았다면 실패한다.
 - OpenAI-compatible/Gemini endpoint는 L/R 채널이 있으면 각각 전사하고, mono/MIX만 있으면 MIX를 전사한다.
-- 로컬 ASR adapter인 `local-transformers`와 `local-qwen-asr`는 L/R이 있어도 MIX-first로 전사한다.
+- 로컬 ASR adapter인 `local-transformers`, `local-qwen-asr`, `local-cohere-asr`는 L/R이 있어도 MIX-first로 전사한다.
 - 로컬 ASR adapter는 silence/energy 기반 chunk interval별로 MIX 오디오를 잘라 모델에 보낸다.
 - `local-transformers` adapter는 worker 모델의 audio limit을 고려해 chunk를 30초 이하 subchunk로 다시 자른다.
 - 로컬 ASR adapter가 반환한 MIX segment는 L/R energy 기반 channel attribution을 적용한다.
@@ -180,6 +188,22 @@ uv run casrt project transcribe PROJECT_ID \
 - worker import, model load, inference, response contract 오류는 실패로 표시한다.
 
 Qwen ASR 파이프라인의 세부 값과 평가 결과는 `docs/local-asr-pipeline.md`에 기록한다.
+
+로컬 Cohere ASR worker:
+
+```bash
+uv run casrt project transcribe PROJECT_ID \
+  --adapter local-cohere-asr \
+  --model-id /path/to/cohere-transcribe-03-2026/snapshots/<commit>
+```
+
+동작:
+
+- `casrt`가 내부적으로 `python -m custom_asmr_srt_stack.cohere_asr_worker` subprocess를 시작한다.
+- worker는 `CohereAsrForConditionalGeneration`와 `CohereAsrProcessor`를 명시적으로 사용하고 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로 로드한다.
+- `--model-id`는 safetensors weight가 있는 existing local snapshot directory여야 한다. repo id나 cache miss fallback은 실패한다.
+- Cohere는 timestamp를 반환하지 않으므로 chunk bounds를 segment timing으로 사용하고, 기존 MIX-first energy chunking과 L/R channel attribution을 적용한다.
+- 실제 download/evaluation은 exact revision pin과 file digest 기록 전까지 실행하지 않는다.
 
 고정 VAD command contract:
 

@@ -226,6 +226,44 @@ class TranscriptionAdapterTests(unittest.TestCase):
         self.assertEqual(calls, [("Qwen/Qwen3-ASR-1.7B", b"audio", "audio/wav", "MIX", "ja")])
         self.assertEqual(segments[0].text, "ねえ")
 
+    def test_local_cohere_asr_adapter_uses_local_transcriber_boundary(self):
+        calls = []
+
+        def fake_local(endpoint, audio_bytes, mime_type, channel, source_language):
+            calls.append((endpoint.model_id, audio_bytes, mime_type, channel, source_language))
+            return parse_model_segments(
+                json.dumps(
+                    {
+                        "segments": [
+                            {
+                                "start_ms": 0,
+                                "end_ms": 10,
+                                "channel": channel,
+                                "kind": "speech",
+                                "text": "ねえ",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+        endpoint = ModelEndpoint(
+            adapter="local-cohere-asr",
+            endpoint_url=None,
+            model_id="/models/cohere-transcribe-03-2026",
+        )
+        segments = transcribe_audio(
+            endpoint,
+            b"audio",
+            mime_type="audio/wav",
+            channel="MIX",
+            local_transcribe_func=fake_local,
+        )
+
+        self.assertEqual(calls, [("/models/cohere-transcribe-03-2026", b"audio", "audio/wav", "MIX", "ja")])
+        self.assertEqual(segments[0].text, "ねえ")
+
     def test_worker_response_is_parsed_as_segments(self):
         segments = parse_worker_response(
             json.dumps(
@@ -362,6 +400,7 @@ class TranscriptionAdapterTests(unittest.TestCase):
         self.assertEqual(worker_env, expected_env)
         self.assertEqual(worker_env["HF_HUB_OFFLINE"], "1")
         self.assertEqual(worker_env["TRANSFORMERS_OFFLINE"], "1")
+        self.assertEqual(worker_env["CASRT_COHERE_ASR_DISABLE_NETWORK"], "1")
         self.assertEqual(worker_env["CASRT_QWEN_ASR_DTYPE"], "bfloat16")
         self.assertNotIn("HF_TOKEN", worker_env)
         self.assertNotIn("HTTP_PROXY", worker_env)

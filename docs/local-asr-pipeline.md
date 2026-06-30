@@ -78,6 +78,7 @@ Qwen worker는 JSON Lines subprocess protocol을 사용한다. worker import, mo
 
 ```text
 CASRT_LOCAL_WORKER_ENV_MODE=offline
+CASRT_COHERE_ASR_DISABLE_NETWORK=1
 CASRT_QWEN_ASR_REQUIRE_LOCAL_MODEL_PATH=1
 CASRT_QWEN_ASR_LOCAL_FILES_ONLY=1
 CASRT_QWEN_ASR_DISABLE_NETWORK=1
@@ -438,6 +439,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - `mistralai/Voxtral Mini Transcribe 2.0`는 Mistral API batch transcription 제품으로 확인됐고 open-weight 로컬 checkpoint는 확인하지 못했다. 외부 API는 제품 방향이 아니므로 기본 경로에서 제외한다.
 - `google/gemma-4-E4B-it`는 공식 오디오 입력을 지원하고 5초 smoke에서 유의미한 전사를 반환했다. 그러나 01/04/07 front120 확장 gold에서 4-bit practical CER 42.3%, 8-bit practical CER 46.1%로 기준을 크게 벗어났다. 8-bit는 01 smoke와 01 case를 조금 개선했지만 07 whisper/침대 ASMR에서 반복 hallucination이 발생해 전체 지표가 악화됐다. 따라서 기본 승격하지 않는다.
 - Gemma E4B 실험 산출물은 `/tmp/casrt-quality/gemma-e4b-4bit-bounded-results`, `/tmp/casrt-quality/gemma-e4b-8bit-bounded-results`, report는 `/tmp/casrt-quality/gemma-e4b-4bit-bounded-3case-report.json`, `/tmp/casrt-quality/gemma-e4b-8bit-bounded-3case-report.json`에 있다.
+- `CohereLabs/cohere-transcribe-03-2026`는 2026년 2B local ASR 후보이며 일본어 포함 14개 언어를 지원한다. 공식 card는 Transformers native, safetensors, no timestamps/diarization, VAD 필요를 명시한다. Root Transformers 5.12.1에 Cohere ASR class가 있어 `local-cohere-asr` adapter를 구현한다. 다만 gated/custom_code repo이므로 실제 download/evaluation은 exact revision pin과 file digest 기록 후, local snapshot path + `trust_remote_code=False` + `local_files_only=True` + `use_safetensors=True` 조건에서만 한다.
 - `zhifeixie/Mega-ASR`는 2026-05 공개 Qwen3-ASR-1.7B 기반 robust ASR 후보이며, noisy/reverberant/clipped/band-limited/overlapping 등 어려운 실제 녹음에서 empty output, omission, repetition, hallucination을 줄이는 것을 목표로 한다. ASMR 전용은 아니지만 현재 07 whisper/침대 구간 실패 양상과 맞닿아 있으므로 다음 우선 모델 실험으로 둔다. 공식 runtime은 `xzf-thu/Mega-ASR` repository 코드와 checkpoint 배치를 요구하므로 `/tmp` 격리 환경에서 실행한다.
 - Mega-ASR runtime은 실행 전 `gpt-5.4 xhigh` subagent가 정적 보안 검토했다. Verdict는 `PASS_WITH_CONSTRAINTS`다. 허용 범위는 `/tmp` 별도 venv, `/tmp` HF cache, Hugging Face allowlist download, Transformers backend만, `infer.py`/`evaluate_wer.py`만, vLLM/webui/training/wandb 금지, safetensors-only checkpoint 강제다. `adapter_model.bin`, `.pt`, `.pth` 또는 router non-safetensors checkpoint를 읽게 되면 미승인으로 간주한다.
 - Mega-ASR 정적 검토에서 확인한 고위험 지점은 `lora_switch.py`의 `adapter_model.bin` fallback `torch.load`와 `router.py`의 non-safetensors `torch.load(weights_only=False)`다. 따라서 실험 전 `mega-asr-merged/adapter_model.safetensors`와 `audio_quality_router/best_acc_model.safetensors` 존재를 확인하고 unsafe fallback 파일은 사용하지 않는다.

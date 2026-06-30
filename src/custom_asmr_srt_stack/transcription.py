@@ -17,8 +17,8 @@ from typing import Any, Callable
 
 from custom_asmr_srt_stack.models import Segment, make_segment_id, require_int, require_mapping, require_string
 
-ADAPTERS = {"openai-compatible", "gemini", "local-transformers", "local-qwen-asr"}
-LOCAL_ADAPTERS = {"local-transformers", "local-qwen-asr"}
+ADAPTERS = {"openai-compatible", "gemini", "local-transformers", "local-qwen-asr", "local-cohere-asr"}
+LOCAL_ADAPTERS = {"local-transformers", "local-qwen-asr", "local-cohere-asr"}
 LOCAL_TRANSFORMERS_MAX_CHUNK_MS = 30_000
 LOCAL_WORKER_ENV_ALLOWLIST = {
     "CUDA_HOME",
@@ -40,8 +40,9 @@ LOCAL_WORKER_ENV_ALLOWLIST = {
     "VIRTUAL_ENV",
     "XDG_CACHE_HOME",
 }
-LOCAL_WORKER_ENV_PREFIXES = ("CASRT_TRANSFORMERS_", "CASRT_QWEN_ASR_")
+LOCAL_WORKER_ENV_PREFIXES = ("CASRT_TRANSFORMERS_", "CASRT_QWEN_ASR_", "CASRT_COHERE_ASR_")
 LOCAL_WORKER_OFFLINE_ENV = {
+    "CASRT_COHERE_ASR_DISABLE_NETWORK": "1",
     "CASRT_QWEN_ASR_DISABLE_NETWORK": "1",
     "HF_DATASETS_OFFLINE": "1",
     "HF_HUB_OFFLINE": "1",
@@ -141,7 +142,7 @@ def transcribe_audio(
     if endpoint.adapter == "local-transformers":
         transcriber = local_transcribe_func or transcribe_with_local_transformers
         return transcriber(endpoint, audio_bytes, mime_type, channel, source_language)
-    if endpoint.adapter == "local-qwen-asr":
+    if endpoint.adapter in {"local-qwen-asr", "local-cohere-asr"}:
         transcriber = local_transcribe_func or transcribe_with_local_qwen_asr
         return transcriber(endpoint, audio_bytes, mime_type, channel, source_language)
 
@@ -281,6 +282,8 @@ def transcribe_with_local_qwen_asr(
     channel: str,
     source_language: str,
 ) -> tuple[Segment, ...]:
+    if endpoint.adapter == "local-cohere-asr":
+        return get_cohere_asr_worker_client().transcribe(endpoint, audio_bytes, mime_type, channel, source_language)
     return get_qwen_asr_worker_client().transcribe(endpoint, audio_bytes, mime_type, channel, source_language)
 
 
@@ -378,6 +381,17 @@ def get_qwen_asr_worker_client() -> TransformersWorkerClient:
         return client
 
 
+def get_cohere_asr_worker_client() -> TransformersWorkerClient:
+    command = cohere_asr_worker_command()
+    with _WORKER_CLIENTS_LOCK:
+        key = ("local Cohere ASR worker", command)
+        client = _WORKER_CLIENTS.get(key)
+        if client is None:
+            client = TransformersWorkerClient(command, worker_name="local Cohere ASR worker")
+            _WORKER_CLIENTS[key] = client
+        return client
+
+
 def transformers_worker_command() -> tuple[str, ...]:
     raw_command = os.environ.get("CASRT_TRANSFORMERS_WORKER_COMMAND")
     if raw_command:
@@ -396,6 +410,16 @@ def qwen_asr_worker_command() -> tuple[str, ...]:
             raise ValueError("CASRT_QWEN_ASR_WORKER_COMMAND must not be empty")
         return command
     return (sys.executable, "-m", "custom_asmr_srt_stack.qwen_asr_worker")
+
+
+def cohere_asr_worker_command() -> tuple[str, ...]:
+    raw_command = os.environ.get("CASRT_COHERE_ASR_WORKER_COMMAND")
+    if raw_command:
+        command = tuple(shlex.split(raw_command))
+        if not command:
+            raise ValueError("CASRT_COHERE_ASR_WORKER_COMMAND must not be empty")
+        return command
+    return (sys.executable, "-m", "custom_asmr_srt_stack.cohere_asr_worker")
 
 
 def local_worker_env() -> dict[str, str] | None:
