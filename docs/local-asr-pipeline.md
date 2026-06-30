@@ -533,6 +533,12 @@ uv run casrt eval-manifest gold.json --product-gate
   - stable-ts CLI attributed 10dB pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-cli-attributed-th10`, clips 61개.
   - 여섯 pack 모두 `custom-asmr-review-pack-v1` index와 `clips/*.wav` 생성을 확인했다.
   - priority queue pack: input `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-quiet8-review-effort-priority.json`, output `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-cli-attributed-quiet8-priority`, clips 64개. `priority_rank=1`이 `clips/000001__01-front120__text__seg_000003__seg_000004.wav`, `priority_rank=64`가 `clips/000064__04-front120__channel__seg_000002__seg_000002.wav`로 들어가 review-effort 우선순서와 score/rank가 pack index에 보존됨을 확인했다.
+- 2026-06-30 WebUI review-pack viewer smoke:
+  - server: `uv run casrt serve --port 5174`
+  - load API input: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-cli-attributed-quiet8-priority`
+  - result: `clip_count=64`, first item `priority_rank=1`, `clip_url` 생성 확인.
+  - first clip GET: `200 audio/wav 1962284 bytes` for `clips/000001__01-front120__text__seg_000003__seg_000004.wav`.
+  - 판단: pack 생성은 CLI가 담당하고 WebUI는 local path로 priority 검수 큐를 열어 clip을 재생하는 viewer 역할만 한다. 추가 threshold/model 옵션은 노출하지 않는다.
 
 case별 practical CER:
 

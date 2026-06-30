@@ -130,7 +130,7 @@ h1 {
   padding: 16px;
   border-right: 1px solid var(--line);
   display: grid;
-  grid-template-rows: auto auto auto 1fr;
+  grid-template-rows: auto auto auto auto 1fr;
   gap: 14px;
   background: var(--panel);
 }
@@ -163,6 +163,38 @@ h1 {
 
 audio {
   width: 100%;
+}
+
+.review-pack-loader {
+  display: grid;
+  gap: 7px;
+}
+
+.review-pack-loader label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.path-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px;
+  gap: 8px;
+}
+
+.path-row input {
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #101211;
+  color: var(--text);
+  padding: 0 10px;
+}
+
+.path-row input:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .action-stack {
@@ -253,8 +285,75 @@ canvas {
 }
 
 .segment-row:hover,
-.segment-row.is-selected {
+.segment-row.is-selected,
+.review-pack-row:hover,
+.review-pack-row.is-selected {
   background: rgba(125, 217, 185, 0.06);
+}
+
+.review-pack-row {
+  width: 100%;
+  min-height: 108px;
+  display: grid;
+  grid-template-columns: 168px 150px minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.review-pack-meta,
+.review-reasons,
+.review-pack-texts {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+
+.review-rank {
+  color: var(--accent-strong);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.review-detail,
+.reason-list {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.reason-list {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.review-text-line {
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  line-height: 1.45;
+}
+
+.review-text-line span {
+  color: var(--quiet);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.review-text-line strong {
+  min-width: 0;
+  color: var(--text);
+  font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .segment-time {
@@ -432,6 +531,10 @@ dialog::backdrop {
   }
 
   .segment-row {
+    grid-template-columns: 1fr;
+  }
+
+  .review-pack-row {
     grid-template-columns: 1fr;
   }
 }

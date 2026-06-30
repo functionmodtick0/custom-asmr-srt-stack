@@ -363,6 +363,8 @@ SRT export는 `master.json`의 segment timing과 원문 또는 번역 JSON의 te
 JSON 내보내기
 translated JSON 가져오기
 SRT 내보내기
+review-pack path 열기
+review-pack priority clip 재생
 ```
 
 기본 UI에 노출하지 않을 항목은 다음이다.
@@ -391,6 +393,7 @@ MVP 편집 기능은 다음이다.
 - 선택 segment를 재전사한다.
 - JSON을 export/import한다.
 - SRT를 export한다.
+- CLI가 만든 `review-pack` directory 또는 `index.json` 경로를 열어 priority queue와 clip을 확인한다.
 
 split/merge는 MVP 필수 요구사항으로 만들지 않는다. Start/end 직접 수정과 재전사로 처리하지 못하는 실제 번역/자막 검토 문제가 확인될 때만 추가한다.
 
@@ -457,6 +460,8 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - aligner command는 stdin으로 `{ audio_file, master }` JSON을 받고 stdout으로 `{ segments: [{ id, start_ms, end_ms }] }` JSON을 반환한다.
 - aligner output이 id를 누락하거나 중복하면 실패한다.
 - `needs_review`는 WebUI segment row에서 표시하고 직접 토글할 수 있다.
+- WebUI review-pack viewer는 `custom-asmr-review-pack-v1` `index.json`을 path로 열고, item별 `clip_url`을 통해 pack directory 내부 `clips/*.wav`만 재생한다.
+- Review-pack viewer는 pack 생성 옵션, VAD, threshold, 모델 선택을 추가로 노출하지 않는다. Pack 생성과 priority queue 정렬은 CLI가 담당하고 WebUI는 사람이 듣고 비교하는 화면만 담당한다.
 
 ## 열린 결정
 

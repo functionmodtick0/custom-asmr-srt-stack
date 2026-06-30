@@ -8,6 +8,8 @@ const state = {
   stopTimer: null,
   audioBuffer: null,
   saveTimer: null,
+  reviewPack: null,
+  reviewPackSelectedIndex: null,
 };
 
 const els = {
@@ -15,6 +17,8 @@ const els = {
   translatedInput: document.getElementById("translatedInput"),
   dropZone: document.getElementById("dropZone"),
   audioPlayer: document.getElementById("audioPlayer"),
+  reviewPackPathInput: document.getElementById("reviewPackPathInput"),
+  loadReviewPackButton: document.getElementById("loadReviewPackButton"),
   waveformCanvas: document.getElementById("waveformCanvas"),
   segmentList: document.getElementById("segmentList"),
   segmentCount: document.getElementById("segmentCount"),
@@ -159,6 +163,8 @@ function setMaster(master, label, projectId = state.projectId, hasAudio = state.
   state.hasAudio = hasAudio;
   state.master = master;
   state.translated = null;
+  state.reviewPack = null;
+  state.reviewPackSelectedIndex = null;
   state.selectedId = master.segments[0]?.id || null;
   render();
   drawWaveform();
@@ -236,6 +242,8 @@ async function handleFile(file) {
     state.hasAudio = true;
     state.master = null;
     state.translated = null;
+    state.reviewPack = null;
+    state.reviewPackSelectedIndex = null;
     state.selectedId = null;
     render();
     setStatus("오디오 로드됨", `${file.name} project를 만들었습니다.`);
@@ -275,6 +283,11 @@ async function loadAudio(file) {
 }
 
 function render() {
+  if (state.reviewPack) {
+    renderReviewPack();
+    return;
+  }
+
   const segments = state.master?.segments || [];
   els.segmentCount.textContent = `${segments.length} segments`;
   els.selectedLabel.textContent = state.selectedId ? state.selectedId : "선택 없음";
@@ -289,6 +302,96 @@ function render() {
   }
 
   els.segmentList.replaceChildren(...segments.map(renderSegment));
+}
+
+function renderReviewPack() {
+  const items = state.reviewPack.items || [];
+  els.segmentCount.textContent = `${items.length} review clips`;
+  els.selectedLabel.textContent =
+    state.reviewPackSelectedIndex === null ? "선택 없음" : reviewPackSelectedLabel(items[state.reviewPackSelectedIndex]);
+  els.retranscribeButton.disabled = true;
+  els.exportMasterButton.disabled = true;
+  els.exportTranslationButton.disabled = true;
+  els.exportSrtButton.disabled = true;
+
+  if (!items.length) {
+    els.segmentList.innerHTML = '<div class="empty-state">review clip 없음</div>';
+    return;
+  }
+
+  els.segmentList.replaceChildren(...items.map(renderReviewPackItem));
+}
+
+function renderReviewPackItem(item, index) {
+  const row = document.createElement("div");
+  row.className = `review-pack-row${index === state.reviewPackSelectedIndex ? " is-selected" : ""}`;
+  row.dataset.index = String(index);
+
+  const meta = document.createElement("div");
+  meta.className = "review-pack-meta";
+  meta.append(
+    textBlock("review-rank", `#${item.priority_rank || index + 1}`),
+    textBlock("review-detail", formatMsRange(item.start_ms, item.end_ms)),
+    textBlock("review-detail", item.case_id || "single"),
+  );
+
+  const reasons = document.createElement("div");
+  reasons.className = "review-reasons";
+  reasons.append(
+    textBlock("review-detail", formatScore(item.priority_score)),
+    textBlock("reason-list", Array.isArray(item.reasons) ? item.reasons.join(" / ") : "reason 없음"),
+  );
+
+  const texts = document.createElement("div");
+  texts.className = "review-pack-texts";
+  texts.append(
+    reviewTextLine("REF", item.reference_channel, item.reference_text),
+    reviewTextLine("CAND", item.candidate_channel, item.candidate_text),
+  );
+
+  row.addEventListener("click", () => selectReviewPackItem(index, true));
+  row.append(meta, reasons, texts);
+  return row;
+}
+
+function textBlock(className, value) {
+  const block = document.createElement("span");
+  block.className = className;
+  block.textContent = value === undefined || value === null || value === "" ? "-" : String(value);
+  return block;
+}
+
+function reviewTextLine(label, channel, text) {
+  const line = document.createElement("p");
+  line.className = "review-text-line";
+  const marker = document.createElement("span");
+  marker.textContent = channel ? `${label} ${channel}` : label;
+  const body = document.createElement("strong");
+  body.textContent = text || "-";
+  line.append(marker, body);
+  return line;
+}
+
+function reviewPackSelectedLabel(item) {
+  if (!item) return "선택 없음";
+  return `#${item.priority_rank || state.reviewPackSelectedIndex + 1} ${formatMsRange(item.start_ms, item.end_ms)}`;
+}
+
+function formatScore(score) {
+  return typeof score === "number" ? `score ${score.toFixed(1)}` : "score -";
+}
+
+function formatMsRange(startMs, endMs) {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return "time -";
+  return `${formatMs(startMs)} - ${formatMs(endMs)}`;
+}
+
+function formatMs(value) {
+  const total = Math.max(0, Math.round(value));
+  const minutes = Math.floor(total / 60000);
+  const seconds = Math.floor((total % 60000) / 1000);
+  const millis = total % 1000;
+  return `${minutes}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
 }
 
 function renderSegment(segment) {
@@ -397,6 +500,25 @@ function selectSegment(id, play) {
   const segment = state.master?.segments.find((item) => item.id === id);
   if (play && segment && els.audioPlayer.src) {
     playSegment(segment);
+  }
+}
+
+function selectReviewPackItem(index, play) {
+  state.reviewPackSelectedIndex = index;
+  syncSelectedReviewPackItem();
+  const item = state.reviewPack?.items?.[index];
+  if (play && item?.clip_url) {
+    window.clearTimeout(state.stopTimer);
+    els.audioPlayer.src = item.clip_url;
+    els.audioPlayer.play();
+  }
+}
+
+function syncSelectedReviewPackItem() {
+  const item = state.reviewPack?.items?.[state.reviewPackSelectedIndex];
+  els.selectedLabel.textContent = reviewPackSelectedLabel(item);
+  for (const row of els.segmentList.querySelectorAll(".review-pack-row")) {
+    row.classList.toggle("is-selected", Number(row.dataset.index) === state.reviewPackSelectedIndex);
   }
 }
 
@@ -524,6 +646,33 @@ async function startTranscription() {
   setMaster(result.master, `${result.master.segments.length}개 segment를 저장했습니다.`, state.projectId);
 }
 
+async function loadReviewPack() {
+  const path = els.reviewPackPathInput.value.trim();
+  if (!path) {
+    setStatus("경로 필요", "review pack directory 또는 index.json 경로를 입력하세요.", true);
+    return;
+  }
+  const pack = await apiPost("/api/review-pack/load", { path });
+  if (state.audioUrl) {
+    URL.revokeObjectURL(state.audioUrl);
+    state.audioUrl = null;
+  }
+  window.clearTimeout(state.stopTimer);
+  els.audioPlayer.removeAttribute("src");
+  els.audioPlayer.load();
+  state.projectId = null;
+  state.hasAudio = false;
+  state.master = null;
+  state.translated = null;
+  state.selectedId = null;
+  state.audioBuffer = null;
+  state.reviewPack = pack;
+  state.reviewPackSelectedIndex = null;
+  render();
+  drawWaveform();
+  setStatus("Review pack", `${pack.items.length}개 clip을 priority 순서로 불러왔습니다.`);
+}
+
 async function safeRun(task) {
   try {
     await task();
@@ -568,6 +717,13 @@ els.adapterInput.addEventListener("change", syncModelFormForAdapter);
 els.validateModelButton.addEventListener("click", () => safeRun(validateModelSettings));
 els.saveModelButton.addEventListener("click", saveModelSettings);
 els.importTranslatedButton.addEventListener("click", () => els.translatedInput.click());
+els.loadReviewPackButton.addEventListener("click", () => safeRun(loadReviewPack));
+els.reviewPackPathInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    safeRun(loadReviewPack);
+  }
+});
 els.exportMasterButton.addEventListener("click", () => {
   if (state.master) downloadJson("master.json", state.master);
 });

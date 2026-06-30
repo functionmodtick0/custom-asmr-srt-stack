@@ -545,7 +545,8 @@ uv run casrt review-pack review-effort.json \
 - output directory는 없거나 비어 있어야 한다. 기존 clip과 새 index가 섞이는 것을 막기 위해 non-empty directory에는 쓰지 않는다.
 - 각 item의 `start_ms/end_ms`에 기본 500ms context를 붙이고 audio duration 안으로 clamp해서 `clips/*.wav`를 만든다.
 - `index.json` format은 `custom-asmr-review-pack-v1`이다. 각 item은 원래 review reason/text/timing, priority score/rank, `clip_file`, `clip_start_ms`, `clip_end_ms`, `clip_context_ms`를 보존한다.
-- 이 명령은 human-reviewed gold 제작을 쉽게 하기 위한 CLI-only 도구이며 WebUI 옵션을 늘리지 않는다.
+- Pack 생성은 human-reviewed gold 제작을 쉽게 하기 위한 CLI 도구이며 WebUI 옵션을 늘리지 않는다.
+- WebUI는 생성된 pack directory 또는 `index.json` path를 열어 priority 순서와 `clips/*.wav`를 재생할 수 있다. WebUI는 pack을 생성하거나 context/threshold를 바꾸지 않는다.
 
 ### 선택 segment 재전사
 

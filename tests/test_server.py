@@ -8,7 +8,7 @@ import wave
 from pathlib import Path
 
 from custom_asmr_srt_stack.projects import ProjectStore
-from custom_asmr_srt_stack.server import handle_api_request
+from custom_asmr_srt_stack.server import handle_api_get_request, handle_api_request
 from custom_asmr_srt_stack.models import Segment
 
 
@@ -24,6 +24,10 @@ class ServerApiTests(unittest.TestCase):
         )
         self.assertEqual(content_type, "application/json; charset=utf-8")
         return status, json.loads(body.decode("utf-8"))
+
+    def get_api(self, path):
+        status, content_type, body = handle_api_get_request(path)
+        return status, content_type, body
 
     def test_srt_to_json_route_returns_master_json(self):
         status, response = self.post_json(
@@ -104,6 +108,73 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(response["ok"])
         self.assertEqual(response["adapter"], "local-transformers")
+
+    def test_review_pack_load_route_returns_clip_urls_and_serves_audio(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            pack_dir = root / "review-pack"
+            clips_dir = pack_dir / "clips"
+            clips_dir.mkdir(parents=True)
+            clip = clips_dir / "000001.wav"
+            clip.write_bytes(b"RIFFtestWAVE")
+            (pack_dir / "index.json").write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-pack-v1",
+                        "clip_count": 1,
+                        "items": [
+                            {
+                                "reference_id": "seg_000001",
+                                "start_ms": 0,
+                                "end_ms": 2,
+                                "reasons": ["text"],
+                                "clip_file": "clips/000001.wav",
+                                "priority_rank": 1,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            status, response = self.post_json("/api/review-pack/load", {"path": str(pack_dir)})
+            clip_status, content_type, body = self.get_api(response["items"][0]["clip_url"])
+
+            self.assertEqual(status, 200)
+            self.assertEqual(response["format"], "custom-asmr-review-pack-v1")
+            self.assertEqual(response["pack_dir"], str(pack_dir.resolve()))
+            self.assertIn("/api/review-pack/clip?", response["items"][0]["clip_url"])
+            self.assertEqual(clip_status, 200)
+            self.assertEqual(content_type, "audio/wav")
+            self.assertEqual(body, b"RIFFtestWAVE")
+
+    def test_review_pack_load_rejects_clip_paths_outside_pack(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            pack_dir = root / "review-pack"
+            pack_dir.mkdir()
+            (root / "outside.wav").write_bytes(b"RIFFtestWAVE")
+            (pack_dir / "index.json").write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-pack-v1",
+                        "items": [
+                            {
+                                "start_ms": 0,
+                                "end_ms": 2,
+                                "reasons": ["text"],
+                                "clip_file": "../outside.wav",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            status, response = self.post_json("/api/review-pack/load", {"path": str(pack_dir)})
+
+            self.assertEqual(status, 400)
+            self.assertIn("inside the pack directory", response["error"])
 
     def test_import_srt_route_persists_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:

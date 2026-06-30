@@ -5,9 +5,11 @@ from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, quote, urlparse
 
-from custom_asmr_srt_stack.models import MasterDocument, require_mapping
+from custom_asmr_srt_stack.models import MasterDocument, require_mapping, require_string
 from custom_asmr_srt_stack.projects import ProjectStore
+from custom_asmr_srt_stack.review_pack import REVIEW_PACK_FORMAT
 from custom_asmr_srt_stack.srt import format_srt, parse_srt
 from custom_asmr_srt_stack.translation import export_translation_json, parse_translated_texts
 from custom_asmr_srt_stack.transcription import ModelEndpoint, transcribe_audio
@@ -18,6 +20,10 @@ WEB_ROOT = Path(__file__).resolve().parents[2] / "web"
 
 def json_response(status: HTTPStatus, payload: dict[str, Any]) -> tuple[int, str, bytes]:
     return status.value, "application/json; charset=utf-8", json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+
+def bytes_response(status: HTTPStatus, content_type: str, body: bytes) -> tuple[int, str, bytes]:
+    return status.value, content_type, body
 
 
 def handle_api_request(
@@ -139,11 +145,86 @@ def handle_api_request(
                 },
             )
 
+        if path == "/api/review-pack/load":
+            pack_path = require_string(payload.get("path"), "review pack path")
+            return json_response(HTTPStatus.OK, load_review_pack_response(Path(pack_path)))
+
         return json_response(HTTPStatus.NOT_FOUND, {"error": "unknown API route"})
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         return json_response(HTTPStatus.BAD_REQUEST, {"error": f"invalid JSON: {error}"})
     except ValueError as error:
         return json_response(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+
+
+def handle_api_get_request(path: str) -> tuple[int, str, bytes]:
+    try:
+        parsed = urlparse(path)
+        if parsed.path == "/api/review-pack/clip":
+            query = parse_qs(parsed.query)
+            index_values = query.get("index") or []
+            clip_values = query.get("clip") or []
+            if len(index_values) != 1 or len(clip_values) != 1:
+                raise ValueError("review pack clip requires index and clip")
+            index_path = review_pack_index_path(Path(index_values[0]))
+            clip_path = review_pack_clip_path(index_path, clip_values[0])
+            return bytes_response(HTTPStatus.OK, "audio/wav", clip_path.read_bytes())
+        return json_response(HTTPStatus.NOT_FOUND, {"error": "unknown API route"})
+    except (OSError, ValueError) as error:
+        return json_response(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+
+
+def load_review_pack_response(path: Path) -> dict[str, Any]:
+    index_path = review_pack_index_path(path)
+    data = json.loads(index_path.read_text(encoding="utf-8"))
+    pack = require_mapping(data, "review pack")
+    if pack.get("format") != REVIEW_PACK_FORMAT:
+        raise ValueError(f"review pack format must be {REVIEW_PACK_FORMAT}")
+    items = pack.get("items")
+    if not isinstance(items, list):
+        raise ValueError("review pack items must be an array")
+    normalized_items = []
+    for item in items:
+        item_mapping = require_mapping(item, "review pack item")
+        clip_file = require_string(item_mapping.get("clip_file"), "review pack item.clip_file")
+        review_pack_clip_path(index_path, clip_file)
+        normalized_item = dict(item_mapping)
+        normalized_item["clip_url"] = review_pack_clip_url(index_path, clip_file)
+        normalized_items.append(normalized_item)
+    response = dict(pack)
+    response["index_path"] = str(index_path)
+    response["pack_dir"] = str(index_path.parent)
+    response["items"] = normalized_items
+    return response
+
+
+def review_pack_index_path(path: Path) -> Path:
+    expanded = path.expanduser()
+    index_path = expanded / "index.json" if expanded.is_dir() else expanded
+    if index_path.name != "index.json":
+        raise ValueError("review pack path must be a directory or index.json")
+    if not index_path.is_file():
+        raise ValueError(f"review pack index is missing: {index_path}")
+    return index_path.resolve()
+
+
+def review_pack_clip_path(index_path: Path, clip_file: str) -> Path:
+    resolved_index = index_path.expanduser().resolve()
+    base_dir = resolved_index.parent
+    raw_clip_path = Path(clip_file)
+    if raw_clip_path.is_absolute():
+        raise ValueError("review pack clip_file must be relative")
+    clip_path = (base_dir / raw_clip_path).resolve()
+    try:
+        clip_path.relative_to(base_dir)
+    except ValueError as error:
+        raise ValueError("review pack clip_file must stay inside the pack directory") from error
+    if not clip_path.is_file():
+        raise ValueError(f"review pack clip is missing: {clip_file}")
+    return clip_path
+
+
+def review_pack_clip_url(index_path: Path, clip_file: str) -> str:
+    return "/api/review-pack/clip?index=" + quote(str(index_path), safe="") + "&clip=" + quote(clip_file, safe="")
 
 
 class AppRequestHandler(SimpleHTTPRequestHandler):
@@ -158,6 +239,17 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_GET(self) -> None:
+        if self.path.startswith("/api/"):
+            status, content_type, body = handle_api_get_request(self.path)
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        super().do_GET()
 
 
 def run_server(host: str = "127.0.0.1", port: int = 5173) -> None:
