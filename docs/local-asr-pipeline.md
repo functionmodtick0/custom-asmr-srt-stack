@@ -68,7 +68,7 @@ local-qwen-asr
 Qwen/Qwen3-ASR-1.7B
 ```
 
-보안 검토를 통과해야 하는 실험/benchmark 실행은 repo id 대신 고정 snapshot directory를 model id로 넘긴다.
+외부 runtime이나 downloaded tooling을 실행하는 실험/benchmark는 repo id 대신 고정 snapshot directory를 model id로 넘긴다. 우리 저장소의 일반 wrapper, 테스트, 문서 변경은 subagent 보안 검토 대상이 아니며 behavior test와 자체 리뷰로 검증한다.
 
 ```text
 Qwen3-ASR-1.7B snapshot: /home/brain-offloaded/.cache/huggingface/hub/models--Qwen--Qwen3-ASR-1.7B/snapshots/7278e1e70fe206f11671096ffdd38061171dd6e5
@@ -130,8 +130,13 @@ worker는 `AutoProcessor`와 `AutoModelForMultimodalLM`을 사용하고, model l
 - digest report: `/tmp/casrt-quality.Q5OdDf/qwen3-asr-1.7b-hf-local-dir-digest.json`
 - snapshot SHA-256: `9c5e214252ebc2be3d989c83bddc1dc7c8981389e8c27fb99f27516a1dfa556c`
 - `model.safetensors` SHA-256: `2db53c7d81bd9b8cbc6a074e89be2c968a0d373fb4ee68bb1b1e14f7042dfee1`, size 4,076,193,080 bytes.
+- root Transformers 5.12.1 smoke: `qwen3_asr` architecture unknown, fail closed.
+- Transformers main venv: `5.13.0.dev0`, commit `45b004d7bb505a258542d1965b0f9e0d8b03b89d`.
+- 5s smoke: `やば、見つかっちゃった。`
+- 01/04/07 front120 pseudo-gold benchmark: practical CER 29.4%, time-aligned 500ms ratio 27.3%, channel time-aligned accuracy 68.2%, review effort 75/75 segments. Output dir: `/tmp/casrt-quality.Q5OdDf/qwen-hf-asr-transformers-main`, report: `/tmp/casrt-quality.Q5OdDf/qwen-hf-asr-transformers-main-3case-report.json`, review pack: `/tmp/casrt-quality.Q5OdDf/review-pack-qwen-hf-asr-transformers-main`.
+- 결정: HF-native Qwen3-ASR는 local adapter로 유지하지만 기본 ASMR 경로로 승격하지 않는다. Timestamp 없는 full-chunk output 때문에 alignment/review burden이 크고, text도 기존 Qwen/Neosophie 계열을 이기지 못했다.
 
-보안 검토가 필요한 실험 실행 조건:
+외부 runtime benchmark의 local-only 실행 조건:
 
 ```text
 CASRT_LOCAL_WORKER_ENV_MODE=offline
@@ -588,7 +593,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - `neosophie/Qwen3-ASR-1.7B-JA`는 다운로드 재시도 후 점수화했다. 120초 gold 기준 Qwen3-ASR 1.7B보다 약간 낫지만 practical CER 20.4%라 기본 승격하지 않는다.
 - 01/04/07 front120 확장 gold에서도 Neosophie/Qwen3-ASR-JA는 practical CER 29.6%라 기본 승격하지 않는다. 특히 07의 whisper/침대 ASMR 구간에서 텍스트 인식이 크게 무너졌다.
 - Neosophie full-window와 1.5초 silence 병합 실험은 text와 timing이 모두 악화됐다. 이 샘플에서는 chunk를 길게 잡는 것이 해결책이 아니다.
-- `Qwen/Qwen3-ASR-1.7B-hf`는 Hugging Face metadata상 `automatic-speech-recognition`, `ja` 지원, `transformers` 모델이다. 2026-06-30 root Transformers 5.12.1에서 `AutoModelForMultimodalLM`을 확인했고, exact revision weight를 `/tmp` local dir로 다운로드해 digest를 고정했다. `local-qwen-hf-asr` adapter를 추가했으며, in-repo wrapper는 일반 테스트/self-review로 검증하고 실제 01/04/07 front120 benchmark를 진행한다.
+- `Qwen/Qwen3-ASR-1.7B-hf`는 Hugging Face metadata상 `automatic-speech-recognition`, `ja` 지원, `transformers` 모델이다. 2026-06-30 root Transformers 5.12.1에서는 `qwen3_asr` 아키텍처를 인식하지 못해 fail closed했고, Transformers main `5.13.0.dev0` commit `45b004d7bb505a258542d1965b0f9e0d8b03b89d` venv에서 5초 smoke와 01/04/07 front120 benchmark를 완료했다. 결과는 practical CER 29.4%, time-aligned 500ms 27.3%, channel time-aligned 68.2%, review effort 75/75라 기본 승격하지 않는다.
 - `mistralai/Voxtral-Mini-4B-Realtime-2602`는 remote model code 없이 Transformers `VoxtralRealtimeForConditionalGeneration`으로 로딩됐다. 8.9GB weight는 단일 HF stream이 느려 HTTP range 8조각 병렬 다운로드로 확보했다. 30초 smoke와 01/04 일부 텍스트는 Qwen보다 자연스러웠지만, 07 whisper/침대 ASMR에서 chunked 입력은 대부분 빈 출력이었고 120초 full-window 입력도 앞부분만 출력해 기본 승격하지 않는다.
 - `mistralai/Voxtral Mini Transcribe 2.0`는 Mistral API batch transcription 제품으로 확인됐고 open-weight 로컬 checkpoint는 확인하지 못했다. 외부 API는 제품 방향이 아니므로 기본 경로에서 제외한다.
 - `google/gemma-4-E4B-it`는 공식 오디오 입력을 지원하고 5초 smoke에서 유의미한 전사를 반환했다. 그러나 01/04/07 front120 확장 gold에서 4-bit practical CER 42.3%, 8-bit practical CER 46.1%로 기준을 크게 벗어났다. 8-bit는 01 smoke와 01 case를 조금 개선했지만 07 whisper/침대 ASMR에서 반복 hallucination이 발생해 전체 지표가 악화됐다. 따라서 기본 승격하지 않는다.
@@ -651,7 +656,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
    - `Qwen/Qwen3-ASR-1.7B`를 주력으로 둔다.
    - `zhifeixie/Mega-ASR`는 검증 완료 후보지만 기본 승격하지 않는다.
    - `neosophie/Qwen3-ASR-1.7B-JA`는 검증 완료 후보지만 기본 승격하지 않는다.
-   - `Qwen/Qwen3-ASR-1.7B-hf`는 공식 Transformers release가 `qwen3_asr`를 포함하거나 weight를 안정적으로 내려받을 수 있으면 다시 비교한다.
+   - `Qwen/Qwen3-ASR-1.7B-hf`는 Transformers main에서 검증했지만 기본 승격하지 않는다. 공식 release에 `qwen3_asr`가 들어오면 runtime 안정성만 재확인하고, 품질 재평가는 human-reviewed gold가 늘어난 뒤에 한다.
    - `mistralai/Voxtral-Mini-4B-Realtime-2602`는 remote code 없이 검증했지만 07 whisper 구간에서 실패해 기본 승격하지 않는다.
    - `Atotti/llm-jp-4-8b-speech-asr`는 ASR 특화 일본어 후보지만 third-party runtime package가 필요하므로 사용자 명시 승인 후 비교한다.
    - `AutoArk-AI/ARK-ASR-3B`와 `CohereLabs/cohere-transcribe-03-2026`는 성능 후보로 남기되, custom code/gated 접근 조건을 먼저 해결해야 한다.

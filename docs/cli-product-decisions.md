@@ -169,7 +169,7 @@ uv run casrt project transcribe PROJECT_ID \
 - Qwen aligner worker는 `qwen-asr==0.0.6`, dist-info `RECORD` SHA-256 `56454a099599cb3c86fd96347baa86269cc62e0d9eced004eeb2faa26b3a8a7c`, RECORD에 기록된 각 설치 파일 hash, `qwen_asr` import origin을 강제한다.
 - Qwen aligner worker는 segment text를 바꾸지 않고 speech segment 내부 start/end만 재정렬한다. `CASRT_QWEN_ALIGNER_MIN_ALIGNED_DURATION_MS`보다 짧은 span, 또는 원 segment duration 대비 `CASRT_QWEN_ALIGNER_MIN_COVERAGE_RATIO` 미만으로 줄어든 span은 원래 segment timing으로 유지한다. 기본값은 80ms와 0.5이며 WebUI 옵션으로 노출하지 않는다.
 - Qwen aligner worker 실패 응답은 요약 오류만 노출하고 traceback은 stdout/stderr/API 경로로 내보내지 않는다.
-- `CASRT_LOCAL_WORKER_ENV_MODE=offline`이면 local worker subprocess env는 `PYTHONPATH`와 secret/proxy류 env를 넘기지 않고 `PYTHONNOUSERSITE=1`을 강제한다.
+- `CASRT_LOCAL_WORKER_ENV_MODE=offline`이면 local worker subprocess env는 `CASRT_LOCAL_WORKER_ENV_MODE`를 보존하고, `PYTHONPATH`와 secret/proxy류 env를 넘기지 않으며, `PYTHONNOUSERSITE=1`을 강제한다.
 - `python -m custom_asmr_srt_stack.qwen_hf_asr_worker`는 HF-native `Qwen/Qwen3-ASR-1.7B-hf`를 실행하는 worker다. `CASRT_LOCAL_WORKER_ENV_MODE=offline`, `CASRT_QWEN_HF_ASR_REQUIRE_LOCAL_MODEL_PATH=1`, `CASRT_QWEN_HF_ASR_LOCAL_FILES_ONLY=1`, `CASRT_QWEN_HF_ASR_DISABLE_NETWORK=1`이 모두 없으면 실패한다. `AutoProcessor`와 `AutoModelForMultimodalLM`은 local path, `local_files_only=True`, `trust_remote_code=False`, `use_safetensors=True`로만 로드한다.
 - Qwen HF ASR worker는 timestamp를 생성하지 않으므로 chunk 전체를 speech segment로 반환하고 `needs_review=true`를 붙인다. timing은 후속 VAD/alignment 평가에서 다룬다.
 - Qwen HF ASR worker 실패 응답은 요약 오류만 노출하고 traceback은 stdout/stderr/API 경로로 내보내지 않는다.

@@ -450,6 +450,7 @@ class TranscriptionAdapterTests(unittest.TestCase):
         self.assertEqual(worker_env, expected_env)
         self.assertEqual(worker_env["HF_HUB_OFFLINE"], "1")
         self.assertEqual(worker_env["TRANSFORMERS_OFFLINE"], "1")
+        self.assertEqual(worker_env["CASRT_LOCAL_WORKER_ENV_MODE"], "offline")
         self.assertEqual(worker_env["CASRT_COHERE_ASR_DISABLE_NETWORK"], "1")
         self.assertEqual(worker_env["CASRT_QWEN_ASR_DTYPE"], "bfloat16")
         self.assertEqual(worker_env["CASRT_QWEN_HF_ASR_DTYPE"], "float16")

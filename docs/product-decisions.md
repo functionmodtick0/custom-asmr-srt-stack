@@ -118,7 +118,7 @@ ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한
 
 - `Qwen/Qwen3-ASR-1.7B`: 주력 로컬 ASR 후보
 - `neosophie/Qwen3-ASR-1.7B-JA`: Qwen3-ASR-1.7B 기반 일본어 fine-tune 후보. 2026-06-28 01/04/07 front120 확장 gold에서 practical CER 29.6%, time-aligned 500ms ratio 29.5%, channel time-aligned accuracy 73.1%라 기본 승격하지 않는다.
-- `Qwen/Qwen3-ASR-1.7B-hf`: native Transformers 후보. 현재 설치된 Transformers에서는 `qwen3_asr` 아키텍처가 remote code 없이 로딩되지 않는다. 공식 Transformers main `5.13.0.dev0`에서는 support를 확인했지만 weight 다운로드가 장시간 진행돼 아직 점수화하지 못했다.
+- `Qwen/Qwen3-ASR-1.7B-hf`: native Transformers 후보. 현재 설치된 Transformers 5.12.1에서는 `qwen3_asr` 아키텍처가 remote code 없이 로딩되지 않는다. 공식 Transformers main `5.13.0.dev0` commit `45b004d7bb505a258542d1965b0f9e0d8b03b89d`에서는 실행됐지만, 2026-06-30 01/04/07 front120 pseudo-gold에서 practical CER 29.4%, time-aligned 500ms ratio 27.3%, channel time-aligned accuracy 68.2%, review effort 75/75라 기본 승격하지 않는다.
 - `mistralai/Voxtral-Mini-4B-Realtime-2602`: remote model code 없이 native Transformers에서 실행 가능한 최신 로컬 후보. 2026-06-28 01/04/07 front120 확장 gold에서 practical CER 40.0%, time-aligned 500ms ratio 28.7%, channel time-aligned accuracy 63.6%라 기본 승격하지 않는다.
 - `mistralai/Voxtral Mini Transcribe 2.0`: Mistral API batch transcription 제품으로 확인됐다. open-weight 로컬 checkpoint가 확인되지 않았고 외부 API는 제품 방향이 아니므로 기본 경로에서 제외한다.
 - `Atotti/llm-jp-4-8b-speech-asr`: 일본어 ASR 특화 8B 후보. 현재 official Transformers에서 `LlamaForSpeechLM`을 제공하지 않고 model card의 third-party runtime package가 필요하므로 사용자 명시 승인 전에는 자동 검증하지 않는다.
@@ -131,7 +131,7 @@ ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한
 - `Qwen/Qwen3-ASR-0.6B`: 빠른 비교/저사양 후보
 - `Qwen/Qwen3-ForcedAligner-0.6B`: 고정 forced alignment 후보
 
-보안 검토가 필요한 로컬 Qwen benchmark는 repo id를 직접 실행하지 않고 고정 snapshot directory를 model id로 사용한다. 이때 `CASRT_LOCAL_WORKER_ENV_MODE=offline`, `CASRT_QWEN_ASR_REQUIRE_LOCAL_MODEL_PATH=1`, `CASRT_QWEN_ASR_LOCAL_FILES_ONLY=1`, `CASRT_QWEN_ASR_DISABLE_NETWORK=1`을 켜서 worker env를 scrub하고, cache miss/network fallback/custom remote code를 실패로 만든다.
+보안 검토는 외부 코드/런타임 실행에만 요구한다. 예를 들어 third-party repository code, `trust_remote_code`, 새 runtime package, unsafe model format, unreviewed downloaded tooling이 해당한다. 우리 저장소의 일반 wrapper, 테스트, 문서 변경은 일반 구현 리뷰와 behavior test로 검증한다. 외부 런타임을 benchmark할 때는 repo id를 직접 실행하지 않고 고정 snapshot directory를 model id로 사용하며, offline/local-only env를 켜서 cache miss/network fallback/custom remote code를 실패로 만든다.
 
 Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되, 제품의 일본 ASMR 품질 기준 모델 승격 여부는 동일한 gold set 평가 결과로만 결정한다. 현재 Gemma 4 E4B는 기준 미달이다.
 

@@ -28,6 +28,7 @@ ADAPTERS = {
 LOCAL_ADAPTERS = {"local-transformers", "local-qwen-asr", "local-qwen-hf-asr", "local-cohere-asr"}
 LOCAL_TRANSFORMERS_MAX_CHUNK_MS = 30_000
 LOCAL_WORKER_ENV_ALLOWLIST = {
+    "CASRT_LOCAL_WORKER_ENV_MODE",
     "CUDA_HOME",
     "CUDA_VISIBLE_DEVICES",
     "HF_HOME",
