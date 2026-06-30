@@ -472,11 +472,19 @@ uv run casrt eval-manifest gold.json \
   - Qwen/Qwen3-ASR-1.7B + Qwen3-ForcedAligner: `/tmp/casrt-quality.Q5OdDf/qwen17-align-review-effort-items.json`, `item_count=77`, `reason_counts={text: 70, timing: 65, channel: 36, missing_reference: 2, extra_candidate: 3}`. Text 오류가 대부분이므로 alignment만으로 구제할 수 없는 후보로 본다.
   - stable-ts CSV channel + Qwen3-ForcedAligner: `/tmp/casrt-quality.Q5OdDf/stable-ts-csv-channel-qwen-aligner-review-effort-items.json`, `item_count=48`, `reason_counts={timing: 47, text: 4, channel: 4}`. Text는 보존되지만 Qwen aligner가 segment span을 자주 줄여 pseudo-reference 기준 timing review가 크게 늘어난다.
 - 2026-06-30 existing artifact 재계산에서 stable-ts CSV channel + Qwen aligner에 coverage fallback을 적용하면 threshold 0.5 기준 `review_effort` 48 -> 33, time-aligned 500ms 62.8% -> 75.7%로 개선된다. threshold 0.9는 `review_effort` 6, time-aligned 96.6%까지 올라가지만 원 timing을 대부분 보존하는 값이라 기본 guard로 쓰지 않는다. 제품 기본값은 과도한 trim만 막는 0.5다.
+- 2026-06-30 실제 Qwen aligner coverage05 재실행:
+  - candidate dir: `/tmp/casrt-quality.Q5OdDf/stable-ts-csv-channel-qwen-aligner-coverage05`
+  - manifest: `/tmp/casrt-quality.Q5OdDf/stable-ts-csv-channel-qwen-aligner-coverage05-3case-gold.json`
+  - report: `/tmp/casrt-quality.Q5OdDf/stable-ts-csv-channel-qwen-aligner-coverage05-3case-report.json`
+  - review queue: `/tmp/casrt-quality.Q5OdDf/stable-ts-csv-channel-qwen-aligner-coverage05-review-effort-items.json`
+  - result: practical CER 0.0%, time-aligned 500ms ratio 75.7%, channel time-aligned accuracy 89.7%, `review_effort.segments_needing_edit=33`, ratio 44.6%, `reason_counts={timing: 32, text: 3, channel: 3}`.
+  - 판단: coverage guard는 실제 worker 실행에서도 over-trim을 줄였지만 stable-ts 원본 pseudo-reference의 `review_effort=2`, 500ms 99.3%보다 여전히 나쁘다. 따라서 stable-ts 계열 후보에는 Qwen aligner를 기본 적용하지 않는다.
 - 2026-06-30 `casrt review-pack` 실제 생성:
   - audio map: `/tmp/casrt-quality.Q5OdDf/review-audio-map.json`
   - Qwen/Qwen3-ASR-1.7B + Qwen3-ForcedAligner pack: `/tmp/casrt-quality.Q5OdDf/review-pack-qwen17-align`, clips 77개.
   - stable-ts CSV channel + Qwen3-ForcedAligner pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-qwen-aligner`, clips 48개.
-  - 두 pack 모두 `custom-asmr-review-pack-v1` index와 `clips/*.wav` 생성을 확인했다.
+  - stable-ts CSV channel + Qwen3-ForcedAligner coverage05 pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-qwen-aligner-coverage05`, clips 33개.
+  - 세 pack 모두 `custom-asmr-review-pack-v1` index와 `clips/*.wav` 생성을 확인했다.
 
 case별 practical CER:
 
