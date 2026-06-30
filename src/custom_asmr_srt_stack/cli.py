@@ -16,6 +16,7 @@ from custom_asmr_srt_stack.audio import normalize_audio_to_wav, slice_wav, split
 from custom_asmr_srt_stack.case_batch import (
     EVAL_MANIFEST_BUILD_FORMAT,
     build_eval_manifest_from_case_index,
+    freeze_case_references as freeze_case_references_batch,
     prepare_review_cases,
     review_case_status,
 )
@@ -303,6 +304,21 @@ def review_case_status_command(args: argparse.Namespace) -> None:
         )
     if args.fail_on_review and report["reference_review_count"] > 0:
         raise ValueError(f"review case status failed: review_count={report['reference_review_count']}")
+
+
+def freeze_case_references(args: argparse.Namespace) -> None:
+    report = freeze_case_references_batch(
+        args.case_index,
+        output_dir=args.output,
+        reference_type=args.reference_type,
+        reference_notes=args.reference_notes,
+        source_language=args.source_language,
+    )
+    emit(
+        args,
+        report,
+        f"case references frozen: {args.output} cases={report['case_count']} type={report['reference_type']}",
+    )
 
 
 def build_eval_manifest(args: argparse.Namespace) -> None:
@@ -943,6 +959,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Return a failing exit code after emitting the report if reference segments still need review.",
     )
     review_case_status_parser.set_defaults(func=review_case_status_command)
+
+    freeze_case_references_parser = subcommands.add_parser(
+        "freeze-case-references",
+        parents=[output_parent],
+        help="Freeze every reference in a prepared case index into a new case set.",
+    )
+    freeze_case_references_parser.add_argument("case_index", type=Path)
+    freeze_case_references_parser.add_argument("-o", "--output", type=Path, required=True)
+    freeze_case_references_parser.add_argument("--source-language", default="ja")
+    freeze_case_references_parser.add_argument(
+        "--reference-type",
+        default="human-reviewed",
+        help="Reference authority for the frozen case set. Use human-reviewed only after manual review.",
+    )
+    freeze_case_references_parser.add_argument("--reference-notes")
+    freeze_case_references_parser.set_defaults(func=freeze_case_references)
 
     build_eval_manifest_parser = subcommands.add_parser(
         "build-eval-manifest",

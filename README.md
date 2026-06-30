@@ -346,6 +346,18 @@ uv run casrt review-case-status cases/case-index.json --json -o cases/status.jso
 
 `review-case-status`는 `case-index.json` 기준으로 audio/reference/candidate 파일 존재 여부, 실제 segment 수, 남은 `needs_review` 수를 다시 계산합니다. `--fail-on-issues`는 파일 누락이나 stale count가 있을 때, `--fail-on-review`는 reference에 검수 flag가 남았을 때 report를 출력/저장한 뒤 실패 exit code를 반환합니다.
 
+검수한 case reference를 한 번에 고정:
+
+```bash
+uv run casrt freeze-case-references cases/case-index.json \
+  --reference-type human-reviewed \
+  --reference-notes "manual review pass" \
+  -o cases-frozen \
+  --json
+```
+
+`freeze-case-references`는 reference id를 안정화하고 `needs_review=false`로 저장한 새 case set을 만듭니다. 사람이 실제로 검수한 경우에만 `--reference-type human-reviewed`를 사용합니다. 입력 case set에 candidate가 있으면 `eval-manifest.json`도 함께 생성합니다.
+
 candidate가 포함된 case set에서 평가 manifest 재생성:
 
 ```bash

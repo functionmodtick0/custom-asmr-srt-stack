@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import json
 import mimetypes
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from custom_asmr_srt_stack.audio import normalize_audio_to_wav, slice_wav
 from custom_asmr_srt_stack.case_slicing import slice_master_document
 from custom_asmr_srt_stack.evaluation import EVAL_MANIFEST_FORMAT, load_transcript_document
+from custom_asmr_srt_stack.models import MasterDocument
 from custom_asmr_srt_stack.review_pack import REVIEW_AUDIO_MAP_FORMAT
 
 CASE_SLICE_PLAN_FORMAT = "custom-asmr-case-slice-plan-v1"
 REVIEW_CASE_SET_FORMAT = "custom-asmr-review-case-set-v1"
 REVIEW_CASE_STATUS_FORMAT = "custom-asmr-review-case-status-v1"
 EVAL_MANIFEST_BUILD_FORMAT = "custom-asmr-eval-manifest-build-v1"
+CASE_REFERENCE_FREEZE_FORMAT = "custom-asmr-case-reference-freeze-v1"
 
 
 def prepare_review_cases(
@@ -289,6 +292,160 @@ def build_eval_manifest_from_case_index(
     if selected_reference_notes is not None:
         manifest["reference_notes"] = selected_reference_notes
     return manifest
+
+
+def freeze_case_references(
+    case_index_file: Path,
+    *,
+    output_dir: Path,
+    reference_type: str = "human-reviewed",
+    reference_notes: str | None = None,
+    source_language: str = "ja",
+) -> dict[str, Any]:
+    if not reference_type:
+        raise ValueError("frozen case reference_type must be a non-empty string")
+    if reference_notes is not None and not reference_notes:
+        raise ValueError("frozen case reference_notes must be a non-empty string")
+
+    case_index = load_review_case_index(case_index_file)
+    raw_items = case_index.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ValueError("review case index items must be a non-empty array")
+
+    base_dir = case_index_file.parent
+    prepared_items = []
+    candidate_flags = []
+    for index, raw_item in enumerate(raw_items):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"review case index item {index} must be an object")
+        case_id = require_index_string(raw_item, "id", index)
+        case_file_stem(case_id)
+        audio_path = resolve_plan_path(base_dir, require_index_string(raw_item, "audio", index))
+        reference_path = resolve_plan_path(base_dir, require_index_string(raw_item, "reference", index))
+        candidate_value = raw_item.get("candidate")
+        candidate_path = None
+        if candidate_value is not None:
+            if not isinstance(candidate_value, str) or not candidate_value:
+                raise ValueError(f"review case index item {index} candidate must be a non-empty string")
+            candidate_path = resolve_plan_path(base_dir, candidate_value)
+        candidate_flags.append(candidate_path is not None)
+
+        for label, path in (("audio", audio_path), ("reference", reference_path), ("candidate", candidate_path)):
+            if path is not None and not path.is_file():
+                raise ValueError(f"review case index {label} file does not exist: {path}")
+        reference_master = load_transcript_document(reference_path, source_language=source_language)
+        candidate_id = raw_item.get("candidate_id")
+        if candidate_id is not None and (not isinstance(candidate_id, str) or not candidate_id):
+            raise ValueError(f"review case index item {index} candidate_id must be a non-empty string")
+        prepared_items.append(
+            {
+                "raw": raw_item,
+                "id": case_id,
+                "audio_path": audio_path,
+                "reference_path": reference_path,
+                "reference_master": reference_master,
+                "candidate_path": candidate_path,
+                "candidate_id": candidate_id,
+            }
+        )
+    if any(candidate_flags) and not all(candidate_flags):
+        raise ValueError("review case index cannot mix candidate and non-candidate cases")
+
+    prepare_output_dir(output_dir)
+    reference_dir = output_dir / "references"
+    reference_dir.mkdir()
+
+    index_items: list[dict[str, Any]] = []
+    audio_map_items: list[dict[str, str]] = []
+    eval_cases: list[dict[str, str]] = []
+    for item in prepared_items:
+        case_id = item["id"]
+        reference_relative = Path("references") / f"{case_file_stem(case_id)}.master.json"
+        frozen_reference = freeze_master_document(item["reference_master"])
+        (output_dir / reference_relative).write_text(
+            json.dumps(frozen_reference.to_json(), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        index_item = {
+            "id": case_id,
+            "audio": str(item["audio_path"]),
+            "reference": str(reference_relative),
+            "source_reference": str(item["reference_path"]),
+            "segments": len(frozen_reference.segments),
+            "review_count": 0,
+            "reference_type": reference_type,
+        }
+        if reference_notes is not None:
+            index_item["reference_notes"] = reference_notes
+        for key in ("source_audio", "start_ms", "end_ms", "duration_ms"):
+            if key in item["raw"]:
+                index_item[key] = item["raw"][key]
+        if item["candidate_path"] is not None:
+            candidate_id = item["candidate_id"] or item["candidate_path"].stem
+            index_item["candidate"] = str(item["candidate_path"])
+            index_item["candidate_id"] = candidate_id
+            eval_cases.append(
+                {
+                    "id": case_id,
+                    "reference": str(reference_relative),
+                    "candidate": str(item["candidate_path"]),
+                    "candidate_id": candidate_id,
+                }
+            )
+        index_items.append(index_item)
+        audio_map_items.append({"case_id": case_id, "audio": str(item["audio_path"])})
+
+    audio_map_file = output_dir / "audio-map.json"
+    audio_map_file.write_text(
+        json.dumps({"format": REVIEW_AUDIO_MAP_FORMAT, "items": audio_map_items}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    output_case_index = {
+        "format": REVIEW_CASE_SET_FORMAT,
+        "source_case_index": str(case_index_file),
+        "reference_type": reference_type,
+        "case_count": len(index_items),
+        "items": index_items,
+    }
+    if reference_notes is not None:
+        output_case_index["reference_notes"] = reference_notes
+    case_index_output = output_dir / "case-index.json"
+    case_index_output.write_text(json.dumps(output_case_index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    result = {
+        "format": CASE_REFERENCE_FREEZE_FORMAT,
+        "output": str(output_dir),
+        "case_count": len(index_items),
+        "reference_type": reference_type,
+        "review_count": 0,
+        "audio_map": str(audio_map_file),
+        "case_index": str(case_index_output),
+    }
+    if reference_notes is not None:
+        result["reference_notes"] = reference_notes
+    if eval_cases:
+        eval_manifest = {
+            "format": EVAL_MANIFEST_FORMAT,
+            "reference_type": reference_type,
+            "cases": eval_cases,
+        }
+        if reference_notes is not None:
+            eval_manifest["reference_notes"] = reference_notes
+        eval_manifest_file = output_dir / "eval-manifest.json"
+        eval_manifest_file.write_text(
+            json.dumps(eval_manifest, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        result["eval_manifest"] = str(eval_manifest_file)
+    return result
+
+
+def freeze_master_document(master: MasterDocument) -> MasterDocument:
+    segments = tuple(
+        replace(segment, id=f"seg_{index + 1:06d}", needs_review=False)
+        for index, segment in enumerate(sorted(master.segments, key=lambda item: (item.start_ms, item.end_ms, item.id)))
+    )
+    return replace(master, segments=segments)
 
 
 def load_review_case_index(case_index_file: Path) -> dict[str, Any]:

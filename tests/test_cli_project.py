@@ -963,6 +963,120 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(json.loads(status_path.read_text(encoding="utf-8"))["missing_file_count"], 2)
             self.assertIn("review case status failed", error)
 
+    def test_freeze_case_references_writes_clean_case_set_and_manifest(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "source.wav"
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            plan = root / "plan.json"
+            prepared_dir = root / "cases"
+            frozen_dir = root / "frozen"
+            status_path = root / "frozen-status.json"
+            write_stereo_samples(audio, [(100, 200), (300, 400), (500, 600), (700, 800)])
+            reference.write_text(
+                "2\n00:00:00,002 --> 00:00:00,004\n後半\n\n"
+                "1\n00:00:00,000 --> 00:00:00,002\n前半\n",
+                encoding="utf-8",
+            )
+            candidate.write_text("1\n00:00:00,001 --> 00:00:00,003\n候補\n", encoding="utf-8")
+            plan.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-case-slice-plan-v1",
+                        "reference_type": "pseudo-gold",
+                        "cases": [
+                            {
+                                "id": "front-a",
+                                "audio": "source.wav",
+                                "reference": "reference.srt",
+                                "candidate": "candidate.srt",
+                                "candidate_id": "draft-candidate",
+                                "start_ms": 1,
+                                "end_ms": 3,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            run_cli(["prepare-review-cases", str(plan), "-o", str(prepared_dir)])
+
+            result, output = run_cli(
+                [
+                    "freeze-case-references",
+                    "--json",
+                    "--reference-type",
+                    "human-reviewed",
+                    "--reference-notes",
+                    "manual pass complete",
+                    str(prepared_dir / "case-index.json"),
+                    "-o",
+                    str(frozen_dir),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["format"], "custom-asmr-case-reference-freeze-v1")
+            self.assertEqual(report["reference_type"], "human-reviewed")
+            self.assertEqual(report["review_count"], 0)
+            frozen_reference = json.loads((frozen_dir / "references" / "front-a.master.json").read_text(encoding="utf-8"))
+            self.assertEqual([segment["id"] for segment in frozen_reference["segments"]], [
+                "seg_000001",
+                "seg_000002",
+            ])
+            self.assertFalse(any(segment["needs_review"] for segment in frozen_reference["segments"]))
+            case_index = json.loads((frozen_dir / "case-index.json").read_text(encoding="utf-8"))
+            self.assertEqual(case_index["reference_type"], "human-reviewed")
+            self.assertEqual(case_index["items"][0]["review_count"], 0)
+            self.assertEqual(case_index["items"][0]["candidate"], str(prepared_dir / "candidates" / "front-a.master.json"))
+            eval_manifest = json.loads((frozen_dir / "eval-manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(eval_manifest["reference_type"], "human-reviewed")
+            self.assertEqual(eval_manifest["cases"][0]["candidate_id"], "draft-candidate")
+
+            status_result, status_output = run_cli(
+                [
+                    "review-case-status",
+                    "--json",
+                    "--fail-on-review",
+                    "-o",
+                    str(status_path),
+                    str(frozen_dir / "case-index.json"),
+                ]
+            )
+            self.assertEqual(status_result, 0)
+            self.assertEqual(json.loads(status_output)["reference_review_count"], 0)
+
+    def test_freeze_case_references_rejects_missing_sources_before_output_side_effects(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_index = root / "case-index.json"
+            output_dir = root / "frozen"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [
+                            {
+                                "id": "front-a",
+                                "audio": "missing.wav",
+                                "reference": "missing.master.json",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, _, error = run_cli_with_stderr(
+                ["freeze-case-references", str(case_index), "-o", str(output_dir)]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertIn("audio file does not exist", error)
+            self.assertFalse(output_dir.exists())
+
     def test_build_eval_manifest_from_prepared_candidate_cases(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

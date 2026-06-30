@@ -339,6 +339,26 @@ uv run casrt review-case-status cases/case-index.json --fail-on-issues --fail-on
 - `--fail-on-review`는 reference에 `needs_review=true`가 남아 있으면 report 출력/저장 후 실패한다.
 - 이 명령도 human-reviewed 여부를 추정하지 않는다. `reference_type`은 index에 기록된 값을 집계할 뿐이며, 모델 승격 평가는 여전히 `eval-manifest --require-reference-type human-reviewed`가 담당한다.
 
+사람이 검수한 reference들을 batch로 고정할 때는 `freeze-case-references`를 사용한다.
+
+```bash
+uv run casrt freeze-case-references cases/case-index.json \
+  --reference-type human-reviewed \
+  --reference-notes "manual review pass 2026-06-30" \
+  -o cases-frozen \
+  --json
+```
+
+동작:
+
+- 입력은 `custom-asmr-review-case-set-v1` `case-index.json`이다.
+- 각 reference를 시간순으로 정렬하고 `seg_000001`부터 id를 재부여하며 `needs_review=false`로 저장한다.
+- output은 새 case set directory이며 `references/*.master.json`, `case-index.json`, `audio-map.json`을 만든다.
+- 입력 case set이 모든 case에 candidate를 가지고 있으면 `eval-manifest.json`도 만든다.
+- output `case-index.json`의 audio/candidate path는 원본 case set 파일을 absolute path로 가리킨다. 큰 audio/candidate 파일을 다시 복사하지 않기 위한 결정이다.
+- audio/reference/candidate source file이 없거나 candidate가 있는 case와 없는 case가 섞이면 output directory를 만들기 전에 실패한다.
+- 이 명령도 human-reviewed 여부를 추정하지 않는다. `--reference-type human-reviewed`는 사람이 실제 검수를 끝낸 reference에만 사용한다.
+
 candidate가 포함된 준비 case set에서 평가 manifest를 다시 만들 때는 `build-eval-manifest`를 사용한다.
 
 ```bash
