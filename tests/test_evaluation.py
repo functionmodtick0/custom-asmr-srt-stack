@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from custom_asmr_srt_stack.evaluation import (
+    EVAL_FORMAT,
     EVAL_SUITE_FORMAT,
     REVIEW_EFFORT_FORMAT,
     evaluate_manifest,
@@ -239,9 +240,12 @@ class EvaluationTests(unittest.TestCase):
 
         self.assertEqual(review_report["format"], REVIEW_EFFORT_FORMAT)
         self.assertEqual(review_report["source_report"], "eval-suite.json")
+        self.assertEqual(review_report["sort"], "priority_score_desc")
         self.assertEqual(review_report["item_count"], 1)
         self.assertEqual(review_report["reason_counts"], {"text": 1, "channel": 1, "timing": 1})
         item = review_report["items"][0]
+        self.assertEqual(item["priority_rank"], 1)
+        self.assertGreater(item["priority_score"], 0)
         self.assertEqual(item["case_id"], "front-a")
         self.assertEqual(item["case_candidate_id"], "qwen-align")
         self.assertEqual(item["reference_type"], "human-reviewed")
@@ -261,9 +265,60 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(review_report["item_count"], 1)
         self.assertEqual(review_report["reason_counts"], {"text": 1, "channel": 1, "timing": 1})
         item = review_report["items"][0]
+        self.assertEqual(item["priority_rank"], 1)
         self.assertNotIn("case_id", item)
         self.assertEqual(item["duration_ms"], 2000)
         self.assertEqual(item["start_delta_ms"], 900)
+
+    def test_review_effort_items_report_sorts_by_review_priority(self):
+        eval_report = {
+            "format": EVAL_FORMAT,
+            "review_effort": {
+                "items": [
+                    {
+                        "reference_id": "seg_channel",
+                        "candidate_id": "seg_channel",
+                        "start_ms": 3000,
+                        "end_ms": 4000,
+                        "reasons": ["channel"],
+                        "reference_text": "あ",
+                        "candidate_text": "あ",
+                        "reference_channel": "L",
+                        "candidate_channel": "R",
+                    },
+                    {
+                        "reference_id": "seg_text",
+                        "candidate_id": "seg_text",
+                        "start_ms": 1000,
+                        "end_ms": 2000,
+                        "reasons": ["text"],
+                        "reference_text": "見つかった",
+                        "candidate_text": "見つた",
+                        "reference_channel": "L",
+                        "candidate_channel": "L",
+                    },
+                    {
+                        "reference_id": "seg_missing",
+                        "candidate_id": None,
+                        "start_ms": 2000,
+                        "end_ms": 3000,
+                        "reasons": ["missing_reference"],
+                        "reference_text": "ねえ",
+                        "candidate_text": "",
+                        "reference_channel": "R",
+                        "candidate_channel": None,
+                    },
+                ]
+            },
+        }
+
+        review_report = review_effort_items_report(eval_report)
+
+        items = review_report["items"]
+        self.assertEqual([item["reference_id"] for item in items], ["seg_missing", "seg_text", "seg_channel"])
+        self.assertEqual([item["priority_rank"] for item in items], [1, 2, 3])
+        self.assertGreater(items[0]["priority_score"], items[1]["priority_score"])
+        self.assertGreater(items[1]["priority_score"], items[2]["priority_score"])
 
     def test_evaluate_manifest_aggregates_channel_reports_when_one_case_has_no_comparable_segments(self):
         with tempfile.TemporaryDirectory() as tmpdir:

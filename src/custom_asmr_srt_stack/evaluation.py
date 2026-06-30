@@ -16,6 +16,13 @@ REVIEW_EFFORT_FORMAT = "custom-asmr-review-effort-v1"
 EVAL_COMPARISON_FORMAT = "custom-asmr-eval-comparison-v1"
 EVAL_CHANNELS = ("L", "R", "MIX")
 REVIEW_EFFORT_TIMING_THRESHOLD_MS = 500
+REVIEW_EFFORT_REASON_PRIORITY = {
+    "missing_reference": 5000.0,
+    "extra_candidate": 4000.0,
+    "text": 3000.0,
+    "timing": 2000.0,
+    "channel": 1000.0,
+}
 JAPANESE_RELAXED_REMOVED_CHARS = "ー〜～"
 
 
@@ -141,8 +148,13 @@ def review_effort_items_report(report: dict[str, Any], *, source_report: str | N
     else:
         raise ValueError(f"unsupported eval report format: {report_format!r}")
 
+    items = sorted(items, key=review_effort_priority_sort_key)
+    for index, item in enumerate(items, start=1):
+        item["priority_rank"] = index
+
     result = {
         "format": REVIEW_EFFORT_FORMAT,
+        "sort": "priority_score_desc",
         "item_count": len(items),
         "reason_counts": review_effort_reason_counts(items),
         "items": items,
@@ -298,8 +310,62 @@ def normalize_review_effort_items(
         candidate_end_ms = normalized_item.get("candidate_end_ms")
         if isinstance(reference_end_ms, int) and isinstance(candidate_end_ms, int):
             normalized_item["end_delta_ms"] = candidate_end_ms - reference_end_ms
+        normalized_item["priority_score"] = review_effort_priority_score(normalized_item)
         normalized.append(normalized_item)
     return normalized
+
+
+def review_effort_priority_score(item: dict[str, Any]) -> float:
+    reasons = item.get("reasons")
+    if not isinstance(reasons, list):
+        raise ValueError("review effort item reasons must be an array")
+    score = 0.0
+    for reason in reasons:
+        if not isinstance(reason, str):
+            raise ValueError("review effort item reasons must be strings")
+        score += REVIEW_EFFORT_REASON_PRIORITY.get(reason, 0.0)
+
+    reference_text = item.get("reference_text")
+    candidate_text = item.get("candidate_text")
+    if isinstance(reference_text, str) and isinstance(candidate_text, str) and "text" in reasons:
+        score += min(
+            999.0,
+            float(
+                levenshtein_distance(
+                    normalize_for_cer(reference_text, mode="practical"),
+                    normalize_for_cer(candidate_text, mode="practical"),
+                )
+            ),
+        )
+
+    timing_delta = 0.0
+    for key in ("start_delta_ms", "end_delta_ms"):
+        value = item.get(key)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            timing_delta = max(timing_delta, abs(float(value)))
+    score += min(999.0, timing_delta / 10.0)
+
+    duration_ms = item.get("duration_ms")
+    if not isinstance(duration_ms, bool) and isinstance(duration_ms, (int, float)):
+        score += min(99.0, max(0.0, float(duration_ms)) / 1000.0)
+    return score
+
+
+def review_effort_priority_sort_key(item: dict[str, Any]) -> tuple[float, str, int, int, str, str]:
+    score = item.get("priority_score")
+    score_value = float(score) if not isinstance(score, bool) and isinstance(score, (int, float)) else 0.0
+    start_ms = item.get("start_ms")
+    end_ms = item.get("end_ms")
+    return (
+        -score_value,
+        str(item.get("case_id") or ""),
+        start_ms if isinstance(start_ms, int) else 0,
+        end_ms if isinstance(end_ms, int) else 0,
+        str(item.get("reference_id") or ""),
+        str(item.get("candidate_id") or ""),
+    )
 
 
 def optional_report_string(report: dict[str, Any], key: str) -> str | None:

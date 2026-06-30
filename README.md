@@ -469,7 +469,7 @@ uv run casrt compare-evals qwen-report.json stable-report.json quiet8-report.jso
 uv run casrt review-effort eval-suite.json --json -o review-effort.json
 ```
 
-`custom-asmr-review-effort-v1`에는 case id, 후보 id, reference type, 수정 reason, reference/candidate text와 timing delta가 들어갑니다.
+`custom-asmr-review-effort-v1`에는 case id, 후보 id, reference type, 수정 reason, reference/candidate text와 timing delta가 들어갑니다. Items는 `priority_score` 내림차순으로 정렬되고 `priority_rank`가 붙어, missing/extra/text/timing/channel 실패를 큰 것부터 검수할 수 있습니다.
 
 수정 큐에서 검수용 audio clip pack도 만들 수 있습니다.
 

@@ -507,6 +507,7 @@ uv run casrt review-effort eval-suite.json --json -o review-effort.json
 - output format은 `custom-asmr-review-effort-v1`이다.
 - manifest suite report에서는 각 item에 `case_id`, `case_candidate_id`, `reference_type`을 붙인다.
 - paired item에는 `duration_ms`, `start_delta_ms`, `end_delta_ms`를 계산해 사람이 timing 수정 우선순위를 판단할 수 있게 한다.
+- 각 item에는 `priority_score`와 `priority_rank`를 붙이고, output `items`는 `priority_score` 내림차순으로 정렬한다. 구조적 missing/extra, text, timing, channel 순서의 큰 실패를 사람이 먼저 검수하게 하기 위한 고정 queue다.
 - `reason_counts`는 `text`, `channel`, `timing`, `missing_reference`, `extra_candidate`별 수정 후보 수를 세어 다음 실험/검수 작업의 우선순위를 정한다.
 - 이 명령은 transcript를 수정하지 않고, WebUI 옵션을 늘리지 않는다. 품질 반복을 위한 리뷰 큐 JSON만 생성한다.
 
