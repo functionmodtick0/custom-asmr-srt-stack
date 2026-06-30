@@ -93,6 +93,7 @@ SRT 내보내기
 ```
 
 모델 설정은 UI에서 직접 입력합니다.
+오디오를 먼저 연 뒤 SRT 또는 `master.json`을 열면, 아직 transcript가 없는 현재 오디오 project에 해당 transcript를 연결합니다.
 
 ```text
 Adapter: openai-compatible, gemini, local-transformers, local-qwen-asr, local-qwen-hf-asr, local-cohere-asr

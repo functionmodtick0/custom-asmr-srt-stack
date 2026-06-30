@@ -387,6 +387,7 @@ MVP 편집 기능은 다음이다.
 - segment를 클릭하면 해당 구간을 재생한다.
 - segment 텍스트를 수정한다.
 - segment start/end ms, channel, `needs_review`를 수정한다.
+- 오디오를 먼저 연 뒤 SRT 또는 `master.json`을 열면, transcript가 아직 없는 현재 audio project에 붙여 검수 중 segment 재생과 저장을 유지한다.
 - 선택 segment를 재전사한다.
 - JSON을 export/import한다.
 - SRT를 export한다.

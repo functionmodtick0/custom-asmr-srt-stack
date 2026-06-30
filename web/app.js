@@ -4,6 +4,7 @@ const state = {
   translated: null,
   selectedId: null,
   audioUrl: null,
+  hasAudio: false,
   stopTimer: null,
   audioBuffer: null,
   saveTimer: null,
@@ -153,8 +154,9 @@ function modelPlaceholderForAdapter(adapter) {
   return "gemma-4-e4b";
 }
 
-function setMaster(master, label, projectId = state.projectId) {
+function setMaster(master, label, projectId = state.projectId, hasAudio = state.hasAudio) {
   state.projectId = projectId;
+  state.hasAudio = hasAudio;
   state.master = master;
   state.translated = null;
   state.selectedId = master.segments[0]?.id || null;
@@ -167,20 +169,51 @@ async function handleFile(file) {
   const lowerName = file.name.toLowerCase();
   if (lowerName.endsWith(".srt")) {
     const content = await file.text();
+    if (state.projectId && state.hasAudio && !state.master) {
+      const master = await apiPost("/api/srt-to-json", {
+        content,
+        source_language: "ja",
+        source_file: file.name,
+      });
+      const saved = await apiPost("/api/projects/save-master", {
+        project_id: state.projectId,
+        master,
+      });
+      setMaster(
+        saved.master,
+        `${file.name}에서 ${saved.master.segments.length}개 segment를 현재 오디오 project에 연결했습니다.`,
+        state.projectId,
+        true,
+      );
+      return;
+    }
     const project = await apiPost("/api/projects/import-srt", {
       content,
       source_language: "ja",
       source_file: file.name,
     });
-    setMaster(project.master, `${file.name}에서 ${project.master.segments.length}개 segment를 만들었습니다.`, project.project_id);
+    setMaster(
+      project.master,
+      `${file.name}에서 ${project.master.segments.length}개 segment를 만들었습니다.`,
+      project.project_id,
+      Boolean(project.metadata?.has_audio),
+    );
     return;
   }
 
   if (lowerName.endsWith(".json")) {
     const parsed = JSON.parse(await file.text());
     if (parsed.format === "custom-asmr-master-v1") {
+      if (state.projectId && state.hasAudio && !state.master) {
+        const saved = await apiPost("/api/projects/save-master", {
+          project_id: state.projectId,
+          master: parsed,
+        });
+        setMaster(saved.master, `${file.name}을 현재 오디오 project에 연결했습니다.`, state.projectId, true);
+        return;
+      }
       const project = await apiPost("/api/projects/import-master-json", { master: parsed });
-      setMaster(project.master, `${file.name}을 열었습니다.`, project.project_id);
+      setMaster(project.master, `${file.name}을 열었습니다.`, project.project_id, Boolean(project.metadata?.has_audio));
       return;
     }
     if (parsed.format === "custom-asmr-translated-v1") {
@@ -200,6 +233,7 @@ async function handleFile(file) {
       content_base64: await fileToBase64(file),
     });
     state.projectId = project.project_id;
+    state.hasAudio = true;
     state.master = null;
     state.translated = null;
     state.selectedId = null;
