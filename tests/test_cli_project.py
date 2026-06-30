@@ -896,6 +896,8 @@ class ProjectCliTests(unittest.TestCase):
                     "--json",
                     "-o",
                     str(comparison_path),
+                    "--max-practical-cer",
+                    "0.10",
                     str(report_bad),
                     str(report_good),
                 ]
@@ -907,6 +909,10 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual([item["label"] for item in comparison["items"]], ["report-good", "report-bad"])
             self.assertEqual(comparison["items"][0]["segments_needing_edit_ratio"], 0.0)
             self.assertGreater(comparison["items"][1]["segments_needing_edit_ratio"], 0.0)
+            self.assertEqual(comparison["quality_gate"], {"max_practical_cer": 0.1})
+            self.assertTrue(comparison["items"][0]["gate_passed"])
+            self.assertFalse(comparison["items"][1]["gate_passed"])
+            self.assertIn("practical CER", comparison["items"][1]["gate_failures"][0])
             self.assertEqual(
                 json.loads(comparison_path.read_text(encoding="utf-8"))["items"][0]["label"],
                 "report-good",

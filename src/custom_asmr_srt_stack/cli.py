@@ -320,6 +320,7 @@ def review_effort(args: argparse.Namespace) -> None:
 
 def compare_evals(args: argparse.Namespace) -> None:
     report = compare_eval_reports(args.reports)
+    annotate_comparison_quality_gates(report, args)
     if args.output is not None:
         write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     best = report["items"][0]
@@ -332,6 +333,93 @@ def compare_evals(args: argparse.Namespace) -> None:
             f"practical_cer={best['practical_cer']:.4f}"
         ),
     )
+
+
+def annotate_comparison_quality_gates(report: dict[str, Any], args: argparse.Namespace) -> None:
+    max_practical_cer = ratio_arg(args.max_practical_cer, "--max-practical-cer")
+    min_time_aligned_500ms_ratio = ratio_arg(
+        args.min_time_aligned_500ms_ratio,
+        "--min-time-aligned-500ms-ratio",
+    )
+    min_channel_time_aligned_accuracy = ratio_arg(
+        args.min_channel_time_aligned_accuracy,
+        "--min-channel-time-aligned-accuracy",
+    )
+    max_channel_time_aligned_mix_ratio = ratio_arg(
+        args.max_channel_time_aligned_mix_ratio,
+        "--max-channel-time-aligned-mix-ratio",
+    )
+    max_segments_needing_edit_ratio = ratio_arg(
+        args.max_segments_needing_edit_ratio,
+        "--max-segments-needing-edit-ratio",
+    )
+    gate = {
+        "max_practical_cer": max_practical_cer,
+        "min_time_aligned_500ms_ratio": min_time_aligned_500ms_ratio,
+        "min_channel_time_aligned_accuracy": min_channel_time_aligned_accuracy,
+        "max_channel_time_aligned_mix_ratio": max_channel_time_aligned_mix_ratio,
+        "max_segments_needing_edit_ratio": max_segments_needing_edit_ratio,
+    }
+    if all(value is None for value in gate.values()):
+        return
+
+    report["quality_gate"] = {key: value for key, value in gate.items() if value is not None}
+    for item in report["items"]:
+        failures = comparison_quality_gate_failures(
+            item,
+            max_practical_cer=max_practical_cer,
+            min_time_aligned_500ms_ratio=min_time_aligned_500ms_ratio,
+            min_channel_time_aligned_accuracy=min_channel_time_aligned_accuracy,
+            max_channel_time_aligned_mix_ratio=max_channel_time_aligned_mix_ratio,
+            max_segments_needing_edit_ratio=max_segments_needing_edit_ratio,
+        )
+        item["gate_passed"] = not failures
+        item["gate_failures"] = failures
+
+
+def comparison_quality_gate_failures(
+    item: dict[str, Any],
+    *,
+    max_practical_cer: float | None,
+    min_time_aligned_500ms_ratio: float | None,
+    min_channel_time_aligned_accuracy: float | None,
+    max_channel_time_aligned_mix_ratio: float | None,
+    max_segments_needing_edit_ratio: float | None,
+) -> list[str]:
+    failures: list[str] = []
+    if max_practical_cer is not None and item["practical_cer"] > max_practical_cer:
+        failures.append(f"practical CER {item['practical_cer']:.4f} > {max_practical_cer:.4f}")
+    if min_time_aligned_500ms_ratio is not None:
+        ratio = item["time_aligned_500ms_ratio"]
+        if ratio is None:
+            failures.append("time-aligned 500ms ratio is unavailable")
+        elif ratio < min_time_aligned_500ms_ratio:
+            failures.append(f"time-aligned 500ms ratio {ratio:.4f} < {min_time_aligned_500ms_ratio:.4f}")
+    if min_channel_time_aligned_accuracy is not None:
+        accuracy = item["channel_time_aligned_accuracy"]
+        if accuracy is None:
+            failures.append("channel time-aligned accuracy is unavailable")
+        elif accuracy < min_channel_time_aligned_accuracy:
+            failures.append(
+                f"channel time-aligned accuracy {accuracy:.4f} < {min_channel_time_aligned_accuracy:.4f}"
+            )
+    if (
+        max_channel_time_aligned_mix_ratio is not None
+        and item["channel_time_aligned_mix_ratio"] > max_channel_time_aligned_mix_ratio
+    ):
+        failures.append(
+            "channel time-aligned MIX ratio "
+            f"{item['channel_time_aligned_mix_ratio']:.4f} > {max_channel_time_aligned_mix_ratio:.4f}"
+        )
+    if (
+        max_segments_needing_edit_ratio is not None
+        and item["segments_needing_edit_ratio"] > max_segments_needing_edit_ratio
+    ):
+        failures.append(
+            "segments needing edit ratio "
+            f"{item['segments_needing_edit_ratio']:.4f} > {max_segments_needing_edit_ratio:.4f}"
+        )
+    return failures
 
 
 def review_pack(args: argparse.Namespace) -> None:
@@ -782,6 +870,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare_evals_parser.add_argument("reports", type=Path, nargs="+")
     compare_evals_parser.add_argument("-o", "--output", type=Path)
     compare_evals_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
+    add_quality_gate_args(compare_evals_parser, action_verb="Mark")
     compare_evals_parser.set_defaults(func=compare_evals)
 
     review_pack_parser = subcommands.add_parser(
@@ -935,31 +1024,31 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def add_quality_gate_args(parser: argparse.ArgumentParser) -> None:
+def add_quality_gate_args(parser: argparse.ArgumentParser, *, action_verb: str = "Fail") -> None:
     parser.add_argument(
         "--max-practical-cer",
         type=float,
-        help="Fail if practical CER is above this 0..1 ratio.",
+        help=f"{action_verb} if practical CER is above this 0..1 ratio.",
     )
     parser.add_argument(
         "--min-time-aligned-500ms-ratio",
         type=float,
-        help="Fail if time-aligned 500ms boundary ratio is below this 0..1 ratio.",
+        help=f"{action_verb} if time-aligned 500ms boundary ratio is below this 0..1 ratio.",
     )
     parser.add_argument(
         "--min-channel-time-aligned-accuracy",
         type=float,
-        help="Fail if time-aligned L/R channel accuracy is below this 0..1 ratio.",
+        help=f"{action_verb} if time-aligned L/R channel accuracy is below this 0..1 ratio.",
     )
     parser.add_argument(
         "--max-channel-time-aligned-mix-ratio",
         type=float,
-        help="Fail if time-aligned candidate MIX ratio is above this 0..1 ratio.",
+        help=f"{action_verb} if time-aligned candidate MIX ratio is above this 0..1 ratio.",
     )
     parser.add_argument(
         "--max-segments-needing-edit-ratio",
         type=float,
-        help="Fail if review effort segment edit ratio is above this 0..1 ratio.",
+        help=f"{action_verb} if review effort segment edit ratio is above this 0..1 ratio.",
     )
 
 
