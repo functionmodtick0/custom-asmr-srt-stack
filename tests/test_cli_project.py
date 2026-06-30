@@ -473,6 +473,57 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["cases"][0]["candidate_id"], "qwen-energy")
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["summary"]["text"]["edit_distance"], 1)
 
+    def test_review_effort_outputs_items_from_eval_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            manifest = root / "gold.json"
+            eval_report_path = root / "eval-suite.json"
+            review_report_path = root / "review-effort.json"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\n[L] ねえ\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:01,900 --> 00:00:03,000\n[R] ね\n", encoding="utf-8")
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-manifest-v1",
+                        "reference_type": "human-reviewed",
+                        "cases": [
+                            {
+                                "id": "front-a",
+                                "reference": "reference.srt",
+                                "candidate": "candidate.srt",
+                                "candidate_id": "qwen-align",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            run_cli(["eval-manifest", "-o", str(eval_report_path), str(manifest)])
+
+            result, output = run_cli(
+                [
+                    "review-effort",
+                    "--json",
+                    "-o",
+                    str(review_report_path),
+                    str(eval_report_path),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["format"], "custom-asmr-review-effort-v1")
+            self.assertEqual(report["item_count"], 1)
+            self.assertEqual(report["reason_counts"], {"text": 1, "channel": 1, "timing": 1})
+            self.assertEqual(report["items"][0]["case_id"], "front-a")
+            self.assertEqual(report["items"][0]["case_candidate_id"], "qwen-align")
+            self.assertEqual(
+                json.loads(review_report_path.read_text(encoding="utf-8"))["items"][0]["reference_type"],
+                "human-reviewed",
+            )
+
     def test_eval_manifest_quality_gate_passes_when_thresholds_are_met(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

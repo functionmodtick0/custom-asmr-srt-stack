@@ -12,6 +12,7 @@ from custom_asmr_srt_stack.srt import parse_srt
 EVAL_FORMAT = "custom-asmr-eval-v1"
 EVAL_MANIFEST_FORMAT = "custom-asmr-eval-manifest-v1"
 EVAL_SUITE_FORMAT = "custom-asmr-eval-suite-v1"
+REVIEW_EFFORT_FORMAT = "custom-asmr-review-effort-v1"
 EVAL_CHANNELS = ("L", "R", "MIX")
 REVIEW_EFFORT_TIMING_THRESHOLD_MS = 500
 
@@ -103,6 +104,115 @@ def evaluate_manifest(manifest_path: Path, *, source_language: str = "ja") -> di
     if manifest_reference_notes:
         result["reference_notes"] = manifest_reference_notes
     return result
+
+
+def review_effort_items_report(report: dict[str, Any], *, source_report: str | None = None) -> dict[str, Any]:
+    report_format = report.get("format")
+    if report_format == EVAL_FORMAT:
+        items = normalize_review_effort_items(
+            extract_report_review_effort_items(report),
+            case_id=None,
+            candidate_id=None,
+            reference_type=None,
+        )
+    elif report_format == EVAL_SUITE_FORMAT:
+        items = []
+        cases = report.get("cases")
+        if not isinstance(cases, list):
+            raise ValueError("eval suite cases must be an array")
+        for case in cases:
+            if not isinstance(case, dict):
+                raise ValueError("eval suite case must be an object")
+            case_report = case.get("report")
+            if not isinstance(case_report, dict):
+                raise ValueError("eval suite case report must be an object")
+            items.extend(
+                normalize_review_effort_items(
+                    extract_report_review_effort_items(case_report),
+                    case_id=optional_report_string(case, "id"),
+                    candidate_id=optional_report_string(case, "candidate_id"),
+                    reference_type=optional_report_string(case, "reference_type"),
+                )
+            )
+    else:
+        raise ValueError(f"unsupported eval report format: {report_format!r}")
+
+    result = {
+        "format": REVIEW_EFFORT_FORMAT,
+        "item_count": len(items),
+        "reason_counts": review_effort_reason_counts(items),
+        "items": items,
+    }
+    if source_report is not None:
+        result["source_report"] = source_report
+    return result
+
+
+def extract_report_review_effort_items(report: dict[str, Any]) -> list[dict[str, Any]]:
+    review_effort = report.get("review_effort")
+    if not isinstance(review_effort, dict):
+        raise ValueError("eval report review_effort must be an object")
+    items = review_effort.get("items", [])
+    if not isinstance(items, list):
+        raise ValueError("eval report review_effort.items must be an array")
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError("eval report review_effort.items entries must be objects")
+    return items
+
+
+def normalize_review_effort_items(
+    items: list[dict[str, Any]],
+    *,
+    case_id: str | None,
+    candidate_id: str | None,
+    reference_type: str | None,
+) -> list[dict[str, Any]]:
+    normalized = []
+    for item in items:
+        normalized_item = dict(item)
+        if case_id is not None:
+            normalized_item["case_id"] = case_id
+        if candidate_id is not None:
+            normalized_item["case_candidate_id"] = candidate_id
+        if reference_type is not None:
+            normalized_item["reference_type"] = reference_type
+        start_ms = normalized_item.get("start_ms")
+        end_ms = normalized_item.get("end_ms")
+        if isinstance(start_ms, int) and isinstance(end_ms, int):
+            normalized_item["duration_ms"] = max(0, end_ms - start_ms)
+        reference_start_ms = normalized_item.get("reference_start_ms")
+        candidate_start_ms = normalized_item.get("candidate_start_ms")
+        if isinstance(reference_start_ms, int) and isinstance(candidate_start_ms, int):
+            normalized_item["start_delta_ms"] = candidate_start_ms - reference_start_ms
+        reference_end_ms = normalized_item.get("reference_end_ms")
+        candidate_end_ms = normalized_item.get("candidate_end_ms")
+        if isinstance(reference_end_ms, int) and isinstance(candidate_end_ms, int):
+            normalized_item["end_delta_ms"] = candidate_end_ms - reference_end_ms
+        normalized.append(normalized_item)
+    return normalized
+
+
+def optional_report_string(report: dict[str, Any], key: str) -> str | None:
+    value = report.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"eval report {key} must be a string")
+    return value
+
+
+def review_effort_reason_counts(items: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        reasons = item.get("reasons")
+        if not isinstance(reasons, list):
+            raise ValueError("review effort item reasons must be an array")
+        for reason in reasons:
+            if not isinstance(reason, str):
+                raise ValueError("review effort item reasons must be strings")
+            counts[reason] = counts.get(reason, 0) + 1
+    return counts
 
 
 def validate_eval_manifest(manifest: Any) -> list[dict[str, str]]:

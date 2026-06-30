@@ -320,6 +320,21 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 - `eval-manifest`의 품질 gate는 summary metric 기준으로 판단한다.
 - `--require-reference-type human-reviewed`를 지정하면 모든 case의 effective `reference_type`이 일치해야 하며, 실패해도 report는 stdout/file에 먼저 남긴다.
 
+### Review Effort Export
+
+```bash
+uv run casrt review-effort eval-suite.json --json -o review-effort.json
+```
+
+동작:
+
+- 입력은 `eval-transcript` 단일 report 또는 `eval-manifest` suite report다.
+- output format은 `custom-asmr-review-effort-v1`이다.
+- manifest suite report에서는 각 item에 `case_id`, `case_candidate_id`, `reference_type`을 붙인다.
+- paired item에는 `duration_ms`, `start_delta_ms`, `end_delta_ms`를 계산해 사람이 timing 수정 우선순위를 판단할 수 있게 한다.
+- `reason_counts`는 `text`, `channel`, `timing`, `missing_reference`, `extra_candidate`별 수정 후보 수를 세어 다음 실험/검수 작업의 우선순위를 정한다.
+- 이 명령은 transcript를 수정하지 않고, WebUI 옵션을 늘리지 않는다. 품질 반복을 위한 리뷰 큐 JSON만 생성한다.
+
 ### 선택 segment 재전사
 
 ```bash

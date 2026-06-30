@@ -12,7 +12,12 @@ from pathlib import Path
 from typing import Any
 
 from custom_asmr_srt_stack.alignment import run_alignment_command
-from custom_asmr_srt_stack.evaluation import evaluate_manifest, evaluate_transcripts, load_transcript_document
+from custom_asmr_srt_stack.evaluation import (
+    evaluate_manifest,
+    evaluate_transcripts,
+    load_transcript_document,
+    review_effort_items_report,
+)
 from custom_asmr_srt_stack.model_snapshot import snapshot_digest
 from custom_asmr_srt_stack.models import MasterDocument
 from custom_asmr_srt_stack.projects import ProjectStore
@@ -165,6 +170,20 @@ def eval_manifest(args: argparse.Namespace) -> None:
     )
     enforce_quality_gate(report["summary"], args)
     enforce_reference_type_gate(report, args)
+
+
+def review_effort(args: argparse.Namespace) -> None:
+    report = review_effort_items_report(json.loads(read_text(args.report)), source_report=str(args.report))
+    if args.output is not None:
+        write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    emit(
+        args,
+        report,
+        (
+            f"review_effort_items={report['item_count']} "
+            f"reasons={json.dumps(report['reason_counts'], ensure_ascii=False, sort_keys=True)}"
+        ),
+    )
 
 
 def enforce_quality_gate(metrics: dict[str, Any], args: argparse.Namespace) -> None:
@@ -525,6 +544,15 @@ def build_parser() -> argparse.ArgumentParser:
     eval_manifest_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
     add_quality_gate_args(eval_manifest_parser)
     eval_manifest_parser.set_defaults(func=eval_manifest)
+
+    review_effort_parser = subcommands.add_parser(
+        "review-effort",
+        help="Export review effort items from an eval-transcript or eval-manifest report.",
+    )
+    review_effort_parser.add_argument("report", type=Path)
+    review_effort_parser.add_argument("-o", "--output", type=Path)
+    review_effort_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
+    review_effort_parser.set_defaults(func=review_effort)
 
     serve_web = subcommands.add_parser("serve", help="Run the local WebUI server.")
     serve_web.add_argument("--host", default="127.0.0.1")

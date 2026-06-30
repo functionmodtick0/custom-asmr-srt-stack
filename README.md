@@ -360,6 +360,14 @@ uv run casrt eval-manifest gold.json \
 
 현재 평가는 strict CER, practical CER, segment index 기준 timing 오차, time-overlap 기준 timing ratio, L/R/MIX channel confusion, L/R channel accuracy, review 비율, segment 단위 `review_effort`를 계산합니다.
 
+평가 report에서 사람이 바로 볼 수정 큐 JSON도 만들 수 있습니다.
+
+```bash
+uv run casrt review-effort eval-suite.json --json -o review-effort.json
+```
+
+`custom-asmr-review-effort-v1`에는 case id, 후보 id, reference type, 수정 reason, reference/candidate text와 timing delta가 들어갑니다.
+
 ## 테스트
 
 ```bash

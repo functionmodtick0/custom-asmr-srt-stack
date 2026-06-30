@@ -315,6 +315,7 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 - candidate `needs_review` 비율
 - segment 단위 `review_effort`: practical text mismatch, channel mismatch, 500ms 초과 timing mismatch, missing reference, extra candidate
 - case별 `review_effort.items`: human review와 heuristic 개선이 어느 segment를 봐야 하는지 알 수 있도록 reasons와 reference/candidate text/channel/timing을 보존한다.
+- `casrt review-effort eval-suite.json --json -o review-effort.json`: suite/single report에서 `custom-asmr-review-effort-v1` 수정 큐를 추출한다. manifest case context와 timing delta를 보존하므로 다음 human review 또는 heuristic 개선 순서를 정하는 기본 산출물이다.
 
 strict CER는 공백만 제거한다.
 
@@ -456,6 +457,10 @@ uv run casrt eval-manifest gold.json \
 - Qwen/Qwen3-ASR-1.7B + Qwen3-ForcedAligner, 01/04/07 front120: `review_effort.segments_needing_edit=77`, ratio 100.0%. pseudo-gold 기준에서도 전 구간 수정 대상이라 기본 승격 불가다. Report: `/tmp/casrt-quality.Q5OdDf/qwen17-align-review-effort-report.json`.
 - stable-ts CSV channel leakage candidate: `review_effort.segments_needing_edit=2`, ratio 2.7%. 낮은 값은 같은 stable-ts 계열 reference와 candidate를 비교한 누수 결과이므로 모델 품질 근거가 아니고, reference authority gate 필요성을 확인하는 값이다. Report: `/tmp/casrt-quality.Q5OdDf/stable-ts-csv-channel-review-effort-report.json`.
 - stable-ts CSV channel + secured Qwen3-ForcedAligner re-alignment: practical CER 0.0%, time-aligned 500ms ratio 62.8%, channel time-aligned accuracy 86.2%, `review_effort.segments_needing_edit=48`, ratio 64.9%. 같은 stable-ts 계열 pseudo-reference 기준으로는 timing/review_effort가 크게 악화되므로 기본 승격하지 않는다. Report: `/tmp/casrt-quality.Q5OdDf/stable-ts-csv-channel-qwen-aligner-3case-report.json`.
+- 2026-06-30부터 `review_effort.items`는 `casrt review-effort`로 별도 JSON 추출한다. 이 산출물은 모델 승격 근거가 아니라, 사람이 볼 다음 수정 후보와 heuristic 실패 패턴을 고르는 작업 큐다.
+- 2026-06-30 `casrt review-effort` 실제 추출:
+  - Qwen/Qwen3-ASR-1.7B + Qwen3-ForcedAligner: `/tmp/casrt-quality.Q5OdDf/qwen17-align-review-effort-items.json`, `item_count=77`, `reason_counts={text: 70, timing: 65, channel: 36, missing_reference: 2, extra_candidate: 3}`. Text 오류가 대부분이므로 alignment만으로 구제할 수 없는 후보로 본다.
+  - stable-ts CSV channel + Qwen3-ForcedAligner: `/tmp/casrt-quality.Q5OdDf/stable-ts-csv-channel-qwen-aligner-review-effort-items.json`, `item_count=48`, `reason_counts={timing: 47, text: 4, channel: 4}`. Text는 보존되지만 Qwen aligner가 segment span을 자주 줄여 pseudo-reference 기준 timing review가 크게 늘어난다.
 
 case별 practical CER:
 

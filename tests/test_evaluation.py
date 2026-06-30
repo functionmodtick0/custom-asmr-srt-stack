@@ -5,11 +5,13 @@ from pathlib import Path
 
 from custom_asmr_srt_stack.evaluation import (
     EVAL_SUITE_FORMAT,
+    REVIEW_EFFORT_FORMAT,
     evaluate_manifest,
     evaluate_transcripts,
     levenshtein_distance,
     load_transcript_document,
     normalize_for_cer,
+    review_effort_items_report,
 )
 from custom_asmr_srt_stack.models import MasterDocument, Segment
 
@@ -199,6 +201,63 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["summary"]["channel"]["confusion"]["MIX"]["MIX"], 2)
         self.assertEqual(report["summary"]["channel"]["candidate_mix_ratio"], 1.0)
         self.assertEqual(report["summary"]["channel_time_aligned"]["candidate_mix_ratio"], 1.0)
+
+    def test_review_effort_items_report_extracts_manifest_case_context(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            manifest = root / "gold.json"
+            reference.write_text("1\n00:00:01,000 --> 00:00:02,000\n[L] ねえ\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:01,900 --> 00:00:03,000\n[R] ね\n", encoding="utf-8")
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-manifest-v1",
+                        "reference_type": "human-reviewed",
+                        "cases": [
+                            {
+                                "id": "front-a",
+                                "reference": "reference.srt",
+                                "candidate": "candidate.srt",
+                                "candidate_id": "qwen-align",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            eval_report = evaluate_manifest(manifest)
+
+        review_report = review_effort_items_report(eval_report, source_report="eval-suite.json")
+
+        self.assertEqual(review_report["format"], REVIEW_EFFORT_FORMAT)
+        self.assertEqual(review_report["source_report"], "eval-suite.json")
+        self.assertEqual(review_report["item_count"], 1)
+        self.assertEqual(review_report["reason_counts"], {"text": 1, "channel": 1, "timing": 1})
+        item = review_report["items"][0]
+        self.assertEqual(item["case_id"], "front-a")
+        self.assertEqual(item["case_candidate_id"], "qwen-align")
+        self.assertEqual(item["reference_type"], "human-reviewed")
+        self.assertEqual(item["reasons"], ["text", "channel", "timing"])
+        self.assertEqual(item["duration_ms"], 2000)
+        self.assertEqual(item["start_delta_ms"], 900)
+        self.assertEqual(item["end_delta_ms"], 1000)
+
+    def test_review_effort_items_report_extracts_single_eval_report(self):
+        reference = master_with_segments([Segment("seg_000001", 1000, 2000, "L", "speech", "ねえ")])
+        candidate = master_with_segments([Segment("seg_000001", 1900, 3000, "R", "speech", "ね")])
+        eval_report = evaluate_transcripts(reference, candidate)
+
+        review_report = review_effort_items_report(eval_report)
+
+        self.assertEqual(review_report["format"], REVIEW_EFFORT_FORMAT)
+        self.assertEqual(review_report["item_count"], 1)
+        self.assertEqual(review_report["reason_counts"], {"text": 1, "channel": 1, "timing": 1})
+        item = review_report["items"][0]
+        self.assertNotIn("case_id", item)
+        self.assertEqual(item["duration_ms"], 2000)
+        self.assertEqual(item["start_delta_ms"], 900)
 
     def test_evaluate_manifest_aggregates_channel_reports_when_one_case_has_no_comparable_segments(self):
         with tempfile.TemporaryDirectory() as tmpdir:
