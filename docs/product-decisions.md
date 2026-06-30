@@ -146,6 +146,7 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 최소 평가 기준은 다음이다.
 
 - character error rate
+- Japanese relaxed CER: practical CER에서 장음류 문자 `ー〜～`를 추가로 제거한 보조 지표. 모델 승격 gate에는 쓰지 않는다.
 - segment boundary error와 threshold ratio
 - channel attribution accuracy
 - L/R/MIX channel confusion과 candidate MIX 유지 비율

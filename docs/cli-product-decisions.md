@@ -406,7 +406,7 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 동작:
 
 - reference와 candidate는 SRT 또는 `master.json`을 받을 수 있다.
-- speech text strict CER와 practical CER를 계산한다.
+- speech text strict CER, practical CER, Japanese relaxed CER를 계산한다.
 - segment index 기준 mean start/end/boundary error를 계산한다.
 - segment 수나 split이 다른 후보를 평가하기 위해 time-overlap 기반 `timing_time_aligned`를 계산한다.
 - forced alignment 재평가를 위해 boundary sample 수, max boundary error, 250ms/500ms 이내 boundary ratio를 계산한다.
@@ -414,6 +414,7 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 - `needs_review` 비율을 계산한다.
 - `review_effort`는 practical text mismatch, channel mismatch, 500ms 초과 timing mismatch, missing reference, extra candidate를 세고, 같은 reference segment의 중복 수정 필요는 한 번만 `segments_needing_edit`에 반영한다.
 - 단일 case report의 `review_effort.items`는 사람이 고쳐야 할 segment와 reasons(`text`, `channel`, `timing`, `missing_reference`, `extra_candidate`)를 담는다. manifest summary에는 큰 리포트 팽창을 피하기 위해 items를 집계하지 않는다.
+- `text_japanese_relaxed`는 practical normalization에 더해 장음류 문자 `ー〜～`를 제거한다. ASMR 발화 길이/표기 차이를 관찰하기 위한 보조 metric이며 품질 gate와 `review_effort`에는 사용하지 않는다.
 - 평가는 모델 기본값 승격이나 threshold 변경 전에 실행한다.
 - `--max-practical-cer`, `--min-time-aligned-500ms-ratio`, `--min-channel-time-aligned-accuracy`, `--max-channel-time-aligned-mix-ratio`, `--max-segments-needing-edit-ratio`를 지정하면 품질 gate로 동작한다. gate 실패 시 report는 stdout/file에 남기고 exit code를 실패로 반환한다.
 
@@ -476,7 +477,7 @@ uv run casrt compare-evals qwen-report.json stable-report.json quiet8-report.jso
 
 - 입력은 `eval-transcript` 단일 report 또는 `eval-manifest` suite report JSON이다.
 - output format은 `custom-asmr-eval-comparison-v1`이다.
-- 각 report의 practical CER, time-aligned 500ms ratio, channel time-aligned accuracy, candidate MIX ratio, `review_effort` 수정 비율을 한 줄 summary로 뽑는다.
+- 각 report의 practical CER, optional Japanese relaxed CER, time-aligned 500ms ratio, channel time-aligned accuracy, candidate MIX ratio, `review_effort` 수정 비율을 한 줄 summary로 뽑는다.
 - ranking은 `segments_needing_edit_ratio`, practical CER, time-aligned 500ms ratio desc, channel time-aligned accuracy desc 순서다.
 - `--max-practical-cer`, `--min-time-aligned-500ms-ratio`, `--min-channel-time-aligned-accuracy`, `--max-channel-time-aligned-mix-ratio`, `--max-segments-needing-edit-ratio`를 지정하면 각 item에 `gate_passed`와 `gate_failures`를 표시한다. `compare-evals` 자체는 gate 실패 때문에 실패 exit code를 반환하지 않는다.
 - 이 명령은 모델/heuristic 승격을 자동 결정하지 않는다. 사람이 다음 실험 후보를 고르는 비교표만 만든다.

@@ -45,6 +45,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["text"]["edit_distance"], 2)
         self.assertAlmostEqual(report["text"]["cer"], 2 / 7)
         self.assertEqual(report["text_practical"]["mode"], "practical")
+        self.assertEqual(report["text_japanese_relaxed"]["mode"], "japanese-relaxed")
         self.assertEqual(report["timing"]["paired_segments"], 2)
         self.assertEqual(report["timing"]["boundary_samples"], 4)
         self.assertEqual(report["timing"]["mean_start_error_ms"], 60)
@@ -135,6 +136,10 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(normalize_for_cer("ね、 魔女ちゃん！？", mode="practical"), "ね魔女ちゃん")
         self.assertEqual(normalize_for_cer("ABC１２３", mode="practical"), "ABC123")
 
+    def test_japanese_relaxed_cer_removes_prolonged_sound_marks(self):
+        self.assertEqual(normalize_for_cer("おにいちゃーん〜～", mode="practical"), "おにいちゃーん")
+        self.assertEqual(normalize_for_cer("おにいちゃーん〜～", mode="japanese-relaxed"), "おにいちゃん")
+
     def test_evaluate_manifest_resolves_relative_paths_and_aggregates_reports(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -175,6 +180,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["reference_type"], "pseudo-gold")
         self.assertEqual(report["reference_notes"], "stable-ts baseline")
         self.assertEqual(report["case_count"], 2)
+        self.assertEqual(report["summary"]["text_japanese_relaxed"]["mode"], "japanese-relaxed")
         self.assertEqual(report["cases"][0]["candidate_id"], "a")
         self.assertEqual(report["cases"][0]["reference_type"], "pseudo-gold")
         self.assertEqual(report["cases"][0]["reference_notes"], "stable-ts baseline")

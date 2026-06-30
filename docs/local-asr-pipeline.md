@@ -358,6 +358,7 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 
 - speech text strict CER
 - speech text practical CER
+- speech text Japanese relaxed CER
 - segment index 기준 mean start/end/boundary error
 - time-overlap 기준 `timing_time_aligned` mean start/end/boundary error
 - boundary sample 수, max boundary error, 250ms/500ms 이내 boundary ratio
@@ -380,12 +381,15 @@ practical CER는 현재 다음을 정규화한다.
 
 practical CER는 자막 실용 비교용이다. 원문 보존 품질은 strict CER를 같이 본다.
 
+Japanese relaxed CER는 practical CER에 더해 장음류 문자 `ー〜～`를 제거한다. ASMR 속삭임의 발화 길이 표기 차이를 분리해 보기 위한 보조 metric이며, 모델 승격 gate와 `review_effort`는 계속 practical CER를 사용한다.
+
 2026-06-30 일본어 ASMR relaxed normalization 후보 실험:
 
 - 후보: current practical에 더해 장음 부호 `ー〜～` 제거, 소형 kana를 대형 kana로 치환, 또는 둘 다 적용.
 - 01/04/07 front120 pseudo-gold 기준 stable-ts CLI attributed quiet8: current 16.1%, 장음 제거 15.5%, 소형 kana 치환 16.1%, 둘 다 15.4%.
 - Qwen HF ASR Transformers main: current 29.4%, 장음 제거 27.5%, 소형 kana 치환 29.4%, 둘 다 27.5%.
-- 결정: 장음 제거는 ASMR 발화 길이 차이 노이즈를 줄이지만 실제 표기 차이까지 숨길 수 있다. 기존 품질 gate와 historical report의 의미를 바꾸지 않기 위해 current practical CER 기본값은 유지한다. 필요하면 별도 relaxed metric으로 추가하고 기본 gate로 쓰지는 않는다.
+- 결정: 장음 제거는 ASMR 발화 길이 차이 노이즈를 줄이지만 실제 표기 차이까지 숨길 수 있다. 기존 품질 gate와 historical report의 의미를 바꾸지 않기 위해 current practical CER 기본값은 유지한다. `text_japanese_relaxed`를 별도 metric으로 추가하고 기본 gate로 쓰지는 않는다.
+- 2026-06-30 구현 smoke: `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-quiet8-3case-gold.json`를 새 report `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-quiet8-3case-report-relaxed.json`로 재평가했다. Summary는 practical CER 16.1%, Japanese relaxed CER 15.5%다. 기존 report와 새 report를 같이 넣은 compare output `/tmp/casrt-quality.Q5OdDf/eval-comparison-old-new-relaxed.json`에서 old report의 `japanese_relaxed_cer`는 `null`, new report는 `0.1547`로 표시되어 기존 report 비교 호환성을 확인했다.
 
 manifest summary는 case별 평균이 아니라 전체 edit distance/reference characters와 전체 paired/boundary/comparable segment 수 기준으로 가중 집계한다. 짧은 clip과 긴 clip이 같은 비중을 갖지 않게 하기 위한 결정이다. 품질 threshold 판단은 segment split 차이에 덜 취약한 `timing_time_aligned`와 `channel_time_aligned`를 우선 사용한다.
 

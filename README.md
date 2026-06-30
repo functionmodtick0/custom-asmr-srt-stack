@@ -424,7 +424,7 @@ uv run casrt eval-manifest gold.json \
   --max-segments-needing-edit-ratio 0.15
 ```
 
-현재 평가는 strict CER, practical CER, segment index 기준 timing 오차, time-overlap 기준 timing ratio, L/R/MIX channel confusion, L/R channel accuracy, review 비율, segment 단위 `review_effort`를 계산합니다.
+현재 평가는 strict CER, practical CER, Japanese relaxed CER, segment index 기준 timing 오차, time-overlap 기준 timing ratio, L/R/MIX channel confusion, L/R channel accuracy, review 비율, segment 단위 `review_effort`를 계산합니다. Japanese relaxed CER는 practical CER에서 장음류 문자 `ー〜～`를 추가로 제거한 보조 metric이며 품질 gate에는 사용하지 않습니다.
 
 여러 평가 report를 한 번에 비교:
 

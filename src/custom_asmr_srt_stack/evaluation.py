@@ -16,6 +16,7 @@ REVIEW_EFFORT_FORMAT = "custom-asmr-review-effort-v1"
 EVAL_COMPARISON_FORMAT = "custom-asmr-eval-comparison-v1"
 EVAL_CHANNELS = ("L", "R", "MIX")
 REVIEW_EFFORT_TIMING_THRESHOLD_MS = 500
+JAPANESE_RELAXED_REMOVED_CHARS = "ー〜～"
 
 
 def load_transcript_document(path: Path, *, source_language: str = "ja") -> MasterDocument:
@@ -32,6 +33,7 @@ def evaluate_transcripts(reference: MasterDocument, candidate: MasterDocument) -
     raw_candidate_text = "".join(segment.text for segment in candidate_speech)
     strict_text = text_error_summary(raw_reference_text, raw_candidate_text, mode="strict")
     practical_text = text_error_summary(raw_reference_text, raw_candidate_text, mode="practical")
+    japanese_relaxed_text = text_error_summary(raw_reference_text, raw_candidate_text, mode="japanese-relaxed")
     paired = list(zip(reference_speech, candidate_speech))
     time_aligned_paired = time_aligned_segment_pairs(reference_speech, candidate_speech)
     timing_errors = timing_error_summary(paired)
@@ -51,6 +53,7 @@ def evaluate_transcripts(reference: MasterDocument, candidate: MasterDocument) -
         "candidate_segments": len(candidate_speech),
         "text": strict_text,
         "text_practical": practical_text,
+        "text_japanese_relaxed": japanese_relaxed_text,
         "timing": timing_errors,
         "timing_time_aligned": time_aligned_timing_errors,
         "channel": channel_summary,
@@ -196,6 +199,7 @@ def eval_comparison_item(path: Path, report: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"{path}: unsupported eval report format {report_format!r}")
 
     text_practical = require_report_mapping(metrics, "text_practical", path)
+    text_japanese_relaxed = optional_report_mapping(metrics, "text_japanese_relaxed", path)
     timing_time_aligned = require_report_mapping(metrics, "timing_time_aligned", path)
     channel_time_aligned = require_report_mapping(metrics, "channel_time_aligned", path)
     review_effort = require_report_mapping(metrics, "review_effort", path)
@@ -205,6 +209,9 @@ def eval_comparison_item(path: Path, report: dict[str, Any]) -> dict[str, Any]:
         "report_format": report_format,
         "case_count": case_count,
         "practical_cer": require_report_number(text_practical, "cer", path),
+        "japanese_relaxed_cer": None
+        if text_japanese_relaxed is None
+        else require_report_number(text_japanese_relaxed, "cer", path),
         "time_aligned_500ms_ratio": optional_report_number(timing_time_aligned, "within_500ms_ratio", path),
         "channel_time_aligned_accuracy": optional_report_number(channel_time_aligned, "accuracy", path),
         "channel_time_aligned_mix_ratio": require_report_number(channel_time_aligned, "candidate_mix_ratio", path),
@@ -220,6 +227,15 @@ def require_report_mapping(metrics: dict[str, Any], key: str, path: Path) -> dic
     value = metrics.get(key)
     if not isinstance(value, dict):
         raise ValueError(f"{path}: eval report {key} must be an object")
+    return value
+
+
+def optional_report_mapping(metrics: dict[str, Any], key: str, path: Path) -> dict[str, Any] | None:
+    value = metrics.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError(f"{path}: eval report {key} must be an object or null")
     return value
 
 
@@ -377,6 +393,7 @@ def aggregate_eval_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
         "candidate_segments": sum(report["candidate_segments"] for report in reports),
         "text": aggregate_text_reports(reports, "text"),
         "text_practical": aggregate_text_reports(reports, "text_practical"),
+        "text_japanese_relaxed": aggregate_text_reports(reports, "text_japanese_relaxed"),
         "timing": aggregate_timing_reports(reports, "timing"),
         "timing_time_aligned": aggregate_timing_reports(reports, "timing_time_aligned"),
         "channel": aggregate_channel_reports(reports, "channel"),
@@ -701,11 +718,13 @@ def review_effort_pair_item(reference: Segment, candidate: Segment, *, reasons: 
 def normalize_for_cer(text: str, *, mode: str = "strict") -> str:
     if mode == "strict":
         return re.sub(r"\s+", "", text)
-    if mode != "practical":
-        raise ValueError("CER normalization mode must be strict or practical")
+    if mode not in {"practical", "japanese-relaxed"}:
+        raise ValueError("CER normalization mode must be strict, practical, or japanese-relaxed")
 
     normalized = unicodedata.normalize("NFKC", text)
     normalized = re.sub(r"\s+", "", normalized)
+    if mode == "japanese-relaxed":
+        normalized = normalized.translate(str.maketrans("", "", JAPANESE_RELAXED_REMOVED_CHARS))
     return "".join(character for character in normalized if is_practical_cer_character(character))
 
 
