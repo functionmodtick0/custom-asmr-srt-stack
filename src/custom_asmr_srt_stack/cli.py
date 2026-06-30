@@ -158,15 +158,39 @@ def attribute_channels(args: argparse.Namespace) -> None:
         quiet_channel_max_dbfs=args.quiet_channel_max_dbfs,
     )
     write_text(args.output, json.dumps(report.master.to_json(), ensure_ascii=False, indent=2) + "\n")
+    diagnostics_output = None
+    if args.diagnostics_output is not None:
+        diagnostics_output = str(args.diagnostics_output)
+        write_text(
+            args.diagnostics_output,
+            json.dumps(
+                {
+                    "format": "custom-asmr-channel-diagnostics-v1",
+                    "audio": str(args.audio),
+                    "input": str(args.input),
+                    "output": str(args.output),
+                    "segments": report.segments,
+                    "threshold_db": report.threshold_db,
+                    "quiet_channel_max_dbfs": args.quiet_channel_max_dbfs,
+                    "items": list(report.diagnostics),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+        )
+    payload = {
+        "output": str(args.output),
+        "segments": report.segments,
+        "changed_segments": report.changed_segments,
+        "threshold_db": report.threshold_db,
+        "quiet_channel_max_dbfs": args.quiet_channel_max_dbfs,
+    }
+    if diagnostics_output is not None:
+        payload["diagnostics_output"] = diagnostics_output
     emit(
         args,
-        {
-            "output": str(args.output),
-            "segments": report.segments,
-            "changed_segments": report.changed_segments,
-            "threshold_db": report.threshold_db,
-            "quiet_channel_max_dbfs": args.quiet_channel_max_dbfs,
-        },
+        payload,
         f"channels attributed: {args.output} changed={report.changed_segments}/{report.segments}",
     )
 
@@ -646,6 +670,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
         help="Keep MIX unless the quieter side is at or below this dBFS value.",
+    )
+    attribute_channels_parser.add_argument(
+        "--diagnostics-output",
+        type=Path,
+        help="Write per-segment L/R energy attribution diagnostics JSON.",
     )
     attribute_channels_parser.set_defaults(func=attribute_channels)
 

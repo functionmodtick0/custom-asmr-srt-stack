@@ -441,6 +441,49 @@ class ProjectCliTests(unittest.TestCase):
             attributed = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(attributed["segments"][0]["channel"], "MIX")
 
+    def test_attribute_channels_writes_diagnostics_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "stereo.wav"
+            source = root / "candidate.srt"
+            output_path = root / "attributed.master.json"
+            diagnostics_path = root / "channel-diagnostics.json"
+            write_stereo_samples(
+                audio,
+                [(6000, 100)] * 1000 + [(6000, 2000)] * 1000 + [(100, 6000)] * 1000,
+            )
+            source.write_text(
+                "1\n00:00:00,000 --> 00:00:01,000\n左\n\n"
+                "2\n00:00:01,000 --> 00:00:02,000\n両方\n\n"
+                "3\n00:00:02,000 --> 00:00:03,000\n右\n",
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "attribute-channels",
+                    "--json",
+                    str(audio),
+                    str(source),
+                    "-o",
+                    str(output_path),
+                    "--diagnostics-output",
+                    str(diagnostics_path),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output)["diagnostics_output"], str(diagnostics_path))
+            diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+            self.assertEqual(diagnostics["format"], "custom-asmr-channel-diagnostics-v1")
+            self.assertEqual([item["reason"] for item in diagnostics["items"]], [
+                "left_dominant",
+                "quieter_side_active",
+                "right_dominant",
+            ])
+            self.assertEqual([item["attributed_channel"] for item in diagnostics["items"]], ["L", "MIX", "R"])
+            self.assertGreater(diagnostics["items"][0]["left_dbfs"], diagnostics["items"][0]["right_dbfs"])
+
     def test_slice_case_writes_rebased_audio_and_transcript(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

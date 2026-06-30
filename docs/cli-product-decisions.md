@@ -340,6 +340,7 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
 
 ```bash
 uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.attributed.master.json --json
+uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.attributed.master.json --diagnostics-output channel-diagnostics.json --json
 ```
 
 동작:
@@ -348,9 +349,10 @@ uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.att
 - audio는 stereo WAV 또는 ffmpeg로 decode 가능한 stereo audio를 받는다.
 - audio를 L/R/MIX mono WAV로 정규화한 뒤, `MIX` speech segment에만 L/R RMS 기반 channel attribution을 적용한다.
 - L/R 확정 기준 기본값은 8dB 차이와 quieter side -40dBFS 이하 gate다. `--threshold-db`와 `--quiet-channel-max-dbfs`는 benchmark 재현용 CLI 옵션이며 WebUI에는 노출하지 않는다.
+- `--diagnostics-output`은 `custom-asmr-channel-diagnostics-v1` JSON을 쓴다. 각 segment의 original/attributed channel, L/R dBFS, delta, quieter side dBFS, decision reason을 담으며 WebUI 옵션으로 노출하지 않는다.
 - `L`, `R`로 이미 라벨링된 segment, speech가 아닌 segment, 작은 L/R 차이 segment는 변경하지 않는다.
 - mono audio나 L/R을 만들 수 없는 audio는 실패한다. 잘못된 channel 후처리를 조용히 통과시키지 않는다.
-- stdout JSON에는 `segments`, `changed_segments`, `threshold_db`, `quiet_channel_max_dbfs`, `output`을 포함한다.
+- stdout JSON에는 `segments`, `changed_segments`, `threshold_db`, `quiet_channel_max_dbfs`, `output`, optional `diagnostics_output`을 포함한다.
 
 ### 평가
 

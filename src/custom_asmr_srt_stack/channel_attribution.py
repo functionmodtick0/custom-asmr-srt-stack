@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import Any
 
 from custom_asmr_srt_stack.audio import wav_rms_dbfs
 from custom_asmr_srt_stack.models import MasterDocument, Segment
@@ -15,6 +16,7 @@ class ChannelAttributionReport:
     segments: int
     changed_segments: int
     threshold_db: float
+    diagnostics: tuple[dict[str, Any], ...]
 
 
 def attribute_master_channels_by_energy(
@@ -28,7 +30,7 @@ def attribute_master_channels_by_energy(
     if threshold_db < 0:
         raise ValueError("threshold_db must be non-negative")
 
-    attributed_segments, changed_segments = attribute_segments_by_energy(
+    attributed_segments, changed_segments, diagnostics = attribute_segments_by_energy(
         master.segments,
         left_audio=left_audio,
         right_audio=right_audio,
@@ -41,6 +43,7 @@ def attribute_master_channels_by_energy(
         segments=len(master.segments),
         changed_segments=changed_segments,
         threshold_db=threshold_db,
+        diagnostics=diagnostics,
     )
 
 
@@ -51,14 +54,15 @@ def attribute_segments_by_energy(
     right_audio: bytes,
     threshold_db: float,
     quiet_channel_max_dbfs: float | None = CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
-) -> tuple[tuple[Segment, ...], int]:
+) -> tuple[tuple[Segment, ...], int, tuple[dict[str, Any], ...]]:
     if threshold_db < 0:
         raise ValueError("threshold_db must be non-negative")
 
     attributed_segments = []
+    diagnostics = []
     changed_segments = 0
     for segment in segments:
-        attributed = attribute_segment_channel_by_energy(
+        attributed, diagnostic = attribute_segment_channel_by_energy(
             segment,
             left_audio=left_audio,
             right_audio=right_audio,
@@ -68,7 +72,8 @@ def attribute_segments_by_energy(
         if attributed.channel != segment.channel:
             changed_segments += 1
         attributed_segments.append(attributed)
-    return tuple(attributed_segments), changed_segments
+        diagnostics.append(diagnostic)
+    return tuple(attributed_segments), changed_segments, tuple(diagnostics)
 
 
 def attribute_segment_channel_by_energy(
@@ -78,17 +83,48 @@ def attribute_segment_channel_by_energy(
     right_audio: bytes,
     threshold_db: float,
     quiet_channel_max_dbfs: float | None,
-) -> Segment:
-    if segment.channel != "MIX" or segment.kind != "speech":
-        return segment
+) -> tuple[Segment, dict[str, Any]]:
+    base_diagnostic: dict[str, Any] = {
+        "id": segment.id,
+        "start_ms": segment.start_ms,
+        "end_ms": segment.end_ms,
+        "kind": segment.kind,
+        "original_channel": segment.channel,
+        "threshold_db": threshold_db,
+        "quiet_channel_max_dbfs": quiet_channel_max_dbfs,
+    }
+    if segment.kind != "speech":
+        return segment, {
+            **base_diagnostic,
+            "attributed_channel": segment.channel,
+            "reason": "skipped_non_speech",
+        }
 
     left_db = wav_rms_dbfs(left_audio, start_ms=segment.start_ms, end_ms=segment.end_ms)
     right_db = wav_rms_dbfs(right_audio, start_ms=segment.start_ms, end_ms=segment.end_ms)
-    if left_db - right_db >= threshold_db and channel_is_quiet_enough(right_db, quiet_channel_max_dbfs):
-        return replace(segment, channel="L")
-    if right_db - left_db >= threshold_db and channel_is_quiet_enough(left_db, quiet_channel_max_dbfs):
-        return replace(segment, channel="R")
-    return segment
+    delta_db = left_db - right_db
+    diagnostic = {
+        **base_diagnostic,
+        "left_dbfs": left_db,
+        "right_dbfs": right_db,
+        "delta_db": delta_db,
+        "abs_delta_db": abs(delta_db),
+        "quieter_dbfs": min(left_db, right_db),
+    }
+    if segment.channel != "MIX":
+        return segment, {
+            **diagnostic,
+            "attributed_channel": segment.channel,
+            "reason": "skipped_existing_channel",
+        }
+    if delta_db >= threshold_db and channel_is_quiet_enough(right_db, quiet_channel_max_dbfs):
+        attributed = replace(segment, channel="L")
+        return attributed, {**diagnostic, "attributed_channel": "L", "reason": "left_dominant"}
+    if -delta_db >= threshold_db and channel_is_quiet_enough(left_db, quiet_channel_max_dbfs):
+        attributed = replace(segment, channel="R")
+        return attributed, {**diagnostic, "attributed_channel": "R", "reason": "right_dominant"}
+    reason = "below_threshold" if abs(delta_db) < threshold_db else "quieter_side_active"
+    return segment, {**diagnostic, "attributed_channel": segment.channel, "reason": reason}
 
 
 def channel_is_quiet_enough(dbfs: float, quiet_channel_max_dbfs: float | None) -> bool:

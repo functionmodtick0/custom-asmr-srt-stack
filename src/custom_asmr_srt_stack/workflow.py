@@ -247,7 +247,7 @@ def apply_channel_attribution(
     ):
         return segments
 
-    attributed, _ = attribute_segments_by_energy(
+    attributed, _, _ = attribute_segments_by_energy(
         segments,
         left_audio=store.read_channel_audio(project_id, "L"),
         right_audio=store.read_channel_audio(project_id, "R"),

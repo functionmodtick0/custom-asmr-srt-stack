@@ -434,6 +434,7 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - `custom_asmr_srt_stack.qwen_aligner_worker`는 Qwen3-ForcedAligner를 generic aligner command로 쓰는 고정 내부 경로다. 이 경로는 기존 master text/channel/kind를 변경하지 않고 segment 내부 start/end만 재정렬한다. 실행은 local snapshot, offline env scrub, network-disabled guard, `qwen-asr==0.0.6` RECORD hash, per-file RECORD hash, import origin 검증 조건을 만족해야 한다. `CASRT_QWEN_ALIGNER_MIN_ALIGNED_DURATION_MS=80`과 `CASRT_QWEN_ALIGNER_MIN_COVERAGE_RATIO=0.5` guard로 비현실적으로 짧거나 원 segment 절반 미만으로 잘린 span만 원래 timing으로 유지한다. 이 fallback은 외부 aligner over-trim에 한정하며 text/channel 수정 실패를 숨기지 않는다.
 - `custom_asmr_srt_stack.qwen_hf_asr_worker`는 HF-native Qwen3-ASR worker다. repo id가 아니라 exact revision local snapshot directory를 받으며, offline env, local path-only, `local_files_only=True`, `trust_remote_code=False`, `use_safetensors=True`, network-disabled guard를 만족해야 한다. offline local worker env는 `PYTHONPATH`를 제거하고 `PYTHONNOUSERSITE=1`을 강제한다. timestamp를 반환하지 않으므로 chunk 전체 timing과 `needs_review=true`를 반환한다.
 - 로컬 ASR adapter는 L/R energy 차이와 quieter-side gate로 channel attribution을 수행한다. 현재 기본값은 8dB 차이와 quieter side -40dBFS 이하이며, 같은 구현을 `casrt attribute-channels` CLI에서 기존 SRT/master 후처리에도 사용한다.
+- channel attribution 튜닝 정보는 `--diagnostics-output`의 별도 debug JSON으로만 저장하고, master JSON data contract에는 넣지 않는다.
 - VAD는 UI에서 선택하지 않는다.
 - VAD command는 stdin으로 `{ audio_file, audio_info }` JSON을 받고 stdout으로 `{ intervals: [{ start_ms, end_ms }] }` JSON을 반환한다.
 - VAD interval이 정렬되지 않았거나 겹치거나 audio duration을 넘으면 실패한다.
