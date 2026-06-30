@@ -292,6 +292,10 @@ canvas {
   background: rgba(125, 217, 185, 0.06);
 }
 
+.segment-row.needs-review {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
 .review-pack-row,
 .review-case-row {
   width: 100%;

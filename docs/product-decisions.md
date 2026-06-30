@@ -463,6 +463,7 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - aligner command는 stdin으로 `{ audio_file, master }` JSON을 받고 stdout으로 `{ segments: [{ id, start_ms, end_ms }] }` JSON을 반환한다.
 - aligner output이 id를 누락하거나 중복하면 실패한다.
 - `needs_review`는 WebUI segment row에서 표시하고 직접 토글할 수 있다.
+- WebUI는 `needs_review=true` segment row를 시각적으로 표시하고, master/case를 열 때 첫 review segment를 우선 선택한다.
 - WebUI review-pack viewer는 `custom-asmr-review-pack-v1` `index.json`을 path로 열고, item별 `clip_url`을 통해 pack directory 내부 `clips/*.wav`만 재생한다.
 - Review-pack viewer는 pack 생성 옵션, VAD, threshold, 모델 선택을 추가로 노출하지 않는다. Pack 생성과 priority queue 정렬은 CLI가 담당하고 WebUI는 사람이 듣고 비교하는 화면만 담당한다.
 - WebUI review case editor는 `custom-asmr-review-case-set-v1` `case-index.json`을 path로 열고, case를 선택하면 audio와 reference master를 기존 segment editor에 붙인다.

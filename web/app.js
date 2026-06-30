@@ -169,10 +169,14 @@ function setMaster(master, label, projectId = state.projectId, hasAudio = state.
   state.reviewPackSelectedIndex = null;
   state.reviewCaseSet = null;
   state.reviewCaseReference = null;
-  state.selectedId = master.segments[0]?.id || null;
+  state.selectedId = firstReviewOrFirstSegmentId(master);
   render();
   drawWaveform();
   setStatus("로드됨", label);
+}
+
+function firstReviewOrFirstSegmentId(master) {
+  return master.segments.find((segment) => segment.needs_review)?.id || master.segments[0]?.id || null;
 }
 
 async function handleFile(file) {
@@ -459,7 +463,9 @@ function formatMs(value) {
 
 function renderSegment(segment) {
   const row = document.createElement("div");
-  row.className = `segment-row${segment.id === state.selectedId ? " is-selected" : ""}`;
+  row.className = `segment-row${segment.id === state.selectedId ? " is-selected" : ""}${
+    segment.needs_review ? " needs-review" : ""
+  }`;
   row.dataset.id = segment.id;
 
   const time = document.createElement("div");
@@ -497,6 +503,7 @@ function renderSegment(segment) {
   reviewInput.addEventListener("change", () => {
     selectSegment(segment.id, false);
     segment.needs_review = reviewInput.checked;
+    row.classList.toggle("needs-review", segment.needs_review);
     scheduleSaveMaster();
   });
   const reviewText = document.createElement("span");
@@ -775,7 +782,7 @@ function loadReviewCaseItem(index) {
   state.hasAudio = true;
   state.master = item.reference_master;
   state.translated = null;
-  state.selectedId = state.master.segments[0]?.id || null;
+  state.selectedId = firstReviewOrFirstSegmentId(state.master);
   state.audioBuffer = null;
   state.reviewPack = null;
   state.reviewPackSelectedIndex = null;
