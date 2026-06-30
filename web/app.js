@@ -30,6 +30,7 @@ const els = {
   modelButton: document.getElementById("modelButton"),
   startButton: document.getElementById("startButton"),
   retranscribeButton: document.getElementById("retranscribeButton"),
+  reviewDoneButton: document.getElementById("reviewDoneButton"),
   caseListButton: document.getElementById("caseListButton"),
   nextCaseButton: document.getElementById("nextCaseButton"),
   exportMasterButton: document.getElementById("exportMasterButton"),
@@ -310,10 +311,11 @@ function render() {
     : `${segments.length} segments`;
   els.selectedLabel.textContent = state.selectedId ? state.selectedId : "선택 없음";
   els.retranscribeButton.hidden = Boolean(state.reviewCaseReference);
-  els.retranscribeButton.disabled = !state.selectedId;
+  els.reviewDoneButton.hidden = !state.reviewCaseReference;
   els.caseListButton.hidden = !state.reviewCaseReference;
   els.nextCaseButton.hidden = !state.reviewCaseReference;
   els.nextCaseButton.disabled = nextReviewCaseIndex() === null;
+  updateSelectedActionState();
   els.exportMasterButton.disabled = !state.master;
   els.exportTranslationButton.disabled = !state.master;
   els.exportSrtButton.disabled = !state.master;
@@ -333,6 +335,8 @@ function renderReviewPack() {
     state.reviewPackSelectedIndex === null ? "선택 없음" : reviewPackSelectedLabel(items[state.reviewPackSelectedIndex]);
   els.retranscribeButton.disabled = true;
   els.retranscribeButton.hidden = false;
+  els.reviewDoneButton.hidden = true;
+  els.reviewDoneButton.disabled = true;
   els.caseListButton.hidden = true;
   els.nextCaseButton.hidden = true;
   els.exportMasterButton.disabled = true;
@@ -353,6 +357,8 @@ function renderReviewCaseSet() {
   els.selectedLabel.textContent = "case 선택";
   els.retranscribeButton.disabled = true;
   els.retranscribeButton.hidden = false;
+  els.reviewDoneButton.hidden = true;
+  els.reviewDoneButton.disabled = true;
   els.caseListButton.hidden = true;
   els.nextCaseButton.hidden = true;
   els.exportMasterButton.disabled = true;
@@ -518,6 +524,7 @@ function renderSegment(segment) {
     selectSegment(segment.id, false);
     segment.needs_review = reviewInput.checked;
     row.classList.toggle("needs-review", segment.needs_review);
+    updateSelectedActionState();
     scheduleSaveMaster();
   });
   const reviewText = document.createElement("span");
@@ -608,10 +615,20 @@ function syncSelectedReviewPackItem() {
 
 function syncSelectedSegment() {
   els.selectedLabel.textContent = state.selectedId ? state.selectedId : "선택 없음";
-  els.retranscribeButton.disabled = !state.selectedId;
+  updateSelectedActionState();
   for (const row of els.segmentList.querySelectorAll(".segment-row")) {
     row.classList.toggle("is-selected", row.dataset.id === state.selectedId);
   }
+}
+
+function updateSelectedActionState() {
+  const segment = selectedSegment();
+  els.retranscribeButton.disabled = !segment;
+  els.reviewDoneButton.disabled = !state.reviewCaseReference || !segment?.needs_review;
+}
+
+function selectedSegment() {
+  return state.master?.segments.find((item) => item.id === state.selectedId) || null;
 }
 
 function playSegment(segment) {
@@ -730,6 +747,41 @@ function syncReviewCaseItemAfterSave(result) {
   item.segments = result.segments;
   item.review_count = result.review_count;
   item.reference_master = state.master;
+}
+
+async function markSelectedReviewDone() {
+  const segment = selectedSegment();
+  if (!segment || !state.reviewCaseReference) return;
+  segment.needs_review = false;
+  const nextReviewId = nextReviewSegmentId(segment.id);
+  if (nextReviewId !== null) {
+    state.selectedId = nextReviewId;
+  }
+  render();
+  drawWaveform();
+  const result = await saveCurrentMasterNow();
+  const remaining = result?.review_count ?? countReviewSegments();
+  setStatus(
+    remaining > 0 ? "검수 저장됨" : "case 검수 완료",
+    remaining > 0 ? `${remaining}개 검수 flag가 남았습니다.` : "이 case의 검수 flag를 모두 처리했습니다.",
+  );
+}
+
+function nextReviewSegmentId(currentId) {
+  const segments = state.master?.segments || [];
+  const currentIndex = segments.findIndex((segment) => segment.id === currentId);
+  if (currentIndex < 0) return null;
+  for (let index = currentIndex + 1; index < segments.length; index += 1) {
+    if (segments[index].needs_review) return segments[index].id;
+  }
+  for (let index = 0; index < currentIndex; index += 1) {
+    if (segments[index].needs_review) return segments[index].id;
+  }
+  return null;
+}
+
+function countReviewSegments() {
+  return (state.master?.segments || []).filter((segment) => segment.needs_review).length;
 }
 
 async function startTranscription() {
@@ -904,6 +956,7 @@ els.validateModelButton.addEventListener("click", () => safeRun(validateModelSet
 els.saveModelButton.addEventListener("click", saveModelSettings);
 els.importTranslatedButton.addEventListener("click", () => els.translatedInput.click());
 els.loadReviewPackButton.addEventListener("click", () => safeRun(loadReviewPath));
+els.reviewDoneButton.addEventListener("click", () => safeRun(markSelectedReviewDone));
 els.caseListButton.addEventListener("click", () => safeRun(returnToReviewCases));
 els.nextCaseButton.addEventListener("click", () => safeRun(openNextReviewCase));
 els.reviewPackPathInput.addEventListener("keydown", (event) => {
