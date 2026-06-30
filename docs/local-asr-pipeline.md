@@ -696,6 +696,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
      - source: `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/uploads`의 01~08 wav와 기존 `/data/outputs` SRT 산출물.
      - result: `case_count=8`, `reference_type_counts={pseudo-gold: 8}`, `missing_file_count=0`, `case_issue_count=0`, `reference_review_count=15`.
      - case별 segments/review_count: 01 `10/2`, 02 `10/1`, 03 `11/2`, 04 `12/2`, 05 `10/2`, 06 `11/2`, 07 `10/2`, 08 `8/2`.
+     - `review-case-status --fail-on-review`는 report 출력 후 expected failure로 `review_count=15`를 반환했다.
      - 판단: 모델 승격용 gold가 아니라, 사람이 WebUI에서 audio/reference를 열어 검수하고 `freeze-case-references --reference-type human-reviewed`로 올릴 시작점이다.
    - `/data/uploads`, `/data/outputs`에서 30초~2분 단위 reference case를 늘릴 때는 `custom-asmr-case-slice-plan-v1` plan으로 재현 가능하게 기록한다.
    - 사람이 검수한 단일 파일은 `casrt freeze-reference`, prepared case set은 `casrt freeze-case-references`로 stable id와 `needs_review=false`를 고정한다.
