@@ -152,6 +152,7 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 - `review_effort.items` export: 평가 report에서 `custom-asmr-review-effort-v1` 수정 큐 JSON을 생성해 사람이 볼 다음 검수/개선 후보를 보존한다.
 - `review-pack`: 수정 큐와 원본 audio를 결합해 `custom-asmr-review-pack-v1` index와 WAV clips를 만들고, human-reviewed gold 제작을 빠르게 한다.
 - `attribute-channels`: 기존 SRT/master transcript와 stereo audio를 받아 `MIX` speech segment에만 L/R energy channel attribution을 적용한다. 기존 text/timing은 변경하지 않는다.
+- `slice-case`: 긴 원본 audio와 SRT/master에서 matching WAV/master case를 만들고, 경계에 걸쳐 잘린 segment를 `needs_review=true`로 표시해 human-reviewed gold 제작을 돕는다.
 
 구현 세부 값, 실험 결과, 다음 작업 계획은 [local-asr-pipeline.md](local-asr-pipeline.md)에 기록한다.
 
@@ -415,6 +416,7 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - 오디오는 분석 전에 WAV로 정규화한다.
 - SRT import는 cue text 선두의 `[L]`, `[R]`, `[LR]`, `[MIX]`를 channel metadata로 읽고 본문 텍스트에서 제거한다.
 - `[LR]`은 현재 channel model에서 `MIX`로 저장한다.
+- `slice-case`는 audio와 transcript를 같은 구간으로 자르고 transcript timestamp를 0 기준으로 rebase한다. 경계에서 잘린 segment는 검수 필요 상태로 남긴다.
 - WAV가 아닌 입력은 ffmpeg로 16-bit PCM WAV로 변환한다.
 - stereo WAV는 `L`, `R`, `MIX` 세 channel 파일로 분리한다.
 - mono WAV는 `MIX`만 만든다.

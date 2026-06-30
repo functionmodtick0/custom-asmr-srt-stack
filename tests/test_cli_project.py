@@ -416,6 +416,58 @@ class ProjectCliTests(unittest.TestCase):
             self.assertIn("requires stereo audio", error)
             self.assertFalse(output_path.exists())
 
+    def test_slice_case_writes_rebased_audio_and_transcript(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "source.wav"
+            transcript = root / "source.srt"
+            audio_output = root / "case.wav"
+            transcript_output = root / "case.master.json"
+            write_stereo_samples(audio, [(100, 200), (300, 400), (500, 600), (700, 800)])
+            transcript.write_text(
+                "1\n00:00:00,000 --> 00:00:00,002\n前半\n\n"
+                "2\n00:00:00,001 --> 00:00:00,003\n中央\n\n"
+                "3\n00:00:00,002 --> 00:00:00,004\n後半\n",
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "slice-case",
+                    "--json",
+                    str(audio),
+                    str(transcript),
+                    "--start-ms",
+                    "1",
+                    "--end-ms",
+                    "3",
+                    "--audio-output",
+                    str(audio_output),
+                    "--transcript-output",
+                    str(transcript_output),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["duration_ms"], 2)
+            self.assertEqual(report["segments"], 3)
+            self.assertEqual(report["review_count"], 2)
+            self.assertEqual(analyze_wav(audio_output.read_bytes()).duration_ms, 2)
+            sliced = json.loads(transcript_output.read_text(encoding="utf-8"))
+            self.assertEqual(sliced["audio"]["duration_ms"], 2)
+            self.assertEqual(
+                [
+                    (segment["id"], segment["start_ms"], segment["end_ms"], segment["text"], segment["needs_review"])
+                    for segment in sliced["segments"]
+                ],
+                [
+                    ("seg_000001", 0, 1, "前半", True),
+                    ("seg_000002", 0, 2, "中央", False),
+                    ("seg_000003", 1, 2, "後半", True),
+                ],
+            )
+
     def test_eval_transcript_quality_gate_fails_after_emitting_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

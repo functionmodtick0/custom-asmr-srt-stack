@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from custom_asmr_srt_stack.alignment import run_alignment_command
-from custom_asmr_srt_stack.audio import normalize_audio_to_wav, split_wav_channels
+from custom_asmr_srt_stack.audio import normalize_audio_to_wav, slice_wav, split_wav_channels
+from custom_asmr_srt_stack.case_slicing import slice_master_document
 from custom_asmr_srt_stack.channel_attribution import (
     CHANNEL_ATTRIBUTION_THRESHOLD_DB,
     attribute_master_channels_by_energy,
@@ -163,6 +164,38 @@ def attribute_channels(args: argparse.Namespace) -> None:
             "threshold_db": report.threshold_db,
         },
         f"channels attributed: {args.output} changed={report.changed_segments}/{report.segments}",
+    )
+
+
+def slice_case(args: argparse.Namespace) -> None:
+    mime_type = mimetypes.guess_type(args.audio.name)[0]
+    normalized_audio = normalize_audio_to_wav(
+        args.audio.read_bytes(),
+        file_name=args.audio.name,
+        mime_type=mime_type,
+    )
+    sliced_audio = slice_wav(normalized_audio, start_ms=args.start_ms, end_ms=args.end_ms)
+    args.audio_output.parent.mkdir(parents=True, exist_ok=True)
+    args.audio_output.write_bytes(sliced_audio)
+
+    master = load_transcript_document(args.transcript, source_language=args.source_language)
+    sliced_master = slice_master_document(master, start_ms=args.start_ms, end_ms=args.end_ms)
+    write_text(args.transcript_output, json.dumps(sliced_master.to_json(), ensure_ascii=False, indent=2) + "\n")
+    emit(
+        args,
+        {
+            "audio_output": str(args.audio_output),
+            "transcript_output": str(args.transcript_output),
+            "start_ms": args.start_ms,
+            "end_ms": args.end_ms,
+            "duration_ms": args.end_ms - args.start_ms,
+            "segments": len(sliced_master.segments),
+            "review_count": sum(1 for segment in sliced_master.segments if segment.needs_review),
+        },
+        (
+            f"case sliced: audio={args.audio_output} transcript={args.transcript_output} "
+            f"duration_ms={args.end_ms - args.start_ms} segments={len(sliced_master.segments)}"
+        ),
     )
 
 
@@ -592,6 +625,20 @@ def build_parser() -> argparse.ArgumentParser:
     attribute_channels_parser.add_argument("--source-language", default="ja")
     attribute_channels_parser.add_argument("--threshold-db", type=float, default=CHANNEL_ATTRIBUTION_THRESHOLD_DB)
     attribute_channels_parser.set_defaults(func=attribute_channels)
+
+    slice_case_parser = subcommands.add_parser(
+        "slice-case",
+        parents=[output_parent],
+        help="Slice matching audio and SRT/master transcript into a rebased eval case.",
+    )
+    slice_case_parser.add_argument("audio", type=Path)
+    slice_case_parser.add_argument("transcript", type=Path)
+    slice_case_parser.add_argument("--start-ms", type=int, required=True)
+    slice_case_parser.add_argument("--end-ms", type=int, required=True)
+    slice_case_parser.add_argument("--audio-output", type=Path, required=True)
+    slice_case_parser.add_argument("--transcript-output", type=Path, required=True)
+    slice_case_parser.add_argument("--source-language", default="ja")
+    slice_case_parser.set_defaults(func=slice_case)
 
     eval_transcript_parser = subcommands.add_parser("eval-transcript", help="Evaluate a candidate transcript.")
     eval_transcript_parser.add_argument("reference", type=Path)

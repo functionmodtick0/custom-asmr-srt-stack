@@ -640,6 +640,8 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 
 1. Gold set 운영
    - gold set manifest CLI는 추가됐다.
+   - `casrt slice-case`는 긴 원본 audio와 SRT/master에서 matching WAV/master eval case를 자르고 timestamp를 0 기준으로 rebase한다. 경계에서 잘린 segment는 `needs_review=true`로 표시한다.
+   - 2026-06-30 실데이터 smoke: `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/uploads/01.淫魔＆魔女との遭遇.wav`와 `eval-01-full-stable-ts.srt`에서 0~60000ms를 잘라 `/tmp/casrt-quality.Q5OdDf/slice-case-smoke/01-front60.wav`와 `/tmp/casrt-quality.Q5OdDf/slice-case-smoke/01-front60.master.json`을 생성했다. Result: duration 60000ms, segments 14, review_count 1.
    - `/data/uploads`, `/data/outputs`에서 30초~2분 단위 reference case를 늘린다.
    - 사람이 검수한 파일은 `casrt freeze-reference`로 stable id와 `needs_review=false`를 고정한다.
    - manifest에 `reference_type=human-reviewed`와 검수 메모를 기록한다.

@@ -317,6 +317,19 @@ uv run casrt freeze-reference reviewed.srt -o refs/front120.master.json --json
 
 `freeze-reference`는 segment를 시간순으로 정렬하고 `seg_000001` 형식 id를 다시 부여하며 `needs_review=false`로 저장합니다. 이 산출물은 사람이 검수한 reference manifest에서만 모델 승격 근거로 사용합니다.
 
+긴 원본 audio와 SRT/master에서 평가 case를 자르기:
+
+```bash
+uv run casrt slice-case input.wav input.srt \
+  --start-ms 0 \
+  --end-ms 120000 \
+  --audio-output cases/front120.wav \
+  --transcript-output cases/front120.master.json \
+  --json
+```
+
+`slice-case`는 audio와 transcript를 같은 구간으로 자르고 transcript timestamp를 0 기준으로 되돌립니다. 경계에서 잘린 segment는 사람이 확인하도록 `needs_review=true`로 표시합니다.
+
 기존 SRT 또는 master JSON을 고정 aligner로 재정렬:
 
 ```bash

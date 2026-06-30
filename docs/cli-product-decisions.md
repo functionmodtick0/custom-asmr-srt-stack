@@ -263,6 +263,28 @@ uv run casrt freeze-reference reviewed.master.json -o refs/front120.master.json 
 - 이 명령은 검수 상태를 추정하지 않는다. 사람이 검수한 파일만 입력으로 넣는 것이 계약이다.
 - pseudo-gold나 모델 산출물을 `freeze-reference`로 고정할 수는 있지만, manifest에는 `reference_type=pseudo-gold`로 기록해야 하며 모델 승격 근거로 쓰지 않는다.
 
+### Gold/Eval Case Slicing
+
+```bash
+uv run casrt slice-case input.wav input.srt \
+  --start-ms 0 \
+  --end-ms 120000 \
+  --audio-output cases/front120.wav \
+  --transcript-output cases/front120.master.json \
+  --json
+```
+
+동작:
+
+- 입력 transcript는 SRT 또는 `master.json`을 받는다.
+- audio는 WAV 또는 ffmpeg로 decode 가능한 audio를 받으며 output audio는 normalized WAV다.
+- audio와 transcript를 같은 `[start_ms, end_ms)` 구간으로 자르고 transcript timestamp를 0 기준으로 rebase한다.
+- output master `audio.duration_ms`는 `end_ms - start_ms`다.
+- 구간과 겹치지 않는 segment는 제외한다.
+- 구간 경계에 걸쳐 잘린 segment는 text가 일부만 남을 수 있으므로 `needs_review=true`로 표시한다.
+- segment id는 `seg_000001`부터 다시 부여한다.
+- 이 명령은 human-reviewed gold를 만들기 위한 case 준비 도구다. 검수 완료 판정은 하지 않으며, 사람이 확인한 뒤 `freeze-reference`와 `reference_type=human-reviewed` manifest를 사용한다.
+
 ### 기존 Transcript Alignment
 
 ```bash
