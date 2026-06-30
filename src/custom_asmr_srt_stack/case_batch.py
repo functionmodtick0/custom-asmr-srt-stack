@@ -15,6 +15,7 @@ from custom_asmr_srt_stack.review_pack import REVIEW_AUDIO_MAP_FORMAT
 CASE_SLICE_PLAN_FORMAT = "custom-asmr-case-slice-plan-v1"
 REVIEW_CASE_SET_FORMAT = "custom-asmr-review-case-set-v1"
 REVIEW_CASE_STATUS_FORMAT = "custom-asmr-review-case-status-v1"
+REVIEW_CASE_REFERENCE_SAVE_FORMAT = "custom-asmr-review-case-reference-save-v1"
 EVAL_MANIFEST_BUILD_FORMAT = "custom-asmr-eval-manifest-build-v1"
 CASE_REFERENCE_FREEZE_FORMAT = "custom-asmr-case-reference-freeze-v1"
 
@@ -234,6 +235,45 @@ def reference_loaded_without_issues(item: dict[str, Any]) -> bool:
         return False
     issues = item.get("issues")
     return isinstance(issues, list) and not any(str(issue).startswith("reference ") for issue in issues)
+
+
+def save_review_case_reference(
+    case_index_file: Path,
+    *,
+    case_id: str,
+    master: MasterDocument,
+) -> dict[str, Any]:
+    if not case_id:
+        raise ValueError("review case id must be a non-empty string")
+    resolved_index_path = case_index_file.expanduser().resolve()
+    case_index = load_review_case_index(resolved_index_path)
+    raw_items = case_index.get("items")
+    if not isinstance(raw_items, list):
+        raise ValueError("review case index items must be an array")
+    for index, raw_item in enumerate(raw_items):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"review case index item {index} must be an object")
+        if raw_item.get("id") != case_id:
+            continue
+        reference_path = resolve_plan_path(
+            resolved_index_path.parent,
+            require_index_string(raw_item, "reference", index),
+        )
+        if not reference_path.is_file():
+            raise ValueError(f"review case reference file is missing: {raw_item['reference']}")
+        reference_path.write_text(json.dumps(master.to_json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        raw_item["segments"] = len(master.segments)
+        raw_item["review_count"] = sum(1 for segment in master.segments if segment.needs_review)
+        resolved_index_path.write_text(json.dumps(case_index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return {
+            "format": REVIEW_CASE_REFERENCE_SAVE_FORMAT,
+            "ok": True,
+            "case_id": case_id,
+            "reference": str(reference_path),
+            "segments": raw_item["segments"],
+            "review_count": raw_item["review_count"],
+        }
+    raise ValueError(f"review case id is missing: {case_id}")
 
 
 def build_eval_manifest_from_case_index(

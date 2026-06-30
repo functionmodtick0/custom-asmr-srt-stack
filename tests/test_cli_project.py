@@ -1022,6 +1022,140 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(json.loads(status_path.read_text(encoding="utf-8"))["missing_file_count"], 2)
             self.assertIn("review case status failed", error)
 
+    def test_save_review_case_reference_updates_reference_and_index_counts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_dir = root / "cases"
+            reference_dir = case_dir / "references"
+            audio_dir = case_dir / "audio"
+            reference_dir.mkdir(parents=True)
+            audio_dir.mkdir()
+            (audio_dir / "front.wav").write_bytes(b"RIFFcaseWAVE")
+            reference_path = reference_dir / "front.master.json"
+            reference_path.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "front.wav", "duration_ms": 2000},
+                        "segments": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            case_index = case_dir / "case-index.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "reference_type": "pseudo-gold",
+                        "items": [
+                            {
+                                "id": "front",
+                                "audio": "audio/front.wav",
+                                "reference": "references/front.master.json",
+                                "segments": 0,
+                                "review_count": 0,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            edited = root / "edited.master.json"
+            edited.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "front.wav", "duration_ms": 2000},
+                        "segments": [
+                            {
+                                "id": "seg_000001",
+                                "start_ms": 0,
+                                "end_ms": 1000,
+                                "channel": "L",
+                                "kind": "speech",
+                                "text": "修正",
+                                "needs_review": True,
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "save-review-case-reference",
+                    "--json",
+                    str(case_index),
+                    "front",
+                    str(edited),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            saved_reference = json.loads(reference_path.read_text(encoding="utf-8"))
+            saved_index = json.loads(case_index.read_text(encoding="utf-8"))
+            self.assertEqual(report["format"], "custom-asmr-review-case-reference-save-v1")
+            self.assertEqual(report["segments"], 1)
+            self.assertEqual(report["review_count"], 1)
+            self.assertEqual(saved_reference["segments"][0]["text"], "修正")
+            self.assertEqual(saved_index["items"][0]["segments"], 1)
+            self.assertEqual(saved_index["items"][0]["review_count"], 1)
+
+    def test_save_review_case_reference_rejects_missing_reference_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_index = root / "case-index.json"
+            edited = root / "edited.master.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [
+                            {
+                                "id": "front",
+                                "audio": "front.wav",
+                                "reference": "missing.master.json",
+                                "segments": 0,
+                                "review_count": 0,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            edited.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "front.wav", "duration_ms": 2000},
+                        "segments": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "save-review-case-reference",
+                    "--json",
+                    str(case_index),
+                    "front",
+                    str(edited),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(output, "")
+            self.assertIn("review case reference file is missing", error)
+            self.assertFalse((root / "missing.master.json").exists())
+
     def test_freeze_case_references_writes_clean_case_set_and_manifest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

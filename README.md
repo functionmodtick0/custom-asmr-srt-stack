@@ -357,6 +357,14 @@ uv run casrt review-case-status cases/case-index.json --json -o cases/status.jso
 
 `review-case-status`는 `case-index.json` 기준으로 audio/reference/candidate 파일 존재 여부, 실제 segment 수, 남은 `needs_review` 수를 다시 계산합니다. `--fail-on-issues`는 파일 누락이나 stale count가 있을 때, `--fail-on-review`는 reference에 검수 flag가 남았을 때 report를 출력/저장한 뒤 실패 exit code를 반환합니다.
 
+편집한 단일 case reference를 저장하고 `case-index.json` count를 갱신:
+
+```bash
+uv run casrt save-review-case-reference cases/case-index.json case-id edited.master.json --json
+```
+
+`save-review-case-reference`는 master JSON 또는 SRT 입력을 받아 해당 case의 reference 파일을 교체하고 `segments`/`review_count`를 다시 기록합니다. 검수 완료 여부나 `reference_type`은 바꾸지 않습니다.
+
 검수한 case reference를 한 번에 고정:
 
 ```bash

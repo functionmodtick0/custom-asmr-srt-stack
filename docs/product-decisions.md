@@ -159,6 +159,7 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 - `attribute-channels`: 기존 SRT/master transcript와 stereo audio를 받아 `MIX` speech segment에만 L/R energy channel attribution을 적용한다. 기존 text/timing은 변경하지 않는다.
 - `slice-case`: 긴 원본 audio와 SRT/master에서 matching WAV/master case를 만들고, 경계에 걸쳐 잘린 segment를 `needs_review=true`로 표시해 human-reviewed gold 제작을 돕는다.
 - `review-case-status`: `case-index.json`에서 준비된 case set의 파일 존재 여부, stale segment/review count, 남은 reference `needs_review` 수를 실제 파일 기준으로 다시 계산한다. 이 명령은 검수 완료를 자동 판정하지 않고, human-reviewed 승격 판단은 manifest의 `reference_type` gate가 담당한다.
+- `save-review-case-reference`: 편집한 단일 SRT/master를 준비된 case reference로 저장하고 `case-index.json`의 segment/review count를 갱신한다. 이 명령도 reference authority를 바꾸지 않는다.
 - `freeze-case-references`: 준비된 case set의 reference들을 batch로 stable id와 `needs_review=false` 상태로 고정하고 새 case set을 만든다. 사람이 실제 검수한 reference에만 `--reference-type human-reviewed`를 사용한다.
 - `build-eval-manifest`: candidate가 포함된 준비 case set에서 `custom-asmr-eval-manifest-v1`을 다시 만든다. 사람이 reference를 검수한 뒤 `--reference-type human-reviewed --fail-on-review`로 모델 승격 평가 manifest를 만들 때 사용한다.
 

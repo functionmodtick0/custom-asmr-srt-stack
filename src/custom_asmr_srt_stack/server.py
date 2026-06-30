@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 from custom_asmr_srt_stack.models import MasterDocument, require_mapping, require_string
 from custom_asmr_srt_stack.projects import ProjectStore
-from custom_asmr_srt_stack.case_batch import REVIEW_CASE_SET_FORMAT
+from custom_asmr_srt_stack.case_batch import REVIEW_CASE_SET_FORMAT, save_review_case_reference
 from custom_asmr_srt_stack.review_pack import REVIEW_PACK_FORMAT
 from custom_asmr_srt_stack.srt import format_srt, parse_srt
 from custom_asmr_srt_stack.translation import export_translation_json, parse_translated_texts
@@ -164,7 +164,7 @@ def handle_api_request(
             master = MasterDocument.from_json(payload.get("master"))
             return json_response(
                 HTTPStatus.OK,
-                save_review_case_reference_response(Path(case_index_path), case_id=case_id, master=master),
+                save_review_case_reference(Path(case_index_path), case_id=case_id, master=master),
             )
 
         return json_response(HTTPStatus.NOT_FOUND, {"error": "unknown API route"})
@@ -268,32 +268,6 @@ def load_review_case_set_response(path: Path) -> dict[str, Any]:
     response["case_dir"] = str(case_index_path.parent)
     response["items"] = normalized_items
     return response
-
-
-def save_review_case_reference_response(case_index_path: Path, *, case_id: str, master: MasterDocument) -> dict[str, Any]:
-    resolved_index_path = review_case_index_path(case_index_path)
-    case_index = read_review_case_index(resolved_index_path)
-    raw_items = case_index.get("items")
-    if not isinstance(raw_items, list):
-        raise ValueError("review case index items must be an array")
-    for index, raw_item in enumerate(raw_items):
-        item = require_mapping(raw_item, f"review case item {index}")
-        if item.get("id") != case_id:
-            continue
-        reference = require_string(item.get("reference"), f"review case item {index}.reference")
-        reference_path = review_case_item_path(resolved_index_path, reference, "reference")
-        reference_path.write_text(json.dumps(master.to_json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        item["segments"] = len(master.segments)
-        item["review_count"] = sum(1 for segment in master.segments if segment.needs_review)
-        resolved_index_path.write_text(json.dumps(case_index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        return {
-            "ok": True,
-            "case_id": case_id,
-            "reference": str(reference_path),
-            "segments": item["segments"],
-            "review_count": item["review_count"],
-        }
-    raise ValueError(f"review case id is missing: {case_id}")
 
 
 def review_pack_index_path(path: Path) -> Path:

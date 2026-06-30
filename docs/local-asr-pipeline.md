@@ -683,6 +683,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
    - `casrt slice-case`는 긴 원본 audio와 SRT/master에서 matching WAV/master eval case를 자르고 timestamp를 0 기준으로 rebase한다. 경계에서 잘린 segment는 `needs_review=true`로 표시한다.
    - `casrt prepare-review-cases`는 여러 slice plan을 한 번에 처리해 `audio-map.json`, `case-index.json`, `audio/*.wav`, `references/*.master.json`을 만들고, 모든 case에 candidate가 있으면 `eval-manifest.json`도 만든다.
    - `casrt review-case-status`는 준비된 `case-index.json`에서 audio/reference/candidate 파일 존재 여부, 실제 segment/review count, stale index count, 남은 reference `needs_review` case를 다시 계산한다. 모델 승격 전에는 `--fail-on-issues --fail-on-review`로 운영 gate를 걸 수 있지만, human-reviewed 여부 자체는 추정하지 않는다.
+   - `casrt save-review-case-reference`는 WebUI 없이도 편집한 단일 SRT/master를 prepared case reference에 저장하고 `case-index.json` count를 갱신한다. Reference authority는 바꾸지 않는다.
    - `casrt freeze-case-references`는 사람이 검수한 prepared reference들을 batch로 stable id와 `needs_review=false` 상태로 고정하고 새 case set을 만든다. 실검수 여부를 자동 판정하지 않으므로 pseudo-gold smoke에는 `reference_type=pseudo-gold`를 사용한다.
    - `casrt build-eval-manifest`는 candidate가 있는 `case-index.json`에서 `custom-asmr-eval-manifest-v1`을 다시 만든다. 사람이 reference를 수정한 뒤에는 `--reference-type human-reviewed --fail-on-review`로 manifest를 만들고, 이어서 `eval-manifest --require-reference-type human-reviewed`로 품질 gate를 실행한다.
    - 2026-06-30 실데이터 smoke: `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/uploads/01.淫魔＆魔女との遭遇.wav`와 `eval-01-full-stable-ts.srt`에서 0~60000ms를 잘라 `/tmp/casrt-quality.Q5OdDf/slice-case-smoke/01-front60.wav`와 `/tmp/casrt-quality.Q5OdDf/slice-case-smoke/01-front60.master.json`을 생성했다. Result: duration 60000ms, segments 14, review_count 1.
@@ -698,6 +699,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
      - case별 segments/review_count: 01 `10/2`, 02 `10/1`, 03 `11/2`, 04 `12/2`, 05 `10/2`, 06 `11/2`, 07 `10/2`, 08 `8/2`.
      - `review-case-status --fail-on-review`는 report 출력 후 expected failure로 `review_count=15`를 반환했다.
      - 2026-07-01 진행률 field smoke: output `/tmp/casrt-review-progress-status.json`, `reference_review_count=15`, `reference_review_case_count=8`, `reference_review_clear_case_count=0`.
+     - 2026-07-01 `save-review-case-reference` 복사본 smoke: copied case set `/tmp/casrt-save-review-case-smoke.c7G3HG/cases`, command saved `01-front120-existing-srt` reference to itself, result `segments=10`, `review_count=2`; follow-up status stayed `reference_review_count=15`, `case_issue_count=0`.
      - 판단: 모델 승격용 gold가 아니라, 사람이 WebUI에서 audio/reference를 열어 검수하고 `freeze-case-references --reference-type human-reviewed`로 올릴 시작점이다.
    - `/data/uploads`, `/data/outputs`에서 30초~2분 단위 reference case를 늘릴 때는 `custom-asmr-case-slice-plan-v1` plan으로 재현 가능하게 기록한다.
    - 사람이 검수한 단일 파일은 `casrt freeze-reference`, prepared case set은 `casrt freeze-case-references`로 stable id와 `needs_review=false`를 고정한다.

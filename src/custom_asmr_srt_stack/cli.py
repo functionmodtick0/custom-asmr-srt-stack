@@ -19,6 +19,7 @@ from custom_asmr_srt_stack.case_batch import (
     freeze_case_references as freeze_case_references_batch,
     prepare_review_cases,
     review_case_status,
+    save_review_case_reference,
 )
 from custom_asmr_srt_stack.case_slicing import slice_master_document
 from custom_asmr_srt_stack.channel_attribution import (
@@ -314,6 +315,16 @@ def review_case_status_command(args: argparse.Namespace) -> None:
         )
     if args.fail_on_review and report["reference_review_count"] > 0:
         raise ValueError(f"review case status failed: review_count={report['reference_review_count']}")
+
+
+def save_review_case_reference_command(args: argparse.Namespace) -> None:
+    master = load_transcript_document(args.input, source_language=args.source_language)
+    report = save_review_case_reference(args.case_index, case_id=args.case_id, master=master)
+    emit(
+        args,
+        report,
+        f"review case reference saved: {report['case_id']} segments={report['segments']} review={report['review_count']}",
+    )
 
 
 def freeze_case_references(args: argparse.Namespace) -> None:
@@ -1026,6 +1037,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Return a failing exit code after emitting the report if reference segments still need review.",
     )
     review_case_status_parser.set_defaults(func=review_case_status_command)
+
+    save_review_case_reference_parser = subcommands.add_parser(
+        "save-review-case-reference",
+        parents=[output_parent],
+        help="Replace one prepared review case reference and update case-index counts.",
+    )
+    save_review_case_reference_parser.add_argument("case_index", type=Path)
+    save_review_case_reference_parser.add_argument("case_id")
+    save_review_case_reference_parser.add_argument("input", type=Path)
+    save_review_case_reference_parser.add_argument("--source-language", default="ja")
+    save_review_case_reference_parser.set_defaults(func=save_review_case_reference_command)
 
     freeze_case_references_parser = subcommands.add_parser(
         "freeze-case-references",

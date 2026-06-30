@@ -342,6 +342,21 @@ uv run casrt review-case-status cases/case-index.json --fail-on-issues --fail-on
 - `--fail-on-review`는 reference에 `needs_review=true`가 남아 있으면 report 출력/저장 후 실패한다.
 - 이 명령도 human-reviewed 여부를 추정하지 않는다. `reference_type`은 index에 기록된 값을 집계할 뿐이며, 모델 승격 평가는 여전히 `eval-manifest --require-reference-type human-reviewed`가 담당한다.
 
+편집한 단일 case reference를 저장하고 `case-index.json` count를 갱신할 때는 `save-review-case-reference`를 사용한다.
+
+```bash
+uv run casrt save-review-case-reference cases/case-index.json case-id edited.master.json --json
+```
+
+동작:
+
+- 입력은 `custom-asmr-review-case-set-v1` `case-index.json`, case id, SRT 또는 master JSON transcript다.
+- 해당 case의 reference file을 입력 transcript로 교체한다.
+- `case-index.json` item의 `segments`와 `review_count`를 새 reference 기준으로 갱신한다.
+- output format은 `custom-asmr-review-case-reference-save-v1`이다.
+- 기존 reference file이 없거나 case id가 없으면 실패하며, 새 reference path를 조용히 만들지 않는다.
+- 이 명령은 `reference_type`을 변경하거나 human-reviewed 승격을 판정하지 않는다.
+
 사람이 검수한 reference들을 batch로 고정할 때는 `freeze-case-references`를 사용한다.
 
 ```bash
