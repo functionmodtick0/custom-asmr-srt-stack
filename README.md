@@ -477,7 +477,7 @@ uv run casrt review-effort eval-suite.json --json -o review-effort.json
 uv run casrt review-pack review-effort.json --audio-map audio-map.json -o review-pack --json
 ```
 
-`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다.
+`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다. `review-effort`의 priority 순서와 score/rank는 pack index에도 보존됩니다.
 
 ## 테스트
 

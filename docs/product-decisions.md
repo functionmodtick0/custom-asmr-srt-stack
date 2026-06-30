@@ -154,7 +154,7 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 - `review_effort`: practical text mismatch, channel mismatch, 500ms 초과 timing mismatch, missing reference, extra candidate를 합친 사람이 실제로 고쳐야 하는 구간 수
 - `review_effort.items` export: 평가 report에서 `custom-asmr-review-effort-v1` 수정 큐 JSON을 생성해 사람이 볼 다음 검수/개선 후보를 보존한다. Export queue는 `priority_score` 내림차순으로 정렬해 missing/extra/text/timing/channel 실패를 큰 것부터 듣게 한다.
 - `compare-evals`: 여러 eval report를 `custom-asmr-eval-comparison-v1` 비교표로 정렬해 다음 후보 선택을 돕는다. 이 명령은 모델/heuristic 자동 승격을 하지 않는다.
-- `review-pack`: 수정 큐와 원본 audio를 결합해 `custom-asmr-review-pack-v1` index와 WAV clips를 만들고, human-reviewed gold 제작을 빠르게 한다.
+- `review-pack`: 수정 큐와 원본 audio를 결합해 `custom-asmr-review-pack-v1` index와 WAV clips를 만들고, priority queue 순서와 score/rank를 보존해 human-reviewed gold 제작을 빠르게 한다.
 - `attribute-channels`: 기존 SRT/master transcript와 stereo audio를 받아 `MIX` speech segment에만 L/R energy channel attribution을 적용한다. 기존 text/timing은 변경하지 않는다.
 - `slice-case`: 긴 원본 audio와 SRT/master에서 matching WAV/master case를 만들고, 경계에 걸쳐 잘린 segment를 `needs_review=true`로 표시해 human-reviewed gold 제작을 돕는다.
 - `review-case-status`: `case-index.json`에서 준비된 case set의 파일 존재 여부, stale segment/review count, 남은 reference `needs_review` 수를 실제 파일 기준으로 다시 계산한다. 이 명령은 검수 완료를 자동 판정하지 않고, human-reviewed 승격 판단은 manifest의 `reference_type` gate가 담당한다.

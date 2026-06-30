@@ -545,6 +545,7 @@ uv run casrt eval-manifest gold.json \
   - stable-ts CLI attributed 8dB quiet-side pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-cli-attributed-quiet8`, clips 64개.
   - stable-ts CLI attributed 10dB pack: `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-cli-attributed-th10`, clips 61개.
   - 여섯 pack 모두 `custom-asmr-review-pack-v1` index와 `clips/*.wav` 생성을 확인했다.
+  - priority queue pack: input `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-quiet8-review-effort-priority.json`, output `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-cli-attributed-quiet8-priority`, clips 64개. `priority_rank=1`이 `clips/000001__01-front120__text__seg_000003__seg_000004.wav`, `priority_rank=64`가 `clips/000064__04-front120__channel__seg_000002__seg_000002.wav`로 들어가 review-effort 우선순서와 score/rank가 pack index에 보존됨을 확인했다.
 
 case별 practical CER:
 

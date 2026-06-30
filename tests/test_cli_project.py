@@ -1526,18 +1526,32 @@ class ProjectCliTests(unittest.TestCase):
                     {
                         "format": "custom-asmr-review-effort-v1",
                         "source_report": "eval-suite.json",
-                        "item_count": 1,
-                        "reason_counts": {"text": 1},
+                        "item_count": 2,
+                        "reason_counts": {"text": 2},
                         "items": [
+                            {
+                                "case_id": "front-a",
+                                "reference_id": "seg_000010",
+                                "candidate_id": "seg_000010",
+                                "start_ms": 0,
+                                "end_ms": 1,
+                                "reasons": ["text"],
+                                "reference_text": "優先",
+                                "candidate_text": "優",
+                                "priority_score": 9000.0,
+                                "priority_rank": 1,
+                            },
                             {
                                 "case_id": "front-a",
                                 "reference_id": "seg_000001",
                                 "candidate_id": "seg_000001",
-                                "start_ms": 0,
+                                "start_ms": 1,
                                 "end_ms": 2,
                                 "reasons": ["text"],
-                                "reference_text": "ねえ",
-                                "candidate_text": "ね",
+                                "reference_text": "後",
+                                "candidate_text": "",
+                                "priority_score": 1000.0,
+                                "priority_rank": 2,
                             }
                         ],
                     }
@@ -1569,14 +1583,17 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(result, 0)
             report = json.loads(output)
             self.assertEqual(report["format"], "custom-asmr-review-pack-v1")
-            self.assertEqual(report["clip_count"], 1)
+            self.assertEqual(report["clip_count"], 2)
+            self.assertEqual([item["priority_rank"] for item in report["items"]], [1, 2])
+            self.assertEqual([item["reference_id"] for item in report["items"]], ["seg_000010", "seg_000001"])
             self.assertEqual(report["items"][0]["clip_start_ms"], 0)
             self.assertEqual(report["items"][0]["clip_end_ms"], 2)
             clip_path = pack_dir / report["items"][0]["clip_file"]
             self.assertTrue(clip_path.exists())
             self.assertEqual(analyze_wav(clip_path.read_bytes()).duration_ms, 2)
             index = json.loads((pack_dir / "index.json").read_text(encoding="utf-8"))
-            self.assertEqual(index["items"][0]["reference_text"], "ねえ")
+            self.assertEqual(index["items"][0]["priority_score"], 9000.0)
+            self.assertEqual(index["items"][0]["reference_text"], "優先")
 
     def test_review_pack_rejects_single_audio_for_multiple_cases(self):
         with tempfile.TemporaryDirectory() as tmpdir:
