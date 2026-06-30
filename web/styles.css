@@ -243,7 +243,7 @@ canvas {
   width: 100%;
   min-height: 84px;
   display: grid;
-  grid-template-columns: 120px 64px minmax(0, 1fr);
+  grid-template-columns: 156px 88px minmax(0, 1fr);
   gap: 14px;
   align-items: stretch;
   padding: 12px 18px;
@@ -261,7 +261,37 @@ canvas {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   font-size: 13px;
-  line-height: 1.5;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.time-input {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.time-input span {
+  color: var(--quiet);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.time-input input,
+.channel-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #101211;
+  color: var(--text);
+}
+
+.time-input input {
+  padding: 0 7px;
 }
 
 .segment-meta {
@@ -271,12 +301,8 @@ canvas {
   align-items: flex-start;
 }
 
-.channel {
-  min-width: 38px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 3px 8px;
-  text-align: center;
+.channel-select {
+  padding: 0 8px;
   color: var(--accent-strong);
   font-size: 12px;
   font-weight: 700;
@@ -287,13 +313,19 @@ canvas {
   font-size: 12px;
 }
 
-.review-flag {
-  border-radius: 999px;
-  background: rgba(255, 159, 143, 0.12);
-  color: var(--danger);
-  padding: 3px 8px;
+.review-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--quiet);
   font-size: 12px;
   font-weight: 700;
+}
+
+.review-toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
 }
 
 .segment-text {

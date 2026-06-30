@@ -69,14 +69,6 @@ function downloadText(filename, content, type = "text/plain") {
   URL.revokeObjectURL(url);
 }
 
-function msToClock(ms) {
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  const milliseconds = String(ms % 1000).padStart(3, "0");
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${milliseconds}`;
-}
-
 function loadModelSettings() {
   const raw = localStorage.getItem("customAsmrModelSettings");
   if (!raw) {
@@ -126,7 +118,7 @@ function getModelSettings() {
 }
 
 function isLocalAdapter(adapter) {
-  return adapter === "local-transformers" || adapter === "local-qwen-asr";
+  return ["local-transformers", "local-qwen-asr", "local-qwen-hf-asr", "local-cohere-asr"].includes(adapter);
 }
 
 function modelSettingsReady(model) {
@@ -146,12 +138,19 @@ function syncModelFormForAdapter() {
   els.endpointInput.disabled = isLocal;
   els.apiKeyInput.disabled = isLocal;
   els.endpointInput.placeholder = isLocal ? "사용하지 않음" : "http://127.0.0.1:8000/v1";
-  els.modelInput.placeholder =
-    els.adapterInput.value === "local-qwen-asr" ? "Qwen/Qwen3-ASR-1.7B" : isLocal ? "google/gemma-4-E4B-it" : "gemma-4-e4b";
+  els.modelInput.placeholder = modelPlaceholderForAdapter(els.adapterInput.value);
   if (isLocal) {
     els.endpointInput.value = "";
     els.apiKeyInput.value = "";
   }
+}
+
+function modelPlaceholderForAdapter(adapter) {
+  if (adapter === "local-qwen-asr") return "Qwen/Qwen3-ASR-1.7B";
+  if (adapter === "local-qwen-hf-asr") return "/models/qwen3-asr-1.7b-hf";
+  if (adapter === "local-cohere-asr") return "/models/cohere-transcribe-03-2026";
+  if (adapter === "local-transformers") return "google/gemma-4-E4B-it";
+  return "gemma-4-e4b";
 }
 
 function setMaster(master, label, projectId = state.projectId) {
@@ -265,23 +264,45 @@ function renderSegment(segment) {
 
   const time = document.createElement("div");
   time.className = "segment-time";
-  time.innerHTML = `<div>${msToClock(segment.start_ms)}</div><div>${msToClock(segment.end_ms)}</div>`;
+  time.append(
+    renderTimeInput(segment, "start_ms", "S"),
+    renderTimeInput(segment, "end_ms", "E"),
+  );
 
   const meta = document.createElement("div");
   meta.className = "segment-meta";
-  const channel = document.createElement("span");
-  channel.className = "channel";
-  channel.textContent = segment.channel;
+  const channel = document.createElement("select");
+  channel.className = "channel-select";
+  for (const value of ["L", "R", "MIX"]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    channel.append(option);
+  }
+  channel.value = ["L", "R", "MIX"].includes(segment.channel) ? segment.channel : "MIX";
+  channel.addEventListener("change", () => {
+    selectSegment(segment.id, false);
+    segment.channel = channel.value;
+    scheduleSaveMaster();
+    drawWaveform();
+  });
   const kind = document.createElement("span");
   kind.className = "kind";
   kind.textContent = segment.kind;
-  meta.append(channel, kind);
-  if (segment.needs_review) {
-    const review = document.createElement("span");
-    review.className = "review-flag";
-    review.textContent = "확인 필요";
-    meta.append(review);
-  }
+  const review = document.createElement("label");
+  review.className = "review-toggle";
+  const reviewInput = document.createElement("input");
+  reviewInput.type = "checkbox";
+  reviewInput.checked = Boolean(segment.needs_review);
+  reviewInput.addEventListener("change", () => {
+    selectSegment(segment.id, false);
+    segment.needs_review = reviewInput.checked;
+    scheduleSaveMaster();
+  });
+  const reviewText = document.createElement("span");
+  reviewText.textContent = "검수";
+  review.append(reviewInput, reviewText);
+  meta.append(channel, kind, review);
 
   const text = document.createElement("textarea");
   text.className = "segment-text";
@@ -293,7 +314,7 @@ function renderSegment(segment) {
   text.addEventListener("focus", () => selectSegment(segment.id, false));
 
   row.addEventListener("click", (event) => {
-    if (event.target !== text) {
+    if (!isInteractiveTarget(event.target)) {
       selectSegment(segment.id, true);
     }
   });
@@ -301,13 +322,55 @@ function renderSegment(segment) {
   return row;
 }
 
+function renderTimeInput(segment, key, labelText) {
+  const label = document.createElement("label");
+  label.className = "time-input";
+  const marker = document.createElement("span");
+  marker.textContent = labelText;
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = "0";
+  input.step = "1";
+  input.value = String(segment[key]);
+  input.addEventListener("change", () => commitSegmentTime(segment, key, input));
+  input.addEventListener("focus", () => selectSegment(segment.id, false));
+  label.append(marker, input);
+  return label;
+}
+
+function commitSegmentTime(segment, key, input) {
+  const nextValue = Number(input.value);
+  const nextStart = key === "start_ms" ? nextValue : segment.start_ms;
+  const nextEnd = key === "end_ms" ? nextValue : segment.end_ms;
+  if (!Number.isInteger(nextValue) || nextValue < 0 || nextEnd <= nextStart) {
+    input.value = String(segment[key]);
+    setStatus("시간 오류", "start/end ms를 확인하세요.", true);
+    return;
+  }
+  segment[key] = nextValue;
+  scheduleSaveMaster();
+  drawWaveform();
+}
+
+function isInteractiveTarget(target) {
+  return target instanceof Element && Boolean(target.closest("textarea, input, select, button, label"));
+}
+
 function selectSegment(id, play) {
   state.selectedId = id;
-  render();
+  syncSelectedSegment();
   drawWaveform();
   const segment = state.master?.segments.find((item) => item.id === id);
   if (play && segment && els.audioPlayer.src) {
     playSegment(segment);
+  }
+}
+
+function syncSelectedSegment() {
+  els.selectedLabel.textContent = state.selectedId ? state.selectedId : "선택 없음";
+  els.retranscribeButton.disabled = !state.selectedId;
+  for (const row of els.segmentList.querySelectorAll(".segment-row")) {
+    row.classList.toggle("is-selected", row.dataset.id === state.selectedId);
   }
 }
 

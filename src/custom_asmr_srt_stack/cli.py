@@ -662,6 +662,23 @@ def project_create_master(args: argparse.Namespace) -> None:
     )
 
 
+def project_save_master(args: argparse.Namespace) -> None:
+    store = store_from_args(args)
+    master = MasterDocument.from_json(json.loads(read_text(args.input)))
+    saved = store.save_master(args.project_id, master)
+    payload = {
+        "project_id": args.project_id,
+        "segment_count": len(master.segments),
+        "review_count": sum(1 for segment in master.segments if segment.needs_review),
+        "master": saved["master"],
+    }
+    emit(
+        args,
+        payload,
+        f"master saved: segments={payload['segment_count']} review={payload['review_count']}",
+    )
+
+
 def project_show(args: argparse.Namespace) -> None:
     store = store_from_args(args)
     summary = project_summary(store.load_project(args.project_id))
@@ -1140,6 +1157,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     create_master.add_argument("input", type=Path)
     create_master.set_defaults(func=project_create_master)
+
+    save_master = project_subcommands.add_parser(
+        "save-master",
+        parents=[project_parent, output_parent],
+        help="Replace a project master JSON.",
+    )
+    save_master.add_argument("project_id")
+    save_master.add_argument("input", type=Path)
+    save_master.set_defaults(func=project_save_master)
 
     show_project = project_subcommands.add_parser(
         "show",

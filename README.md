@@ -85,7 +85,7 @@ WebUI 기본 흐름:
 오디오/SRT/JSON 열기
 모델 설정 입력
 전사 시작
-segment 확인/수정
+segment text/start/end/channel/review flag 확인/수정
 선택 segment 재전사
 translation.json 내보내기
 translated.json 가져오기
@@ -272,6 +272,12 @@ uv run casrt project export-master PROJECT_ID -o master.json
 uv run casrt project export-translation PROJECT_ID -o translation.json
 uv run casrt project export-srt PROJECT_ID -o source.srt
 uv run casrt project export-srt PROJECT_ID --translated translated.json -o translated.srt
+```
+
+수정한 master JSON을 project에 다시 저장:
+
+```bash
+uv run casrt project save-master PROJECT_ID edited.master.json
 ```
 
 자동화용 JSON 출력과 저장 위치 지정:

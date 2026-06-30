@@ -103,6 +103,61 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(json.loads(translation_out.read_text(encoding="utf-8"))["items"][0]["text"], "ねえ")
             self.assertIn("ねえ", srt_out.read_text(encoding="utf-8"))
 
+    def test_save_master_replaces_project_master_json(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            project_root = root / "projects"
+            srt_path = root / "input.srt"
+            edited_master = root / "edited.master.json"
+            srt_out = root / "edited.srt"
+            srt_path.write_text("1\n00:00:01,000 --> 00:00:02,000\nねえ\n", encoding="utf-8")
+            _, output = run_cli(
+                [
+                    "project",
+                    "create-srt",
+                    "--project-root",
+                    str(project_root),
+                    "--json",
+                    str(srt_path),
+                ]
+            )
+            project_id = json.loads(output)["project_id"]
+            master = json.loads((project_root / project_id / "master.json").read_text(encoding="utf-8"))
+            master["segments"][0].update(
+                {
+                    "start_ms": 1100,
+                    "end_ms": 1900,
+                    "channel": "L",
+                    "text": "直した",
+                    "needs_review": True,
+                }
+            )
+            edited_master.write_text(json.dumps(master), encoding="utf-8")
+
+            result, save_output = run_cli(
+                [
+                    "project",
+                    "save-master",
+                    "--project-root",
+                    str(project_root),
+                    "--json",
+                    project_id,
+                    str(edited_master),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            saved = json.loads(save_output)
+            self.assertEqual(saved["segment_count"], 1)
+            self.assertEqual(saved["review_count"], 1)
+            self.assertEqual(saved["master"]["segments"][0]["channel"], "L")
+            _, show_output = run_cli(["project", "show", "--project-root", str(project_root), "--json", project_id])
+            self.assertEqual(json.loads(show_output)["review_count"], 1)
+            run_cli(["project", "export-srt", "--project-root", str(project_root), project_id, "-o", str(srt_out)])
+            exported_srt = srt_out.read_text(encoding="utf-8")
+            self.assertIn("00:00:01,100 --> 00:00:01,900", exported_srt)
+            self.assertIn("直した", exported_srt)
+
     def test_create_audio_and_analyze_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

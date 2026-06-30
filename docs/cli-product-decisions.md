@@ -25,6 +25,7 @@ CLI는 다음 WebUI 기능과 동등해야 한다.
 - 모델 설정 검증
 - 전체 project 전사
 - 선택 segment 재전사
+- 수정된 `master.json` 저장으로 segment text/start/end/channel/review flag 반영
 - `master.json` 내보내기
 - `translation.json` 내보내기
 - `translated.json`을 병합한 SRT 내보내기
@@ -568,6 +569,12 @@ project master JSON:
 
 ```bash
 uv run casrt project export-master PROJECT_ID -o master.json
+```
+
+수정한 project master JSON 저장:
+
+```bash
+uv run casrt project save-master PROJECT_ID edited.master.json
 ```
 
 번역 도구용 clean JSON:

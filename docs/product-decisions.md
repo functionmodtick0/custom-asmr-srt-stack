@@ -357,6 +357,7 @@ SRT export는 `master.json`의 segment timing과 원문 또는 번역 JSON의 te
 모델 설정 모달 열기
 선택 segment 재생
 선택 segment 텍스트 수정
+선택 segment start/end/channel/review flag 수정
 선택 segment 재전사
 JSON 내보내기
 translated JSON 가져오기
@@ -384,11 +385,12 @@ MVP 편집 기능은 다음이다.
 
 - segment를 클릭하면 해당 구간을 재생한다.
 - segment 텍스트를 수정한다.
+- segment start/end ms, channel, `needs_review`를 수정한다.
 - 선택 segment를 재전사한다.
 - JSON을 export/import한다.
 - SRT를 export한다.
 
-split/merge는 MVP 필수 요구사항으로 만들지 않는다. 실제 번역/자막 검토 과정에서 필요성이 확인될 때만 추가한다.
+split/merge는 MVP 필수 요구사항으로 만들지 않는다. Start/end 직접 수정과 재전사로 처리하지 못하는 실제 번역/자막 검토 문제가 확인될 때만 추가한다.
 
 ## Review Flag
 
@@ -452,7 +454,7 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - `CASRT_ALIGNER_COMMAND`가 설정된 경우, 앱은 고정 aligner command를 실행한다.
 - aligner command는 stdin으로 `{ audio_file, master }` JSON을 받고 stdout으로 `{ segments: [{ id, start_ms, end_ms }] }` JSON을 반환한다.
 - aligner output이 id를 누락하거나 중복하면 실패한다.
-- `needs_review`는 WebUI segment row에 표시한다.
+- `needs_review`는 WebUI segment row에서 표시하고 직접 토글할 수 있다.
 
 ## 열린 결정
 
