@@ -12,6 +12,11 @@ from pathlib import Path
 from typing import Any
 
 from custom_asmr_srt_stack.alignment import run_alignment_command
+from custom_asmr_srt_stack.audio import normalize_audio_to_wav, split_wav_channels
+from custom_asmr_srt_stack.channel_attribution import (
+    CHANNEL_ATTRIBUTION_THRESHOLD_DB,
+    attribute_master_channels_by_energy,
+)
 from custom_asmr_srt_stack.evaluation import (
     evaluate_manifest,
     evaluate_transcripts,
@@ -128,6 +133,36 @@ def align_transcript(args: argparse.Namespace) -> None:
         args,
         {"output": str(args.output), "segments": len(aligned.segments), "aligner": "CASRT_ALIGNER_COMMAND"},
         f"transcript aligned: {args.output} segments={len(aligned.segments)}",
+    )
+
+
+def attribute_channels(args: argparse.Namespace) -> None:
+    mime_type = mimetypes.guess_type(args.audio.name)[0]
+    normalized_audio = normalize_audio_to_wav(
+        args.audio.read_bytes(),
+        file_name=args.audio.name,
+        mime_type=mime_type,
+    )
+    _, channels = split_wav_channels(normalized_audio)
+    if not {"L", "R"}.issubset(channels):
+        raise ValueError("channel attribution requires stereo audio")
+    master = load_transcript_document(args.input, source_language=args.source_language)
+    report = attribute_master_channels_by_energy(
+        master,
+        left_audio=channels["L"],
+        right_audio=channels["R"],
+        threshold_db=args.threshold_db,
+    )
+    write_text(args.output, json.dumps(report.master.to_json(), ensure_ascii=False, indent=2) + "\n")
+    emit(
+        args,
+        {
+            "output": str(args.output),
+            "segments": report.segments,
+            "changed_segments": report.changed_segments,
+            "threshold_db": report.threshold_db,
+        },
+        f"channels attributed: {args.output} changed={report.changed_segments}/{report.segments}",
     )
 
 
@@ -545,6 +580,18 @@ def build_parser() -> argparse.ArgumentParser:
     align_transcript_parser.add_argument("-o", "--output", type=Path, required=True)
     align_transcript_parser.add_argument("--source-language", default="ja")
     align_transcript_parser.set_defaults(func=align_transcript)
+
+    attribute_channels_parser = subcommands.add_parser(
+        "attribute-channels",
+        parents=[output_parent],
+        help="Apply L/R energy channel attribution to an existing SRT/master transcript.",
+    )
+    attribute_channels_parser.add_argument("audio", type=Path)
+    attribute_channels_parser.add_argument("input", type=Path)
+    attribute_channels_parser.add_argument("-o", "--output", type=Path, required=True)
+    attribute_channels_parser.add_argument("--source-language", default="ja")
+    attribute_channels_parser.add_argument("--threshold-db", type=float, default=CHANNEL_ATTRIBUTION_THRESHOLD_DB)
+    attribute_channels_parser.set_defaults(func=attribute_channels)
 
     eval_transcript_parser = subcommands.add_parser("eval-transcript", help="Evaluate a candidate transcript.")
     eval_transcript_parser.add_argument("reference", type=Path)

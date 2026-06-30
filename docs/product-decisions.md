@@ -151,6 +151,7 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 - `review_effort`: practical text mismatch, channel mismatch, 500ms 초과 timing mismatch, missing reference, extra candidate를 합친 사람이 실제로 고쳐야 하는 구간 수
 - `review_effort.items` export: 평가 report에서 `custom-asmr-review-effort-v1` 수정 큐 JSON을 생성해 사람이 볼 다음 검수/개선 후보를 보존한다.
 - `review-pack`: 수정 큐와 원본 audio를 결합해 `custom-asmr-review-pack-v1` index와 WAV clips를 만들고, human-reviewed gold 제작을 빠르게 한다.
+- `attribute-channels`: 기존 SRT/master transcript와 stereo audio를 받아 `MIX` speech segment에만 L/R energy channel attribution을 적용한다. 기존 text/timing은 변경하지 않는다.
 
 구현 세부 값, 실험 결과, 다음 작업 계획은 [local-asr-pipeline.md](local-asr-pipeline.md)에 기록한다.
 
@@ -427,7 +428,7 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - `CASRT_QWEN_ASR_ALIGNER_MODEL_ID`는 고정 forced aligner 실험/내부 보정 경로다. `CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS`보다 짧은 aligned span은 clip bounds로 되돌리며, WebUI 옵션으로 노출하지 않는다. 2026-06-30 01/04/07 front120 guard80 평가에서는 time-aligned 500ms가 29.5% -> 36.1%, channel time-aligned가 73.1% -> 75.0%로 개선됐지만 practical CER 29.5%는 변하지 않아 단독 기본 승격하지 않는다.
 - `custom_asmr_srt_stack.qwen_aligner_worker`는 Qwen3-ForcedAligner를 generic aligner command로 쓰는 고정 내부 경로다. 이 경로는 기존 master text/channel/kind를 변경하지 않고 segment 내부 start/end만 재정렬한다. 실행은 local snapshot, offline env scrub, network-disabled guard, `qwen-asr==0.0.6` RECORD hash, per-file RECORD hash, import origin 검증 조건을 만족해야 한다. `CASRT_QWEN_ALIGNER_MIN_ALIGNED_DURATION_MS=80`과 `CASRT_QWEN_ALIGNER_MIN_COVERAGE_RATIO=0.5` guard로 비현실적으로 짧거나 원 segment 절반 미만으로 잘린 span만 원래 timing으로 유지한다. 이 fallback은 외부 aligner over-trim에 한정하며 text/channel 수정 실패를 숨기지 않는다.
 - `custom_asmr_srt_stack.qwen_hf_asr_worker`는 HF-native Qwen3-ASR worker다. repo id가 아니라 exact revision local snapshot directory를 받으며, offline env, local path-only, `local_files_only=True`, `trust_remote_code=False`, `use_safetensors=True`, network-disabled guard를 만족해야 한다. offline local worker env는 `PYTHONPATH`를 제거하고 `PYTHONNOUSERSITE=1`을 강제한다. timestamp를 반환하지 않으므로 chunk 전체 timing과 `needs_review=true`를 반환한다.
-- 로컬 ASR adapter는 L/R energy 차이로 channel attribution을 수행한다.
+- 로컬 ASR adapter는 L/R energy 차이로 channel attribution을 수행한다. 같은 구현을 `casrt attribute-channels` CLI에서 기존 SRT/master 후처리에도 사용한다.
 - VAD는 UI에서 선택하지 않는다.
 - VAD command는 stdin으로 `{ audio_file, audio_info }` JSON을 받고 stdout으로 `{ intervals: [{ start_ms, end_ms }] }` JSON을 반환한다.
 - VAD interval이 정렬되지 않았거나 겹치거나 audio duration을 넘으면 실패한다.

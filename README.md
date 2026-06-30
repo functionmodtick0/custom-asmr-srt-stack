@@ -131,7 +131,7 @@ uv run casrt model digest /path/to/model/snapshots/<commit> \
   --json
 ```
 
-실데이터 benchmark처럼 보안 검토가 필요한 로컬 Qwen 실행은 repo id 대신 Hugging Face cache의 고정 snapshot directory를 `--model-id`에 넣고 다음 env를 켭니다.
+외부 런타임/다운로드 도구 실행처럼 보안 검토가 필요한 로컬 Qwen benchmark는 repo id 대신 Hugging Face cache의 고정 snapshot directory를 `--model-id`에 넣고 다음 env를 켭니다.
 
 ```bash
 CASRT_LOCAL_WORKER_ENV_MODE=offline \
@@ -252,7 +252,7 @@ uv run casrt project transcribe PROJECT_ID \
   --model-id Qwen/Qwen3-ASR-1.7B
 ```
 
-전사는 `project analyze`가 저장한 L/R 또는 MIX 채널을 chunk 단위로 잘라 모델에 보낸 뒤, 결과 타임스탬프를 원본 timeline으로 되돌려 저장합니다. `local-transformers`, `local-qwen-asr`, `local-cohere-asr`는 로컬 ASMR 경로로서 L/R이 있어도 MIX-first로 전사하고, L/R은 channel attribution에만 사용합니다.
+전사는 `project analyze`가 저장한 L/R 또는 MIX 채널을 chunk 단위로 잘라 모델에 보낸 뒤, 결과 타임스탬프를 원본 timeline으로 되돌려 저장합니다. `local-transformers`, `local-qwen-asr`, `local-qwen-hf-asr`, `local-cohere-asr`는 로컬 ASMR 경로로서 L/R이 있어도 MIX-first로 전사하고, L/R은 channel attribution에만 사용합니다.
 
 로컬 ASR 경로는 MIX-first 전사, energy-based speech chunking, L/R energy 기반 channel attribution을 사용합니다. 세부 값과 실험 결과는 [docs/local-asr-pipeline.md](docs/local-asr-pipeline.md)에 기록합니다.
 
@@ -323,6 +323,14 @@ uv run casrt freeze-reference reviewed.srt -o refs/front120.master.json --json
 CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.qwen_aligner_worker --model-id /path/to/Qwen3-ForcedAligner-0.6B/snapshot' \
   uv run casrt align-transcript audio.wav candidate.master.json -o candidate.aligned.master.json --json
 ```
+
+기존 SRT 또는 master JSON에 L/R energy channel attribution 적용:
+
+```bash
+uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.attributed.master.json --json
+```
+
+기본 threshold는 6dB입니다. 2026-06-30 01/04/07 front120 pseudo-gold에서 stable-ts MIX-only 후보에 적용했을 때 practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 65.0%, MIX ratio 23.9%, review effort 66/74였습니다.
 
 전사 결과 평가:
 

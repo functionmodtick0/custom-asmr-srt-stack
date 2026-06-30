@@ -37,6 +37,17 @@ def write_mono_wav(path: Path) -> None:
         wav.writeframes(struct.pack("<hh", 100, 200))
 
 
+def write_stereo_samples(path: Path, samples: list[tuple[int, int]]) -> None:
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(2)
+        wav.setsampwidth(2)
+        wav.setframerate(1000)
+        frames = bytearray()
+        for left, right in samples:
+            frames.extend(struct.pack("<hh", left, right))
+        wav.writeframes(bytes(frames))
+
+
 class ProjectCliTests(unittest.TestCase):
     def test_create_srt_show_and_export_project_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -352,6 +363,58 @@ class ProjectCliTests(unittest.TestCase):
 
             self.assertEqual(result, 1)
             self.assertIn("CASRT_ALIGNER_COMMAND is required", error)
+
+    def test_attribute_channels_relabels_mix_speech_from_stereo_energy(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "stereo.wav"
+            source = root / "candidate.srt"
+            output_path = root / "attributed.master.json"
+            write_stereo_samples(audio, [(6000, 100)] * 1000 + [(100, 6000)] * 1000)
+            source.write_text(
+                "1\n00:00:00,000 --> 00:00:01,000\n左\n\n"
+                "2\n00:00:01,000 --> 00:00:02,000\n右\n",
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "attribute-channels",
+                    "--json",
+                    str(audio),
+                    str(source),
+                    "-o",
+                    str(output_path),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output)["changed_segments"], 2)
+            attributed = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual([segment["channel"] for segment in attributed["segments"]], ["L", "R"])
+
+    def test_attribute_channels_fails_for_mono_audio(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "mono.wav"
+            source = root / "candidate.srt"
+            output_path = root / "attributed.master.json"
+            write_mono_wav(audio)
+            source.write_text("1\n00:00:00,000 --> 00:00:00,001\n声\n", encoding="utf-8")
+
+            result, _, error = run_cli_with_stderr(
+                [
+                    "attribute-channels",
+                    str(audio),
+                    str(source),
+                    "-o",
+                    str(output_path),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertIn("requires stereo audio", error)
+            self.assertFalse(output_path.exists())
 
     def test_eval_transcript_quality_gate_fails_after_emitting_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:

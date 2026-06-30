@@ -12,14 +12,16 @@ from custom_asmr_srt_stack.audio import (
     slice_wav,
     speech_intervals_by_energy,
     split_wav_channels,
-    wav_rms_dbfs,
+)
+from custom_asmr_srt_stack.channel_attribution import (
+    CHANNEL_ATTRIBUTION_THRESHOLD_DB,
+    attribute_segments_by_energy,
 )
 from custom_asmr_srt_stack.models import MasterDocument, Segment, make_segment_id, require_int, require_mapping
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.transcription import ModelEndpoint, adapter_max_chunk_ms, transcribe_audio
 from custom_asmr_srt_stack.vad import run_vad_command
 
-CHANNEL_ATTRIBUTION_THRESHOLD_DB = 6.0
 QWEN_ENERGY_THRESHOLD_DBFS = -48.0
 QWEN_ENERGY_WINDOW_MS = 100
 QWEN_ENERGY_MIN_SILENCE_MS = 500
@@ -245,22 +247,13 @@ def apply_channel_attribution(
     ):
         return segments
 
-    left_audio = store.read_channel_audio(project_id, "L")
-    right_audio = store.read_channel_audio(project_id, "R")
-    attributed: list[Segment] = []
-    for segment in segments:
-        if segment.channel != "MIX" or segment.kind != "speech":
-            attributed.append(segment)
-            continue
-        left_db = wav_rms_dbfs(left_audio, start_ms=segment.start_ms, end_ms=segment.end_ms)
-        right_db = wav_rms_dbfs(right_audio, start_ms=segment.start_ms, end_ms=segment.end_ms)
-        if left_db - right_db >= CHANNEL_ATTRIBUTION_THRESHOLD_DB:
-            attributed.append(replace(segment, channel="L"))
-        elif right_db - left_db >= CHANNEL_ATTRIBUTION_THRESHOLD_DB:
-            attributed.append(replace(segment, channel="R"))
-        else:
-            attributed.append(segment)
-    return attributed
+    attributed, _ = attribute_segments_by_energy(
+        segments,
+        left_audio=store.read_channel_audio(project_id, "L"),
+        right_audio=store.read_channel_audio(project_id, "R"),
+        threshold_db=CHANNEL_ATTRIBUTION_THRESHOLD_DB,
+    )
+    return list(attributed)
 
 
 def split_interval(start_ms: int, end_ms: int, max_chunk_ms: int) -> tuple[dict[str, int], ...]:

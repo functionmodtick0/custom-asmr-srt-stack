@@ -223,7 +223,7 @@ CASRT_QWEN_ENERGY_MAX_CHUNK_MS
 
 ## Channel Attribution
 
-Qwen은 `MIX`를 전사한다. 생성된 speech segment에 대해 같은 시간 범위의 L/R RMS를 비교해 channel을 판정한다.
+Qwen은 `MIX`를 전사한다. 생성된 speech segment에 대해 같은 시간 범위의 L/R RMS를 비교해 channel을 판정한다. 같은 구현은 기존 SRT/master 후처리 CLI에서도 사용한다.
 
 현재 값:
 
@@ -238,6 +238,14 @@ L/R 확정 기준: 6.0 dB 이상 차이
 - 차이가 작으면 `channel: "MIX"`
 
 이 기준은 보수적이다. 채널을 틀리게 확정하는 것보다 `MIX`로 남기는 쪽을 우선한다.
+
+기존 transcript 후처리:
+
+```bash
+uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.attributed.master.json --json
+```
+
+이 명령은 `MIX` speech segment만 relabel하며, 이미 `L`/`R`인 segment와 speech가 아닌 segment는 바꾸지 않는다. mono audio나 L/R을 만들 수 없는 audio는 실패한다. `--threshold-db`는 benchmark 재현용 CLI 옵션이고 WebUI에는 노출하지 않는다.
 
 ## ForcedAligner 상태
 
@@ -579,6 +587,12 @@ stable-ts에 L/R energy attribution만 붙인 channel 진단:
 | 3dB | 16.1% | 56.7% | 68.2% | 22 | 17.9% |
 | 6dB | 16.1% | 56.7% | 65.0% | 20 | 23.9% |
 | 10dB | 16.1% | 56.7% | 76.9% | 13 | 58.2% |
+
+2026-06-30 `casrt attribute-channels` 재현:
+
+- 6dB default: input dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-mix`, output dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed`, report `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-3case-report.json`. Result: practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 65.0%, candidate MIX ratio 23.9%, review effort 66/74, channel edits 41.
+- 10dB sweep: output dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-th10`, report `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-th10-3case-report.json`. Result: practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 76.9%, candidate MIX ratio 58.2%, review effort 61/74, channel edits 28.
+- 결정: 기본값 6dB는 유지한다. 10dB는 wrong L/R를 줄여 review effort를 낮추지만 MIX ratio가 50% gate를 넘으므로 기본 승격하지 않는다.
 
 window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts baseline에서 실험했다. 100ms window, active threshold -60dBFS, margin 1~10dB, dominant fraction 35~75% sweep 기준 최고 channel time-aligned accuracy는 71.4%였고, segment 전체 RMS 10dB 방식의 76.9%보다 낮았다. 따라서 window 방식은 기본 구현으로 승격하지 않는다.
 

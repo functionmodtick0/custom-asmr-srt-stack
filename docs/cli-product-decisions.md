@@ -278,6 +278,22 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
 - text, channel, kind는 aligner contract상 변경하지 않는다.
 - 이 명령은 기존 후보를 평가 harness에 넣기 위한 도구이며 WebUI 옵션을 늘리지 않는다.
 
+### 기존 Transcript Channel Attribution
+
+```bash
+uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.attributed.master.json --json
+```
+
+동작:
+
+- 입력 transcript는 SRT 또는 `master.json`을 받는다.
+- audio는 stereo WAV 또는 ffmpeg로 decode 가능한 stereo audio를 받는다.
+- audio를 L/R/MIX mono WAV로 정규화한 뒤, `MIX` speech segment에만 L/R RMS 기반 channel attribution을 적용한다.
+- L/R 확정 기준 기본값은 6dB다. `--threshold-db`는 benchmark 재현용 CLI 옵션이며 WebUI에는 노출하지 않는다.
+- `L`, `R`로 이미 라벨링된 segment, speech가 아닌 segment, 작은 L/R 차이 segment는 변경하지 않는다.
+- mono audio나 L/R을 만들 수 없는 audio는 실패한다. 잘못된 channel 후처리를 조용히 통과시키지 않는다.
+- stdout JSON에는 `segments`, `changed_segments`, `threshold_db`, `output`을 포함한다.
+
 ### 평가
 
 ```bash
