@@ -168,6 +168,31 @@ class ProjectCliTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(json.loads(output)["adapter"], "local-cohere-asr")
 
+    def test_model_digest_outputs_snapshot_hash_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            snapshot = root / "snapshot"
+            snapshot.mkdir()
+            (snapshot / "config.json").write_text("{}", encoding="utf-8")
+            report_path = root / "digest.json"
+
+            result, output = run_cli(
+                [
+                    "model",
+                    "digest",
+                    str(snapshot),
+                    "-o",
+                    str(report_path),
+                    "--json",
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["snapshot_id"], "snapshot")
+            self.assertEqual(report["file_count"], 1)
+            self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["sha256"], report["sha256"])
+
     def test_eval_transcript_outputs_json_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

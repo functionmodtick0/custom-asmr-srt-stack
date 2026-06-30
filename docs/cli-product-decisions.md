@@ -123,6 +123,16 @@ uv run casrt model validate \
   --model-id /path/to/cohere-transcribe-03-2026/snapshots/<commit>
 ```
 
+보안 검토가 필요한 local snapshot은 benchmark 전에 digest report를 남긴다.
+
+```bash
+uv run casrt model digest /path/to/model/snapshots/<commit> \
+  -o model-digest.json \
+  --json
+```
+
+`model digest`는 local directory만 읽고 각 파일 SHA-256과 snapshot 전체 SHA-256을 기록한다. download/evaluation 결과 문서에는 exact revision path와 digest report path를 함께 적는다.
+
 ### 전체 전사
 
 ```bash
@@ -203,7 +213,7 @@ uv run casrt project transcribe PROJECT_ID \
 - worker는 `CohereAsrForConditionalGeneration`와 `CohereAsrProcessor`를 명시적으로 사용하고 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로 로드한다.
 - `--model-id`는 safetensors weight가 있는 existing local snapshot directory여야 한다. repo id나 cache miss fallback은 실패한다.
 - Cohere는 timestamp를 반환하지 않으므로 chunk bounds를 segment timing으로 사용하고, 기존 MIX-first energy chunking과 L/R channel attribution을 적용한다.
-- 실제 download/evaluation은 exact revision pin과 file digest 기록 전까지 실행하지 않는다.
+- 실제 download/evaluation은 exact revision pin과 `casrt model digest` report 기록 전까지 실행하지 않는다.
 
 고정 VAD command contract:
 

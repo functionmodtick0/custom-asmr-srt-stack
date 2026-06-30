@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from custom_asmr_srt_stack.evaluation import evaluate_manifest, evaluate_transcripts, load_transcript_document
+from custom_asmr_srt_stack.model_snapshot import snapshot_digest
 from custom_asmr_srt_stack.models import MasterDocument
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.server import run_server
@@ -282,6 +283,17 @@ def model_validate(args: argparse.Namespace) -> None:
     )
 
 
+def model_digest(args: argparse.Namespace) -> None:
+    digest = snapshot_digest(args.snapshot)
+    if args.output is not None:
+        write_text(args.output, json.dumps(digest, ensure_ascii=False, indent=2) + "\n")
+    emit(
+        args,
+        digest,
+        f"snapshot digest: files={digest['file_count']} sha256={digest['sha256']} snapshot={digest['snapshot_id']}",
+    )
+
+
 def vad_whisper_asmr_onnx(args: argparse.Namespace) -> None:
     from custom_asmr_srt_stack.audio import speech_intervals_by_energy
     from custom_asmr_srt_stack.models import require_mapping
@@ -437,6 +449,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Validate model endpoint settings.",
     )
     validate_model.set_defaults(func=model_validate)
+    digest_model = model_subcommands.add_parser(
+        "digest",
+        parents=[output_parent],
+        help="Hash a local model snapshot directory for reproducible benchmark records.",
+    )
+    digest_model.add_argument("snapshot", type=Path)
+    digest_model.add_argument("-o", "--output", type=Path)
+    digest_model.set_defaults(func=model_digest)
 
     vad = subcommands.add_parser("vad", help="Run internal VAD command helpers.")
     vad_subcommands = vad.add_subparsers(dest="vad_command", required=True)

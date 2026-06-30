@@ -120,7 +120,13 @@ CASRT_VAD_COMMAND='/tmp/casrt-vad-venv/bin/casrt vad whisper-asmr-onnx --model /
 
 Qwen3-ForcedAligner는 `CASRT_QWEN_ASR_ALIGNER_MODEL_ID`로 내부 실험할 수 있습니다. `CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS`보다 짧은 timestamp span은 clip bounds로 되돌리며, 이 값도 WebUI 옵션으로 노출하지 않습니다.
 
-`local-cohere-asr`는 Cohere Transcribe 03-2026을 위한 로컬 후보입니다. repo id가 아니라 exact revision의 local snapshot directory를 `--model-id`로 받아야 하며, worker는 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로만 로드합니다. 실제 모델 다운로드/평가는 revision pin과 file digest 기록 전까지 실행하지 않습니다.
+`local-cohere-asr`는 Cohere Transcribe 03-2026을 위한 로컬 후보입니다. repo id가 아니라 exact revision의 local snapshot directory를 `--model-id`로 받아야 하며, worker는 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로만 로드합니다. 실제 모델 다운로드/평가는 revision pin과 `casrt model digest` report 기록 전까지 실행하지 않습니다.
+
+```bash
+uv run casrt model digest /path/to/model/snapshots/<commit> \
+  -o model-digest.json \
+  --json
+```
 
 실데이터 benchmark처럼 보안 검토가 필요한 로컬 Qwen 실행은 repo id 대신 Hugging Face cache의 고정 snapshot directory를 `--model-id`에 넣고 다음 env를 켭니다.
 
