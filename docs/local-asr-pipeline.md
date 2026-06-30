@@ -379,6 +379,13 @@ practical CER는 현재 다음을 정규화한다.
 
 practical CER는 자막 실용 비교용이다. 원문 보존 품질은 strict CER를 같이 본다.
 
+2026-06-30 일본어 ASMR relaxed normalization 후보 실험:
+
+- 후보: current practical에 더해 장음 부호 `ー〜～` 제거, 소형 kana를 대형 kana로 치환, 또는 둘 다 적용.
+- 01/04/07 front120 pseudo-gold 기준 stable-ts CLI attributed quiet8: current 16.1%, 장음 제거 15.5%, 소형 kana 치환 16.1%, 둘 다 15.4%.
+- Qwen HF ASR Transformers main: current 29.4%, 장음 제거 27.5%, 소형 kana 치환 29.4%, 둘 다 27.5%.
+- 결정: 장음 제거는 ASMR 발화 길이 차이 노이즈를 줄이지만 실제 표기 차이까지 숨길 수 있다. 기존 품질 gate와 historical report의 의미를 바꾸지 않기 위해 current practical CER 기본값은 유지한다. 필요하면 별도 relaxed metric으로 추가하고 기본 gate로 쓰지는 않는다.
+
 manifest summary는 case별 평균이 아니라 전체 edit distance/reference characters와 전체 paired/boundary/comparable segment 수 기준으로 가중 집계한다. 짧은 clip과 긴 clip이 같은 비중을 갖지 않게 하기 위한 결정이다. 품질 threshold 판단은 segment split 차이에 덜 취약한 `timing_time_aligned`와 `channel_time_aligned`를 우선 사용한다.
 
 ## 10초 실데이터 실험
