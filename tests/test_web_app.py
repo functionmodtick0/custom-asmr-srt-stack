@@ -48,6 +48,8 @@ class WebAppBehaviorTests(unittest.TestCase):
                   querySelectorAll() { return []; },
                   removeAttribute() {},
                   load() {},
+                  play() {},
+                  pause() {},
                   close() {},
                   showModal() {},
                   click() {},
@@ -543,6 +545,8 @@ class WebAppBehaviorTests(unittest.TestCase):
                           left_dbfs: -37.536,
                           right_dbfs: -32.968,
                           delta_db: -4.568,
+                          review_clip_start_ms: 1200,
+                          review_clip_end_ms: 1700,
                           clip_url: "/api/review-pack/clip?x=1",
                         },
                       ],
@@ -589,8 +593,10 @@ class WebAppBehaviorTests(unittest.TestCase):
               assert.strictEqual(elements.get("applyEnergyChannelButton").textContent, "ENERGY R 적용");
               assert.strictEqual(
                 elements.get("statusText").textContent,
-                "front-a/seg_000002 · ENERGY R · L -37.5 dBFS · R -33.0 dBFS · delta -4.6 dB",
+                "front-a/seg_000002 · ENERGY R · L -37.5 dBFS · R -33.0 dBFS · delta -4.6 dB · focus 0:01.200 - 0:01.700",
               );
+              context.playSegment({ id: "seg_000002", start_ms: 1000, end_ms: 2000 });
+              assert.strictEqual(elements.get("audioPlayer").currentTime, 1.2);
 
               context.fetch = async (path, options) => {
                 assert.strictEqual(path, "/api/review-case/save-reference");

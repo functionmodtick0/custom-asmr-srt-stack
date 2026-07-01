@@ -537,11 +537,12 @@ function reviewPackChannelEvidenceText(item) {
 function reviewPackSourceHintText(item) {
   if (!reviewPackIsReferenceAuditItem(item)) return null;
   const reasonText = Array.isArray(item?.reasons) ? item.reasons.join(" / ") : "reference audit";
+  const focusText = reviewPackFocusRangeText(item);
   if (reviewPackIsReferenceChannelAuditItem(item)) {
     const verdict = item?.candidate_channel ? `ENERGY ${item.candidate_channel}` : "ENERGY -";
-    return `${item.case_id || "case -"}/${item.reference_id || "ref -"} · ${verdict} · ${reviewPackChannelEvidenceText(item)}`;
+    return `${item.case_id || "case -"}/${item.reference_id || "ref -"} · ${verdict} · ${reviewPackChannelEvidenceText(item)}${focusText ? ` · ${focusText}` : ""}`;
   }
-  return `${item.case_id || "case -"}/${item.reference_id || "ref -"} · ${reasonText} · ${reviewPackReferenceAuditEvidenceText(item)}`;
+  return `${item.case_id || "case -"}/${item.reference_id || "ref -"} · ${reasonText} · ${reviewPackReferenceAuditEvidenceText(item)}${focusText ? ` · ${focusText}` : ""}`;
 }
 
 function reviewPackReferenceAuditEvidenceText(item) {
@@ -599,6 +600,13 @@ function reviewPackSelectedOrDefaultSourceItem() {
 function reviewPackEnergyChannelSuggestion(item) {
   if (!reviewPackIsReferenceChannelAuditItem(item)) return null;
   return ["L", "R"].includes(item?.candidate_channel) ? item.candidate_channel : null;
+}
+
+function reviewPackFocusRange(item) {
+  const startMs = finiteNumber(item?.review_clip_start_ms);
+  const endMs = finiteNumber(item?.review_clip_end_ms);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
+  return { startMs, endMs };
 }
 
 function textBlock(className, value) {
@@ -841,11 +849,29 @@ function selectedSegment() {
 
 function playSegment(segment) {
   window.clearTimeout(state.stopTimer);
-  els.audioPlayer.currentTime = segment.start_ms / 1000;
+  const range = playbackRangeForSegment(segment);
+  els.audioPlayer.currentTime = range.startMs / 1000;
   els.audioPlayer.play();
   state.stopTimer = window.setTimeout(() => {
     els.audioPlayer.pause();
-  }, Math.max(0, segment.end_ms - segment.start_ms));
+  }, Math.max(0, range.endMs - range.startMs));
+}
+
+function playbackRangeForSegment(segment) {
+  const focusSegmentId = state.reviewCaseReference?.focusSegmentId || null;
+  const focusStartMs = state.reviewCaseReference?.focusStartMs;
+  const focusEndMs = state.reviewCaseReference?.focusEndMs;
+  if (
+    segment?.id === focusSegmentId &&
+    Number.isFinite(focusStartMs) &&
+    Number.isFinite(focusEndMs) &&
+    focusEndMs > focusStartMs &&
+    focusStartMs >= segment.start_ms &&
+    focusEndMs <= segment.end_ms
+  ) {
+    return { startMs: focusStartMs, endMs: focusEndMs };
+  }
+  return { startMs: segment.start_ms, endMs: segment.end_ms };
 }
 
 function drawWaveform() {
@@ -1088,6 +1114,7 @@ function loadReviewCaseItem(index, selectedSegmentId = null, secondarySegmentId 
   state.audioBuffer = null;
   state.reviewPack = null;
   state.reviewPackSelectedIndex = null;
+  const focusRange = reviewPackFocusRange(sourceReviewItem);
   state.reviewCaseReference = {
     caseIndexPath: caseSet.case_index_path,
     caseId: item.id,
@@ -1095,6 +1122,9 @@ function loadReviewCaseItem(index, selectedSegmentId = null, secondarySegmentId 
     secondarySegmentId,
     energyChannel: reviewPackEnergyChannelSuggestion(sourceReviewItem),
     energyChannelSegmentId: sourceReviewItem?.reference_id || null,
+    focusSegmentId: sourceReviewItem?.reference_id || null,
+    focusStartMs: focusRange?.startMs ?? null,
+    focusEndMs: focusRange?.endMs ?? null,
   };
   render();
   drawWaveform();
