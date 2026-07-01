@@ -1218,6 +1218,7 @@ def vad_compare_coverage(args: argparse.Namespace) -> None:
             f"missed_ms={best['missed_reference_duration_ms']}"
         ),
     )
+    enforce_vad_coverage_gate(report, args)
 
 
 def annotate_vad_coverage_gates(report: dict[str, Any], args: argparse.Namespace) -> None:
@@ -1236,6 +1237,17 @@ def annotate_vad_coverage_gates(report: dict[str, Any], args: argparse.Namespace
             )
         item["gate_passed"] = not gate_failures
         item["gate_failures"] = gate_failures
+
+
+def enforce_vad_coverage_gate(report: dict[str, Any], args: argparse.Namespace) -> None:
+    if not getattr(args, "fail_on_gate", False):
+        return
+    if "quality_gate" not in report:
+        raise ValueError("--fail-on-gate requires at least one VAD coverage gate option")
+    failures = [item for item in report["items"] if not item.get("gate_passed", True)]
+    if failures:
+        labels = ", ".join(str(item["label"]) for item in failures)
+        raise ValueError(f"VAD coverage gate failed for {len(failures)} report(s): {labels}")
 
 
 def add_vad_energy_coverage_args(parser: argparse.ArgumentParser) -> None:
@@ -1798,6 +1810,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-detected-interval-ms",
         type=int,
         help="Mark candidates with a detected chunk longer than this as gate failures.",
+    )
+    vad_compare_coverage_parser.add_argument(
+        "--fail-on-gate",
+        action="store_true",
+        help="Exit with failure after writing output if any VAD coverage gate fails.",
     )
     vad_compare_coverage_parser.set_defaults(func=vad_compare_coverage)
 

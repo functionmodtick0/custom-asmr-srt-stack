@@ -555,6 +555,125 @@ class ProjectCliTests(unittest.TestCase):
                 "low-miss",
             )
 
+    def test_vad_compare_coverage_can_fail_on_chunk_gate(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            long_chunk = root / "full-audio.json"
+            short_chunk = root / "chunked.json"
+            comparison_path = root / "comparison.json"
+            long_chunk.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-vad-coverage-v1",
+                        "source": "full-audio",
+                        "audio_duration_ms": 120000,
+                        "reference_segment_count": 1,
+                        "reference_interval_count": 1,
+                        "detected_interval_count": 1,
+                        "detected_max_interval_ms": 120000,
+                        "detected_mean_interval_ms": 120000,
+                        "reference_speech_duration_ms": 120000,
+                        "detected_speech_duration_ms": 120000,
+                        "overlap_duration_ms": 120000,
+                        "missed_reference_duration_ms": 0,
+                        "extra_detected_duration_ms": 0,
+                        "missed_reference_intervals": [],
+                        "extra_detected_intervals": [],
+                        "reference_recall": 1.0,
+                        "detected_precision": 1.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            short_chunk.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-vad-coverage-v1",
+                        "source": "chunked",
+                        "audio_duration_ms": 120000,
+                        "reference_segment_count": 1,
+                        "reference_interval_count": 1,
+                        "detected_interval_count": 4,
+                        "detected_max_interval_ms": 30000,
+                        "detected_mean_interval_ms": 29500,
+                        "reference_speech_duration_ms": 120000,
+                        "detected_speech_duration_ms": 118000,
+                        "overlap_duration_ms": 118000,
+                        "missed_reference_duration_ms": 2000,
+                        "extra_detected_duration_ms": 0,
+                        "missed_reference_intervals": [{"start_ms": 118000, "end_ms": 120000}],
+                        "extra_detected_intervals": [],
+                        "reference_recall": 118000 / 120000,
+                        "detected_precision": 1.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "vad",
+                    "compare-coverage",
+                    "--json",
+                    "-o",
+                    str(comparison_path),
+                    "--max-detected-interval-ms",
+                    "60000",
+                    "--fail-on-gate",
+                    str(long_chunk),
+                    str(short_chunk),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            comparison = json.loads(output)
+            self.assertEqual(comparison["items"][0]["label"], "full-audio")
+            self.assertFalse(comparison["items"][0]["gate_passed"])
+            self.assertTrue(comparison["items"][1]["gate_passed"])
+            self.assertIn("VAD coverage gate failed for 1 report", error)
+            self.assertIn("full-audio", error)
+            self.assertEqual(
+                json.loads(comparison_path.read_text(encoding="utf-8"))["items"][0]["label"],
+                "full-audio",
+            )
+
+    def test_vad_compare_coverage_fail_on_gate_requires_gate_option(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            report_path = root / "coverage.json"
+            report_path.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-vad-coverage-v1",
+                        "source": "energy",
+                        "audio_duration_ms": 100,
+                        "reference_segment_count": 1,
+                        "reference_interval_count": 1,
+                        "detected_interval_count": 1,
+                        "detected_max_interval_ms": 50,
+                        "detected_mean_interval_ms": 50,
+                        "reference_speech_duration_ms": 100,
+                        "detected_speech_duration_ms": 50,
+                        "overlap_duration_ms": 50,
+                        "missed_reference_duration_ms": 50,
+                        "extra_detected_duration_ms": 0,
+                        "missed_reference_intervals": [{"start_ms": 50, "end_ms": 100}],
+                        "extra_detected_intervals": [],
+                        "reference_recall": 0.5,
+                        "detected_precision": 1.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                ["vad", "compare-coverage", "--json", "--fail-on-gate", str(report_path)]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(json.loads(output)["format"], "custom-asmr-vad-coverage-comparison-v1")
+            self.assertIn("--fail-on-gate requires", error)
+
     def test_eval_transcript_outputs_json_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
