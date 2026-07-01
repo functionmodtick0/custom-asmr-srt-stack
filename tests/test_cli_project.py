@@ -2056,6 +2056,90 @@ class ProjectCliTests(unittest.TestCase):
             self.assertIn("reference_channel_audit_item_count=1", error)
             self.assertIn("reference-channel-energy-mismatch", error)
 
+    def test_audit_review_case_channels_adds_short_review_clip_window_for_long_segments(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_dir = root / "audio"
+            references = root / "references"
+            audio_dir.mkdir()
+            references.mkdir()
+            audio = audio_dir / "front.wav"
+            write_stereo_samples(audio, [(6000, 100)] * 2000 + [(100, 6000)] * 8000)
+            master = MasterDocument(
+                source_language="ja",
+                source_file="front.wav",
+                duration_ms=10000,
+                segments=(Segment("seg_000001", 0, 10000, "L", "speech", "長い"),),
+            )
+            (references / "front.master.json").write_text(
+                json.dumps(master.to_json(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            case_index = root / "case-index.json"
+            review_effort_path = root / "channel-audit-review-effort.json"
+            pack_dir = root / "review-pack"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [
+                            {
+                                "id": "front",
+                                "audio": "audio/front.wav",
+                                "reference": "references/front.master.json",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "audit-review-case-channels",
+                    "--json",
+                    "--threshold-db",
+                    "3",
+                    "--quiet-channel-max-dbfs",
+                    "none",
+                    "--review-effort-output",
+                    str(review_effort_path),
+                    str(case_index),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            audit_item = report["cases"][0]["items"][0]
+            self.assertEqual(audit_item["status"], "mismatch")
+            self.assertEqual(audit_item["energy_channel"], "R")
+            self.assertEqual(audit_item["review_clip_end_ms"] - audit_item["review_clip_start_ms"], 5000)
+            self.assertLess(audit_item["review_clip_end_ms"] - audit_item["review_clip_start_ms"], 10000)
+            self.assertIn("review_clip_delta_db", audit_item)
+
+            review_effort = json.loads(review_effort_path.read_text(encoding="utf-8"))
+            review_item = review_effort["items"][0]
+            self.assertEqual(review_item["start_ms"], 0)
+            self.assertEqual(review_item["end_ms"], 10000)
+            self.assertEqual(review_item["review_clip_end_ms"] - review_item["review_clip_start_ms"], 5000)
+
+            pack_result, pack_output = run_cli(
+                [
+                    "review-pack",
+                    "--json",
+                    str(review_effort_path),
+                    "-o",
+                    str(pack_dir),
+                ]
+            )
+
+            self.assertEqual(pack_result, 0)
+            pack = json.loads(pack_output)
+            self.assertEqual(pack["items"][0]["start_ms"], 0)
+            self.assertEqual(pack["items"][0]["end_ms"], 10000)
+            self.assertLessEqual(pack["items"][0]["clip_end_ms"] - pack["items"][0]["clip_start_ms"], 6000)
+            self.assertLess(pack["items"][0]["clip_end_ms"] - pack["items"][0]["clip_start_ms"], 11000)
+
     def test_audit_candidate_channels_reports_energy_agreement_without_reference_labels_or_text(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -5502,6 +5586,46 @@ class ProjectCliTests(unittest.TestCase):
 
             self.assertEqual(result, 1)
             self.assertIn("output directory must be empty", error)
+
+    def test_review_pack_rejects_invalid_review_clip_bounds_before_output_side_effects(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "front-a.wav"
+            review_path = root / "review-effort.json"
+            pack_dir = root / "review-pack"
+            write_mono_wav(audio_path)
+            review_path.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-effort-v1",
+                        "items": [
+                            {
+                                "start_ms": 2,
+                                "end_ms": 8,
+                                "review_clip_start_ms": 1,
+                                "review_clip_end_ms": 6,
+                                "reasons": ["reference-channel-energy-mismatch"],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, _, error = run_cli_with_stderr(
+                [
+                    "review-pack",
+                    "--audio",
+                    str(audio_path),
+                    "-o",
+                    str(pack_dir),
+                    str(review_path),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertIn("review item review clip bounds must stay inside start_ms/end_ms", error)
+            self.assertFalse(pack_dir.exists())
 
     def test_review_case_pack_creates_audio_clips_from_reference_review_flags(self):
         with tempfile.TemporaryDirectory() as tmpdir:

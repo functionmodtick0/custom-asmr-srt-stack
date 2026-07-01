@@ -428,7 +428,7 @@ uv run casrt audit-review-case-channels cases/case-index.json \
   --review-effort-output cases/reference-channel-audit-review-effort.json
 ```
 
-`audit-review-case-channels`는 prepared reference의 L/R label을 stereo energy와 비교합니다. Output `custom-asmr-reference-channel-audit-suite-v1`은 segment id/time/channel, L/R dBFS, energy channel, match/mismatch/uncertain status만 저장하고 transcript text는 저장하지 않습니다. `--review-effort-output`은 mismatch/uncertain segment를 기존 `review-pack`에 넣을 수 있는 queue로 만듭니다. 2026-07-02 all8 pseudo-gold `threshold=2`, quiet gate off 기준 match ratio는 53.1%라, 현재 channel attribution 실패는 모델만의 문제가 아니라 reference channel 검수도 필요한 상태입니다.
+`audit-review-case-channels`는 prepared reference의 L/R label을 stereo energy와 비교합니다. Output `custom-asmr-reference-channel-audit-suite-v1`은 segment id/time/channel, L/R dBFS, energy channel, match/mismatch/uncertain status만 저장하고 transcript text는 저장하지 않습니다. `--review-effort-output`은 mismatch/uncertain segment를 기존 `review-pack`에 넣을 수 있는 queue로 만듭니다. 긴 segment는 원본 `start_ms/end_ms`를 보존하면서 최대 5초 `review_clip_start_ms/review_clip_end_ms` 증거 구간을 같이 저장해 사람이 channel evidence만 빠르게 들을 수 있게 합니다. 2026-07-02 all8 pseudo-gold `threshold=2`, quiet gate off 기준 match ratio는 53.1%라, 현재 channel attribution 실패는 모델만의 문제가 아니라 reference channel 검수도 필요한 상태입니다.
 
 ```bash
 uv run casrt audit-candidate-channels cases/eval-manifest.json \
@@ -677,7 +677,7 @@ uv run casrt review-pack review-effort.json \
   --json
 ```
 
-`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다. `review-effort`의 priority 순서와 score/rank, root `case_summaries`/`case_count`/`next_case_id`는 pack index에도 보존됩니다. `--source-case-index`를 주면 case-index의 `items[].audio`에서 case별 audio path를 자동으로 가져오고, WebUI에서 후보 실패 clip을 보다가 `case 열기`로 원 reference segment 편집 화면에 바로 들어갈 수 있습니다. `next_case_id`가 있으면 clip을 선택하지 않아도 `case 열기`가 해당 case의 첫 queue item으로 이동합니다. `review-effort` 안에 `source_case_index`가 이미 들어 있으면 이 옵션도 생략할 수 있습니다.
+`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다. `review-effort`의 priority 순서와 score/rank, root `case_summaries`/`case_count`/`next_case_id`는 pack index에도 보존됩니다. Item에 `review_clip_start_ms/review_clip_end_ms`가 있으면 clip WAV는 그 focus 구간과 context만 잘라 만들고, 원래 `start_ms/end_ms`는 source case 편집 위치로 유지합니다. `--source-case-index`를 주면 case-index의 `items[].audio`에서 case별 audio path를 자동으로 가져오고, WebUI에서 후보 실패 clip을 보다가 `case 열기`로 원 reference segment 편집 화면에 바로 들어갈 수 있습니다. `next_case_id`가 있으면 clip을 선택하지 않아도 `case 열기`가 해당 case의 첫 queue item으로 이동합니다. `review-effort` 안에 `source_case_index`가 이미 들어 있으면 이 옵션도 생략할 수 있습니다.
 
 생성된 pack은 WebUI에서도 열 수 있습니다.
 

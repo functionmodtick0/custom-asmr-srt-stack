@@ -27,6 +27,7 @@ def build_review_pack(
     items = review_effort_items(review_effort_report)
     if audio_file is not None:
         validate_single_audio_scope(items)
+    validate_review_pack_item_bounds(items)
     source_case_index_value = review_pack_source_case_index(review_effort_report, source_case_index)
     audio_by_case = load_audio_by_case(
         audio_file=audio_file,
@@ -49,8 +50,9 @@ def build_review_pack(
             audio_cache[audio_key] = (audio_bytes, info.duration_ms)
         audio_bytes, duration_ms = audio_cache[audio_key]
         start_ms, end_ms = item_bounds(item)
-        clip_start_ms = max(0, start_ms - context_ms)
-        clip_end_ms = min(duration_ms, end_ms + context_ms)
+        focus_start_ms, focus_end_ms = item_review_clip_bounds(item, fallback_start_ms=start_ms, fallback_end_ms=end_ms)
+        clip_start_ms = max(0, focus_start_ms - context_ms)
+        clip_end_ms = min(duration_ms, focus_end_ms + context_ms)
         if clip_end_ms <= clip_start_ms:
             raise ValueError(f"review item {index} selects an empty audio range")
         clip_file = review_clip_name(index, case_id, item)
@@ -235,6 +237,29 @@ def item_bounds(item: dict[str, Any]) -> tuple[int, int]:
         raise ValueError("review item start_ms and end_ms must be integers")
     if end_ms <= start_ms:
         raise ValueError("review item end_ms must be greater than start_ms")
+    return start_ms, end_ms
+
+
+def validate_review_pack_item_bounds(items: list[dict[str, Any]]) -> None:
+    for item in items:
+        start_ms, end_ms = item_bounds(item)
+        item_review_clip_bounds(item, fallback_start_ms=start_ms, fallback_end_ms=end_ms)
+
+
+def item_review_clip_bounds(
+    item: dict[str, Any],
+    *,
+    fallback_start_ms: int,
+    fallback_end_ms: int,
+) -> tuple[int, int]:
+    start_ms = item.get("review_clip_start_ms")
+    end_ms = item.get("review_clip_end_ms")
+    if start_ms is None and end_ms is None:
+        return fallback_start_ms, fallback_end_ms
+    if not isinstance(start_ms, int) or not isinstance(end_ms, int):
+        raise ValueError("review item review_clip_start_ms and review_clip_end_ms must both be integers")
+    if start_ms < fallback_start_ms or end_ms > fallback_end_ms or end_ms <= start_ms:
+        raise ValueError("review item review clip bounds must stay inside start_ms/end_ms")
     return start_ms, end_ms
 
 

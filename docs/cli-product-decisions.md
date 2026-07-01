@@ -434,7 +434,7 @@ uv run casrt audit-review-case-channels cases/case-index.json \
 - 각 L/R reference speech segment에 대해 stereo L/R RMS dBFS, delta, energy channel, match/mismatch/uncertain status를 저장한다.
 - Transcript text는 저장하지 않는다. Segment id/time/channel과 energy diagnostics만 저장한다.
 - `--threshold-db`와 `--quiet-channel-max-dbfs`는 CLI-only 실험값이다. WebUI 옵션으로 노출하지 않는다.
-- `--review-effort-output`을 지정하면 mismatch/uncertain segment를 기존 `review-pack`에 넣을 수 있는 `custom-asmr-review-effort-v1` queue로 저장한다.
+- `--review-effort-output`을 지정하면 mismatch/uncertain segment를 기존 `review-pack`에 넣을 수 있는 `custom-asmr-review-effort-v1` queue로 저장한다. 긴 channel audit item은 원본 `start_ms/end_ms`를 유지하고, 최대 5초 `review_clip_start_ms/review_clip_end_ms`와 해당 구간의 L/R dBFS/delta evidence를 추가한다.
 - `--fail-on-audit`은 channel audit review item이 남아 있으면 report 출력/저장 후 실패한다.
 - 이 명령은 reference를 수정하거나 energy channel을 정답으로 승격하지 않는다. Human-reviewed 승격 전 L/R label 검수 우선순위를 정하는 진단 도구다.
 
@@ -865,7 +865,7 @@ uv run casrt review-pack review-effort.json \
 - Review-effort 안에 `source_case_index`가 이미 있으면 `--audio`, `--audio-map`, `--source-case-index` 없이도 그 case index에서 audio를 추론할 수 있다.
 - audio map은 `custom-asmr-review-audio-map-v1` 또는 `{ "case_id": "audio.wav" }` object를 받는다.
 - output directory는 없거나 비어 있어야 한다. 기존 clip과 새 index가 섞이는 것을 막기 위해 non-empty directory에는 쓰지 않는다.
-- 각 item의 `start_ms/end_ms`에 기본 500ms context를 붙이고 audio duration 안으로 clamp해서 `clips/*.wav`를 만든다.
+- 각 item의 `start_ms/end_ms`에 기본 500ms context를 붙이고 audio duration 안으로 clamp해서 `clips/*.wav`를 만든다. Optional `review_clip_start_ms/review_clip_end_ms`가 있으면 WAV 생성에는 그 focus range를 사용하고, 원래 `start_ms/end_ms`는 source segment 편집 계약으로 보존한다. Focus range는 반드시 원래 item bounds 안에 있어야 하며, 잘못된 값이면 output directory를 만들기 전에 실패한다.
 - `index.json` format은 `custom-asmr-review-pack-v1`이다. 각 item은 원래 review reason/text/timing, priority score/rank, `clip_file`, `clip_start_ms`, `clip_end_ms`, `clip_context_ms`를 보존한다.
 - input report에 `case_summaries`, `case_count`, `next_case_id`가 있으면 pack root에도 보존한다. WebUI는 이 값을 사용해 review-pack header에서 case 수와 다음 검수 case를 표시할 수 있다.
 - `--source-case-index`를 지정하거나 input report에 `source_case_index`가 있으면 pack-level과 case/reference id가 있는 item에 `source_case_index`를 보존한다. WebUI는 이 값을 사용해 후보 실패 clip에서 source review case editor의 reference segment로 이동한다.

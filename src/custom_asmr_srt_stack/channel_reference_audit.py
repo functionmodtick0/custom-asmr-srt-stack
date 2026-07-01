@@ -17,6 +17,9 @@ from custom_asmr_srt_stack.models import MasterDocument, Segment
 REFERENCE_CHANNEL_AUDIT_FORMAT = "custom-asmr-reference-channel-audit-v1"
 REFERENCE_CHANNEL_AUDIT_SUITE_FORMAT = "custom-asmr-reference-channel-audit-suite-v1"
 REFERENCE_CHANNEL_REVIEW_EFFORT_FORMAT = "custom-asmr-review-effort-v1"
+REFERENCE_CHANNEL_REVIEW_CLIP_MAX_MS = 5000
+REFERENCE_CHANNEL_REVIEW_CLIP_WINDOW_MS = 1000
+REFERENCE_CHANNEL_REVIEW_CLIP_HOP_MS = 1000
 REFERENCE_CHANNEL_REVIEW_REASON_PRIORITY = {
     "reference-channel-energy-mismatch": 3500.0,
     "reference-channel-energy-uncertain": 2500.0,
@@ -154,11 +157,23 @@ def reference_channel_energy_item(
         status = "match"
     else:
         status = "mismatch"
+    evidence_window = reference_channel_review_clip_window(
+        segment,
+        left_audio=left_audio,
+        right_audio=right_audio,
+        energy_channel=energy_channel,
+        quiet_channel_max_dbfs=quiet_channel_max_dbfs,
+    )
     return {
         "segment_id": segment.id,
         "start_ms": segment.start_ms,
         "end_ms": segment.end_ms,
         "duration_ms": segment.end_ms - segment.start_ms,
+        "review_clip_start_ms": evidence_window["start_ms"],
+        "review_clip_end_ms": evidence_window["end_ms"],
+        "review_clip_left_dbfs": evidence_window["left_dbfs"],
+        "review_clip_right_dbfs": evidence_window["right_dbfs"],
+        "review_clip_delta_db": evidence_window["delta_db"],
         "reference_channel": segment.channel,
         "energy_channel": energy_channel,
         "status": status,
@@ -170,6 +185,102 @@ def reference_channel_energy_item(
         "quieter_dbfs": min(left_db, right_db),
         "needs_review": segment.needs_review,
     }
+
+
+def reference_channel_review_clip_window(
+    segment: Segment,
+    *,
+    left_audio: bytes,
+    right_audio: bytes,
+    energy_channel: str,
+    quiet_channel_max_dbfs: float | None,
+) -> dict[str, int | float]:
+    duration_ms = segment.end_ms - segment.start_ms
+    if duration_ms <= REFERENCE_CHANNEL_REVIEW_CLIP_MAX_MS:
+        return reference_channel_window_metrics(
+            segment.start_ms,
+            segment.end_ms,
+            left_audio=left_audio,
+            right_audio=right_audio,
+        )
+
+    probe_ms = min(REFERENCE_CHANNEL_REVIEW_CLIP_WINDOW_MS, duration_ms)
+    starts = list(range(segment.start_ms, segment.end_ms - probe_ms + 1, REFERENCE_CHANNEL_REVIEW_CLIP_HOP_MS))
+    last_start = segment.end_ms - probe_ms
+    if not starts or starts[-1] != last_start:
+        starts.append(last_start)
+
+    best_metrics = None
+    best_score = None
+    for start_ms in starts:
+        metrics = reference_channel_window_metrics(
+            start_ms,
+            start_ms + probe_ms,
+            left_audio=left_audio,
+            right_audio=right_audio,
+        )
+        score = reference_channel_evidence_score(
+            energy_channel,
+            left_db=float(metrics["left_dbfs"]),
+            right_db=float(metrics["right_dbfs"]),
+            delta_db=float(metrics["delta_db"]),
+            quiet_channel_max_dbfs=quiet_channel_max_dbfs,
+        )
+        if best_score is None or score > best_score:
+            best_score = score
+            best_metrics = metrics
+
+    assert best_metrics is not None
+    center_ms = (int(best_metrics["start_ms"]) + int(best_metrics["end_ms"])) // 2
+    clip_start_ms = center_ms - (REFERENCE_CHANNEL_REVIEW_CLIP_MAX_MS // 2)
+    clip_end_ms = clip_start_ms + REFERENCE_CHANNEL_REVIEW_CLIP_MAX_MS
+    if clip_start_ms < segment.start_ms:
+        clip_start_ms = segment.start_ms
+        clip_end_ms = clip_start_ms + REFERENCE_CHANNEL_REVIEW_CLIP_MAX_MS
+    if clip_end_ms > segment.end_ms:
+        clip_end_ms = segment.end_ms
+        clip_start_ms = clip_end_ms - REFERENCE_CHANNEL_REVIEW_CLIP_MAX_MS
+    return reference_channel_window_metrics(
+        clip_start_ms,
+        clip_end_ms,
+        left_audio=left_audio,
+        right_audio=right_audio,
+    )
+
+
+def reference_channel_window_metrics(
+    start_ms: int,
+    end_ms: int,
+    *,
+    left_audio: bytes,
+    right_audio: bytes,
+) -> dict[str, int | float]:
+    left_db = wav_rms_dbfs(left_audio, start_ms=start_ms, end_ms=end_ms)
+    right_db = wav_rms_dbfs(right_audio, start_ms=start_ms, end_ms=end_ms)
+    return {
+        "start_ms": start_ms,
+        "end_ms": end_ms,
+        "left_dbfs": left_db,
+        "right_dbfs": right_db,
+        "delta_db": left_db - right_db,
+    }
+
+
+def reference_channel_evidence_score(
+    energy_channel: str,
+    *,
+    left_db: float,
+    right_db: float,
+    delta_db: float,
+    quiet_channel_max_dbfs: float | None,
+) -> float:
+    if energy_channel == "L":
+        quiet_bonus = 100.0 if channel_is_quiet_enough(right_db, quiet_channel_max_dbfs) else 0.0
+        return quiet_bonus + delta_db
+    if energy_channel == "R":
+        quiet_bonus = 100.0 if channel_is_quiet_enough(left_db, quiet_channel_max_dbfs) else 0.0
+        return quiet_bonus - delta_db
+    return -abs(delta_db)
 
 
 def aggregate_reference_channel_audits(cases: list[dict[str, Any]]) -> dict[str, Any]:
@@ -296,6 +407,11 @@ def reference_channel_review_item(case_id: str, item: dict[str, Any]) -> dict[st
         "left_dbfs": item.get("left_dbfs"),
         "right_dbfs": item.get("right_dbfs"),
         "delta_db": item.get("delta_db"),
+        "review_clip_start_ms": item.get("review_clip_start_ms"),
+        "review_clip_end_ms": item.get("review_clip_end_ms"),
+        "review_clip_left_dbfs": item.get("review_clip_left_dbfs"),
+        "review_clip_right_dbfs": item.get("review_clip_right_dbfs"),
+        "review_clip_delta_db": item.get("review_clip_delta_db"),
     }
     result["priority_score"] = reference_channel_review_priority_score(result)
     return result
