@@ -992,6 +992,10 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["format"], "custom-asmr-review-case-status-v1")
             self.assertTrue(report["ok"])
             self.assertEqual(report["case_count"], 1)
+            self.assertEqual(report["candidate_case_count"], 0)
+            self.assertEqual(report["missing_candidate_case_count"], 1)
+            self.assertEqual(report["cases_missing_candidate"], ["front-a"])
+            self.assertEqual(report["next_missing_candidate_case_id"], "front-a")
             self.assertEqual(report["reference_type_counts"], {"pseudo-gold": 1})
             self.assertEqual(report["reference_review_count"], 1)
             self.assertEqual(report["reference_review_case_count"], 1)
@@ -1260,6 +1264,20 @@ class ProjectCliTests(unittest.TestCase):
             case_index = json.loads((output_dir / "case-index.json").read_text(encoding="utf-8"))
             self.assertEqual(case_index["items"][0]["candidate"], "candidates/front-a.master.json")
             self.assertEqual(case_index["items"][0]["candidate_id"], "local-candidate")
+
+            status_result, status_output = run_cli(
+                [
+                    "review-case-status",
+                    "--json",
+                    str(output_dir / "case-index.json"),
+                ]
+            )
+            self.assertEqual(status_result, 0)
+            status = json.loads(status_output)
+            self.assertEqual(status["candidate_case_count"], 1)
+            self.assertEqual(status["missing_candidate_case_count"], 0)
+            self.assertEqual(status["cases_missing_candidate"], [])
+            self.assertIsNone(status["next_missing_candidate_case_id"])
 
             manifest_result, manifest_output = run_cli(
                 [

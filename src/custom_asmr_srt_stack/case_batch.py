@@ -192,6 +192,7 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
     reference_review_count = 0
     reference_review_clear_case_count = 0
     candidate_case_count = 0
+    cases_missing_candidate: list[str] = []
     cases_needing_review: list[str] = []
     cases_with_issues: list[str] = []
 
@@ -211,6 +212,8 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
         reference_review_count += item["reference_review_count"]
         if item.get("candidate") is not None:
             candidate_case_count += 1
+        else:
+            cases_missing_candidate.append(item["id"])
         if item["reference_review_count"] > 0:
             cases_needing_review.append(item["id"])
         elif reference_loaded_without_issues(item):
@@ -223,6 +226,9 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
         "case_index": str(case_index_file),
         "case_count": len(items),
         "candidate_case_count": candidate_case_count,
+        "missing_candidate_case_count": len(cases_missing_candidate),
+        "cases_missing_candidate": cases_missing_candidate,
+        "next_missing_candidate_case_id": cases_missing_candidate[0] if cases_missing_candidate else None,
         "reference_type_counts": reference_type_counts,
         "missing_file_count": missing_file_count,
         "cases_with_issues": cases_with_issues,
