@@ -480,15 +480,43 @@ function reviewPackIsReferenceAuditItem(item) {
     && item.reasons.some((reason) => typeof reason === "string" && reason.startsWith("reference-"));
 }
 
+function reviewPackIsReferenceChannelAuditItem(item) {
+  return Array.isArray(item?.reasons)
+    && item.reasons.some((reason) => typeof reason === "string" && reason.startsWith("reference-channel-energy-"));
+}
+
 function reviewPackSecondaryLabel(item) {
+  if (reviewPackIsReferenceChannelAuditItem(item)) return "ENERGY";
   return reviewPackIsReferenceAuditItem(item) ? "REF2" : "CAND";
 }
 
 function reviewPackSecondaryText(item) {
+  if (reviewPackIsReferenceChannelAuditItem(item)) {
+    return reviewPackChannelEvidenceText(item);
+  }
   if (reviewPackIsReferenceAuditItem(item) && !item?.candidate_text) {
     return item?.candidate_id;
   }
   return item?.candidate_text;
+}
+
+function reviewPackChannelEvidenceText(item) {
+  const parts = [];
+  const left = formatDbfs(item?.left_dbfs);
+  const right = formatDbfs(item?.right_dbfs);
+  const delta = formatDb(item?.delta_db);
+  if (left) parts.push(`L ${left}`);
+  if (right) parts.push(`R ${right}`);
+  if (delta) parts.push(`delta ${delta}`);
+  return parts.join(" · ") || item?.candidate_text || item?.candidate_id;
+}
+
+function formatDbfs(value) {
+  return Number.isFinite(value) ? `${value.toFixed(1)} dBFS` : null;
+}
+
+function formatDb(value) {
+  return Number.isFinite(value) ? `${value.toFixed(1)} dB` : null;
 }
 
 function reviewPackSourceTarget(item) {

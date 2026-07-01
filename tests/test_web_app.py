@@ -248,19 +248,32 @@ class WebAppBehaviorTests(unittest.TestCase):
               candidate_text: "",
               reasons: ["reference-same-channel-overlap"],
             };
+            const channelAuditItem = {
+              ...referenceOnly,
+              candidate_id: null,
+              candidate_channel: "R",
+              candidate_text: "",
+              reasons: ["reference-channel-energy-mismatch"],
+              left_dbfs: -37.536,
+              right_dbfs: -32.968,
+              delta_db: -4.568,
+            };
 
             const referenceRow = context.renderReviewPackItem(referenceOnly, 0);
             const candidateRow = context.renderReviewPackItem(candidateItem, 1);
             const auditOverlapRow = context.renderReviewPackItem(auditOverlapItem, 2);
+            const channelAuditRow = context.renderReviewPackItem(channelAuditItem, 3);
             const referenceMeta = referenceRow.children[0];
             const referenceTexts = referenceRow.children[2];
             const candidateTexts = candidateRow.children[2];
             const auditOverlapTexts = auditOverlapRow.children[2];
+            const channelAuditTexts = channelAuditRow.children[2];
 
             assert.strictEqual(referenceMeta.children[3].textContent, "seg_000002");
             assert.strictEqual(context.reviewPackHasCandidate(referenceOnly), false);
             assert.strictEqual(context.reviewPackHasCandidate(candidateItem), true);
             assert.strictEqual(context.reviewPackHasCandidate(auditOverlapItem), true);
+            assert.strictEqual(context.reviewPackHasCandidate(channelAuditItem), true);
             assert.strictEqual(referenceTexts.children.length, 1);
             assert.strictEqual(referenceTexts.children[0].children[0].textContent, "REF L");
             assert.strictEqual(candidateTexts.children.length, 2);
@@ -268,6 +281,12 @@ class WebAppBehaviorTests(unittest.TestCase):
             assert.strictEqual(auditOverlapTexts.children.length, 2);
             assert.strictEqual(auditOverlapTexts.children[1].children[0].textContent, "REF2 L");
             assert.strictEqual(auditOverlapTexts.children[1].children[1].textContent, "seg_000002");
+            assert.strictEqual(channelAuditTexts.children.length, 2);
+            assert.strictEqual(channelAuditTexts.children[1].children[0].textContent, "ENERGY R");
+            assert.strictEqual(
+              channelAuditTexts.children[1].children[1].textContent,
+              "L -37.5 dBFS · R -33.0 dBFS · delta -4.6 dB",
+            );
         """,
         )
 
