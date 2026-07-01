@@ -258,22 +258,29 @@ class WebAppBehaviorTests(unittest.TestCase):
               right_dbfs: -32.968,
               delta_db: -4.568,
             };
+            const mergedChannelAuditItem = {
+              ...channelAuditItem,
+              reasons: ["reference-needs-review", "reference-channel-energy-mismatch"],
+            };
 
             const referenceRow = context.renderReviewPackItem(referenceOnly, 0);
             const candidateRow = context.renderReviewPackItem(candidateItem, 1);
             const auditOverlapRow = context.renderReviewPackItem(auditOverlapItem, 2);
             const channelAuditRow = context.renderReviewPackItem(channelAuditItem, 3);
+            const mergedChannelAuditRow = context.renderReviewPackItem(mergedChannelAuditItem, 4);
             const referenceMeta = referenceRow.children[0];
             const referenceTexts = referenceRow.children[2];
             const candidateTexts = candidateRow.children[2];
             const auditOverlapTexts = auditOverlapRow.children[2];
             const channelAuditTexts = channelAuditRow.children[2];
+            const mergedChannelAuditTexts = mergedChannelAuditRow.children[2];
 
             assert.strictEqual(referenceMeta.children[3].textContent, "seg_000002");
             assert.strictEqual(context.reviewPackHasCandidate(referenceOnly), false);
             assert.strictEqual(context.reviewPackHasCandidate(candidateItem), true);
             assert.strictEqual(context.reviewPackHasCandidate(auditOverlapItem), true);
             assert.strictEqual(context.reviewPackHasCandidate(channelAuditItem), true);
+            assert.strictEqual(context.reviewPackHasCandidate(mergedChannelAuditItem), true);
             assert.strictEqual(referenceTexts.children.length, 1);
             assert.strictEqual(referenceTexts.children[0].children[0].textContent, "REF L");
             assert.strictEqual(candidateTexts.children.length, 2);
@@ -285,6 +292,12 @@ class WebAppBehaviorTests(unittest.TestCase):
             assert.strictEqual(channelAuditTexts.children[1].children[0].textContent, "ENERGY R");
             assert.strictEqual(
               channelAuditTexts.children[1].children[1].textContent,
+              "L -37.5 dBFS · R -33.0 dBFS · delta -4.6 dB",
+            );
+            assert.strictEqual(mergedChannelAuditTexts.children.length, 2);
+            assert.strictEqual(mergedChannelAuditTexts.children[1].children[0].textContent, "ENERGY R");
+            assert.strictEqual(
+              mergedChannelAuditTexts.children[1].children[1].textContent,
               "L -37.5 dBFS · R -33.0 dBFS · delta -4.6 dB",
             );
         """,
@@ -408,7 +421,7 @@ class WebAppBehaviorTests(unittest.TestCase):
                           reference_id: "seg_000002",
                           start_ms: 1000,
                           end_ms: 2000,
-                          reasons: ["reference-channel-energy-mismatch"],
+                          reasons: ["reference-needs-review", "reference-channel-energy-mismatch"],
                           reference_channel: "L",
                           reference_text: "",
                           candidate_channel: "R",
