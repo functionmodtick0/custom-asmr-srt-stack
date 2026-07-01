@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from custom_asmr_srt_stack.audio import normalize_audio_to_wav, split_wav_channels
-from custom_asmr_srt_stack.channel_attribution import attribute_master_channels_by_energy
+from custom_asmr_srt_stack.channel_attribution import attribute_master_channels_by_energy, channel_diagnostics_summary
 from custom_asmr_srt_stack.evaluation import (
     EVAL_MANIFEST_FORMAT,
     compare_eval_reports,
@@ -66,6 +66,7 @@ def sweep_channel_attribution(
             setting_cases = []
             changed_segments = 0
             total_segments = 0
+            setting_diagnostics: list[dict[str, Any]] = []
 
             for case in cases:
                 case_id = case["id"]
@@ -91,6 +92,7 @@ def sweep_channel_attribution(
                 )
                 changed_segments += attributed.changed_segments
                 total_segments += attributed.segments
+                setting_diagnostics.extend(attributed.diagnostics)
                 candidate_relative = Path("candidates") / f"{safe_case_file_stem(case_id)}.master.json"
                 (setting_dir / candidate_relative).write_text(
                     json.dumps(attributed.master.to_json(), ensure_ascii=False, indent=2) + "\n",
@@ -134,6 +136,7 @@ def sweep_channel_attribution(
                     "reset_speech_channels_to_mix": reset_speech_channels_to_mix,
                     "changed_segments": changed_segments,
                     "total_segments": total_segments,
+                    **channel_diagnostics_summary(setting_diagnostics),
                     "eval_manifest": str(setting_manifest_file),
                     "eval_report": str(eval_report_file),
                 }

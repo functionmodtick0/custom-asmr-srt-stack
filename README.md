@@ -498,7 +498,7 @@ uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.att
 
 기본값은 L/R 차이 8dB 이상 및 quieter side -40dBFS 이하입니다. 2026-06-30 01/04/07 front120 pseudo-gold에서 stable-ts MIX-only 후보에 적용했을 때 practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 68.8%, MIX ratio 40.3%, review effort 64/74였습니다.
 
-튜닝/검수용으로는 `--diagnostics-output channel-diagnostics.json`을 추가해 segment별 L/R dBFS와 판정 이유를 저장할 수 있습니다.
+튜닝/검수용으로는 `--diagnostics-output channel-diagnostics.json`을 추가해 segment별 L/R dBFS, 판정 이유, reason/channel count summary를 저장할 수 있습니다.
 
 여러 threshold를 같은 eval manifest에서 비교:
 
@@ -514,7 +514,7 @@ uv run casrt sweep-channel-attribution eval-manifest.json \
   --json
 ```
 
-`sweep-channel-attribution`은 setting별 attributed candidates, eval reports, `comparison.json`을 생성합니다. 이미 L/R이 붙은 candidate를 threshold별로 공정하게 다시 채점할 때는 `--reset-speech-channels-to-mix`로 speech channel을 sweep copy 안에서만 MIX로 되돌립니다. `--product-gate` 또는 개별 gate 인자를 함께 넣으면 `comparison.json`과 `index.json`에 gate 결과를 주석으로 남깁니다. 이 명령은 WebUI 옵션을 늘리지 않는 CLI-only benchmark 도구이며 threshold를 자동 승격하지 않습니다.
+`sweep-channel-attribution`은 setting별 attributed candidates, eval reports, `comparison.json`을 생성합니다. 이미 L/R이 붙은 candidate를 threshold별로 공정하게 다시 채점할 때는 `--reset-speech-channels-to-mix`로 speech channel을 sweep copy 안에서만 MIX로 되돌립니다. `index.json`의 setting item은 `reason_counts`와 attributed channel counts를 보존해 threshold가 낮아서 wrong L/R을 만드는지, 높아서 MIX를 과하게 남기는지 확인하게 합니다. `--product-gate` 또는 개별 gate 인자를 함께 넣으면 `comparison.json`과 `index.json`에 gate 결과를 주석으로 남깁니다. 이 명령은 WebUI 옵션을 늘리지 않는 CLI-only benchmark 도구이며 threshold를 자동 승격하지 않습니다.
 
 전사 결과 평가:
 

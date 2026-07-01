@@ -129,3 +129,36 @@ def attribute_segment_channel_by_energy(
 
 def channel_is_quiet_enough(dbfs: float, quiet_channel_max_dbfs: float | None) -> bool:
     return quiet_channel_max_dbfs is None or dbfs <= quiet_channel_max_dbfs
+
+
+def channel_diagnostics_summary(diagnostics: tuple[dict[str, Any], ...] | list[dict[str, Any]]) -> dict[str, Any]:
+    reason_counts: dict[str, int] = {}
+    original_channel_counts: dict[str, int] = {}
+    attributed_channel_counts: dict[str, int] = {}
+    speech_segments = 0
+    mix_speech_segments = 0
+    changed_segments = 0
+    for diagnostic in diagnostics:
+        reason = str(diagnostic.get("reason") or "unknown")
+        original_channel = str(diagnostic.get("original_channel") or "unknown")
+        attributed_channel = str(diagnostic.get("attributed_channel") or "unknown")
+        reason_counts[reason] = reason_counts.get(reason, 0) + 1
+        original_channel_counts[original_channel] = original_channel_counts.get(original_channel, 0) + 1
+        attributed_channel_counts[attributed_channel] = attributed_channel_counts.get(attributed_channel, 0) + 1
+        if diagnostic.get("kind") == "speech":
+            speech_segments += 1
+            if original_channel == "MIX":
+                mix_speech_segments += 1
+        if original_channel != attributed_channel:
+            changed_segments += 1
+    segment_count = len(diagnostics)
+    return {
+        "segment_count": segment_count,
+        "speech_segments": speech_segments,
+        "mix_speech_segments": mix_speech_segments,
+        "changed_segments": changed_segments,
+        "changed_segment_ratio": None if segment_count == 0 else changed_segments / segment_count,
+        "reason_counts": dict(sorted(reason_counts.items())),
+        "original_channel_counts": dict(sorted(original_channel_counts.items())),
+        "attributed_channel_counts": dict(sorted(attributed_channel_counts.items())),
+    }

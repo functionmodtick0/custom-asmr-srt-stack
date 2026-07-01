@@ -588,10 +588,10 @@ uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.att
 - audio는 stereo WAV 또는 ffmpeg로 decode 가능한 stereo audio를 받는다.
 - audio를 L/R/MIX mono WAV로 정규화한 뒤, `MIX` speech segment에만 L/R RMS 기반 channel attribution을 적용한다.
 - L/R 확정 기준 기본값은 8dB 차이와 quieter side -40dBFS 이하 gate다. `--threshold-db`와 `--quiet-channel-max-dbfs`는 benchmark 재현용 CLI 옵션이며 WebUI에는 노출하지 않는다.
-- `--diagnostics-output`은 `custom-asmr-channel-diagnostics-v1` JSON을 쓴다. 각 segment의 original/attributed channel, L/R dBFS, delta, quieter side dBFS, decision reason을 담으며 WebUI 옵션으로 노출하지 않는다.
+- `--diagnostics-output`은 `custom-asmr-channel-diagnostics-v1` JSON을 쓴다. 각 segment의 original/attributed channel, L/R dBFS, delta, quieter side dBFS, decision reason을 담으며 WebUI 옵션으로 노출하지 않는다. stdout JSON과 diagnostics JSON은 `reason_counts`, original/attributed channel counts, speech/MIX speech segment count도 포함해 threshold 실패 원인을 빠르게 볼 수 있게 한다.
 - `L`, `R`로 이미 라벨링된 segment, speech가 아닌 segment, 작은 L/R 차이 segment는 변경하지 않는다.
 - mono audio나 L/R을 만들 수 없는 audio는 실패한다. 잘못된 channel 후처리를 조용히 통과시키지 않는다.
-- stdout JSON에는 `segments`, `changed_segments`, `threshold_db`, `quiet_channel_max_dbfs`, `output`, optional `diagnostics_output`을 포함한다.
+- stdout JSON에는 `segments`, `changed_segments`, `reason_counts`, channel count summary, `threshold_db`, `quiet_channel_max_dbfs`, `output`, optional `diagnostics_output`을 포함한다.
 
 여러 case에서 channel attribution threshold를 비교할 때는 `sweep-channel-attribution`을 사용한다.
 
@@ -614,6 +614,7 @@ uv run casrt sweep-channel-attribution eval-manifest.json \
 - audio/reference/candidate source file이 없으면 output directory를 만들기 전에 실패한다.
 - 각 threshold/quiet-side setting별로 attributed candidate master, generated eval manifest, eval report를 만든다.
 - output root에는 `custom-asmr-channel-attribution-sweep-v1` `index.json`과 `comparison.json`을 쓴다.
+- `index.json`의 setting item에는 changed segment 수와 함께 `reason_counts`, original/attributed channel counts, speech/MIX speech segment count를 보존한다. 이 값은 threshold가 낮아서 wrong L/R을 만드는지, 높아서 MIX를 과하게 남기는지 확인하기 위한 diagnostics다.
 - `--threshold-db`와 `--quiet-channel-max-dbfs`는 반복 가능하다. 지정하지 않으면 제품 기본값 8dB와 -40dBFS를 사용한다.
 - `--reset-speech-channels-to-mix`는 각 setting의 candidate copy에서 speech segment channel을 먼저 `MIX`로 되돌린 뒤 attribution을 적용한다. 이미 project workflow에서 L/R/MIX가 붙은 후보를 threshold별로 다시 비교할 때 사용하며, 원본 candidate는 수정하지 않는다.
 - setting manifest의 reference path는 setting directory 기준 상대경로로 저장해 relative manifest input도 같은 방식으로 재평가되게 한다.

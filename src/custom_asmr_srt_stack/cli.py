@@ -34,6 +34,7 @@ from custom_asmr_srt_stack.channel_attribution import (
     CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
     CHANNEL_ATTRIBUTION_THRESHOLD_DB,
     attribute_master_channels_by_energy,
+    channel_diagnostics_summary,
 )
 from custom_asmr_srt_stack.channel_sweep import sweep_channel_attribution
 from custom_asmr_srt_stack.evaluation import (
@@ -214,6 +215,7 @@ def attribute_channels(args: argparse.Namespace) -> None:
         quiet_channel_max_dbfs=args.quiet_channel_max_dbfs,
     )
     write_text(args.output, json.dumps(report.master.to_json(), ensure_ascii=False, indent=2) + "\n")
+    summary = channel_diagnostics_summary(report.diagnostics)
     diagnostics_output = None
     if args.diagnostics_output is not None:
         diagnostics_output = str(args.diagnostics_output)
@@ -228,6 +230,7 @@ def attribute_channels(args: argparse.Namespace) -> None:
                     "segments": report.segments,
                     "threshold_db": report.threshold_db,
                     "quiet_channel_max_dbfs": args.quiet_channel_max_dbfs,
+                    **summary,
                     "items": list(report.diagnostics),
                 },
                 ensure_ascii=False,
@@ -241,6 +244,7 @@ def attribute_channels(args: argparse.Namespace) -> None:
         "changed_segments": report.changed_segments,
         "threshold_db": report.threshold_db,
         "quiet_channel_max_dbfs": args.quiet_channel_max_dbfs,
+        **summary,
     }
     if diagnostics_output is not None:
         payload["diagnostics_output"] = diagnostics_output

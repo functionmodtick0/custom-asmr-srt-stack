@@ -913,7 +913,10 @@ class ProjectCliTests(unittest.TestCase):
             )
 
             self.assertEqual(result, 0)
-            self.assertEqual(json.loads(output)["changed_segments"], 2)
+            payload = json.loads(output)
+            self.assertEqual(payload["changed_segments"], 2)
+            self.assertEqual(payload["reason_counts"], {"left_dominant": 1, "right_dominant": 1})
+            self.assertEqual(payload["attributed_channel_counts"], {"L": 1, "R": 1})
             attributed = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual([segment["channel"] for segment in attributed["segments"]], ["L", "R"])
 
@@ -997,9 +1000,19 @@ class ProjectCliTests(unittest.TestCase):
             )
 
             self.assertEqual(result, 0)
-            self.assertEqual(json.loads(output)["diagnostics_output"], str(diagnostics_path))
+            payload = json.loads(output)
+            self.assertEqual(payload["diagnostics_output"], str(diagnostics_path))
+            self.assertEqual(
+                payload["reason_counts"],
+                {"left_dominant": 1, "quieter_side_active": 1, "right_dominant": 1},
+            )
             diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
             self.assertEqual(diagnostics["format"], "custom-asmr-channel-diagnostics-v1")
+            self.assertEqual(
+                diagnostics["reason_counts"],
+                {"left_dominant": 1, "quieter_side_active": 1, "right_dominant": 1},
+            )
+            self.assertEqual(diagnostics["attributed_channel_counts"], {"L": 1, "MIX": 1, "R": 1})
             self.assertEqual([item["reason"] for item in diagnostics["items"]], [
                 "left_dominant",
                 "quieter_side_active",
@@ -1078,6 +1091,9 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["setting_count"], 2)
             self.assertEqual(report["quality_gate"]["preset"], "local-asmr-v1")
             self.assertEqual([item["changed_segments"] for item in report["items"]], [2, 0])
+            self.assertEqual(report["items"][0]["reason_counts"], {"left_dominant": 1, "right_dominant": 1})
+            self.assertEqual(report["items"][1]["reason_counts"], {"below_threshold": 2})
+            self.assertEqual(report["items"][1]["attributed_channel_counts"], {"MIX": 2})
             comparison = json.loads((output_dir / "comparison.json").read_text(encoding="utf-8"))
             index = json.loads((output_dir / "index.json").read_text(encoding="utf-8"))
             self.assertEqual(comparison["quality_gate"]["require_reference_type"], "human-reviewed")
