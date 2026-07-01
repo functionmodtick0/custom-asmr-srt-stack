@@ -133,7 +133,7 @@ ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한
 - `TransWithAI/Whisper-Vad-EncDec-ASMR-onnx`: ASR 모델이 아니라 VAD 후보. 공개 discussion 기준 일본어 ASMR 약 500시간으로 학습된 Whisper encoder 기반 VAD다. `casrt vad whisper-asmr-onnx` command로 붙이며, WebUI 옵션으로 노출하지 않고 `CASRT_VAD_COMMAND` 뒤에 붙일 내부 후보로 둔다. 실행은 `gpt-5.4 xhigh` 정적 보안 검토의 `PASS_WITH_CONSTRAINTS` 조건을 따른다. 2026-06-28 01/04/07 front120 gold에서 단독 chunker default practical CER 30.2%, tuned practical CER 33.4%, energy-rescue hybrid practical CER 31.0%라 energy baseline 29.6%보다 나빠 기본 교체하지 않는다.
 - Energy VAD t54/pad800/max30s: 2026-07-02 all8 coverage sweep에서 reference recall 99.5%로 좋아졌지만, actual Qwen ASR eval에서는 practical CER 60.2%, time-aligned 500ms 15.2%로 baseline Qwen보다 악화되어 기본 교체하지 않는다.
 - `Qwen/Qwen3-ASR-0.6B`: 빠른 비교/저사양 후보
-- `Qwen/Qwen3-ForcedAligner-0.6B`: 고정 forced alignment 후보
+- `Qwen/Qwen3-ForcedAligner-0.6B`: 고정 forced alignment 후보. 기본은 기존 segment 내부만 재정렬하고, `CASRT_QWEN_ALIGNER_CONTEXT_MS`는 기존 segment 밖 boundary 보정 실험용 내부 env로만 둔다. 2026-07-02 Qwen official all8 context 500/2000ms 실험은 time-aligned 500ms를 baseline 16.0%보다 낮은 11.1%/6.9%로 악화시켜 기본 승격하지 않는다.
 
 보안 검토는 외부 코드/런타임 실행에만 요구한다. 예를 들어 third-party repository code, `trust_remote_code`, 새 runtime package, unsafe model format, unreviewed downloaded tooling이 해당한다. 우리 저장소의 일반 wrapper, 테스트, 문서 변경은 일반 구현 리뷰와 behavior test로 검증한다. 외부 런타임을 benchmark할 때는 repo id를 직접 실행하지 않고 고정 snapshot directory를 model id로 사용하며, offline/local-only env를 켜서 cache miss/network fallback/custom remote code를 실패로 만든다.
 

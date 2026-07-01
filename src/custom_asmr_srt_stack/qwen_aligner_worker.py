@@ -77,8 +77,9 @@ def align_request(runtime: QwenAlignerRuntime, request: dict[str, Any], *, model
 
 def align_master(master: MasterDocument, *, audio_file: Path, aligner: Any) -> MasterDocument:
     audio_bytes = audio_file.read_bytes()
-    analyze_wav(audio_bytes)
+    audio_info = analyze_wav(audio_bytes)
     language = qwen_language(master.source_language)
+    context_ms = qwen_aligner_context_ms()
     aligned_segments = list(master.segments)
     speech_indexes = [
         index
@@ -88,13 +89,21 @@ def align_master(master: MasterDocument, *, audio_file: Path, aligner: Any) -> M
 
     with tempfile.TemporaryDirectory() as tmpdir:
         clip_paths: list[str] = []
+        clip_start_offsets_ms: list[int] = []
+        clip_durations_ms: list[int] = []
+        original_durations_ms: list[int] = []
         texts: list[str] = []
         languages: list[str] = []
         for clip_index, segment_index in enumerate(speech_indexes):
             segment = aligned_segments[segment_index]
+            clip_start_ms = max(0, segment.start_ms - context_ms)
+            clip_end_ms = min(audio_info.duration_ms, segment.end_ms + context_ms)
             clip_path = Path(tmpdir) / f"clip-{clip_index:06d}.wav"
-            clip_path.write_bytes(slice_wav(audio_bytes, start_ms=segment.start_ms, end_ms=segment.end_ms))
+            clip_path.write_bytes(slice_wav(audio_bytes, start_ms=clip_start_ms, end_ms=clip_end_ms))
             clip_paths.append(str(clip_path))
+            clip_start_offsets_ms.append(clip_start_ms)
+            clip_durations_ms.append(clip_end_ms - clip_start_ms)
+            original_durations_ms.append(segment.end_ms - segment.start_ms)
             texts.append(segment.text)
             languages.append(language)
 
@@ -114,23 +123,33 @@ def align_master(master: MasterDocument, *, audio_file: Path, aligner: Any) -> M
             f"Qwen aligner returned {len(aligned_results)} results for {len(speech_indexes)} speech segments"
         )
 
-    for index, result in zip(speech_indexes, aligned_results):
+    for index, clip_start_ms, clip_duration_ms, original_duration_ms, result in zip(
+        speech_indexes,
+        clip_start_offsets_ms,
+        clip_durations_ms,
+        original_durations_ms,
+        aligned_results,
+    ):
         segment = aligned_segments[index]
-        duration_ms = segment.end_ms - segment.start_ms
-        bounds = aligned_bounds_ms(result, duration_ms)
+        bounds = aligned_bounds_ms(result, clip_duration_ms, coverage_duration_ms=original_duration_ms)
         if bounds is None:
             continue
         start_ms, end_ms = bounds
         aligned_segments[index] = replace(
             segment,
-            start_ms=segment.start_ms + start_ms,
-            end_ms=segment.start_ms + end_ms,
+            start_ms=clip_start_ms + start_ms,
+            end_ms=clip_start_ms + end_ms,
         )
 
     return replace(master, segments=tuple(aligned_segments))
 
 
-def aligned_bounds_ms(result: Any, duration_ms: int) -> tuple[int, int] | None:
+def aligned_bounds_ms(
+    result: Any,
+    duration_ms: int,
+    *,
+    coverage_duration_ms: int | None = None,
+) -> tuple[int, int] | None:
     items = getattr(result, "items", None)
     if not items:
         return None
@@ -145,7 +164,8 @@ def aligned_bounds_ms(result: Any, duration_ms: int) -> tuple[int, int] | None:
     aligned_duration_ms = end_ms - start_ms
     if aligned_duration_ms < qwen_min_aligned_duration_ms():
         return None
-    if aligned_duration_ms / max(1, duration_ms) < qwen_min_aligned_coverage_ratio():
+    coverage_base_ms = duration_ms if coverage_duration_ms is None else coverage_duration_ms
+    if aligned_duration_ms / max(1, coverage_base_ms) < qwen_min_aligned_coverage_ratio():
         return None
     return start_ms, end_ms
 
@@ -279,6 +299,13 @@ def qwen_aligner_batch_size() -> int:
     value = int(os.environ.get("CASRT_QWEN_ALIGNER_BATCH_SIZE", "8"))
     if value <= 0:
         raise ValueError("CASRT_QWEN_ALIGNER_BATCH_SIZE must be positive")
+    return value
+
+
+def qwen_aligner_context_ms() -> int:
+    value = int(os.environ.get("CASRT_QWEN_ALIGNER_CONTEXT_MS", "0"))
+    if value < 0:
+        raise ValueError("CASRT_QWEN_ALIGNER_CONTEXT_MS must be non-negative")
     return value
 
 

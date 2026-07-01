@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 import custom_asmr_srt_stack.qwen_aligner_worker as qwen_aligner_worker
+from custom_asmr_srt_stack.audio import analyze_wav
 from custom_asmr_srt_stack.models import MasterDocument, Segment
 from custom_asmr_srt_stack.qwen_aligner_worker import (
     align_master,
@@ -72,9 +73,11 @@ class FakeAlignResult:
 class FakeAligner:
     def __init__(self) -> None:
         self.calls = []
+        self.clip_durations_ms = []
 
     def align(self, *, audio, text, language):
         self.calls.append({"audio": audio, "text": text, "language": language})
+        self.clip_durations_ms.extend(analyze_wav(Path(path).read_bytes()).duration_ms for path in audio)
         return [
             FakeAlignResult([FakeAlignItem("ね", 0.10, 0.20), FakeAlignItem("え", 0.25, 0.80)]),
             FakeAlignResult([FakeAlignItem("聞こえる", 0.05, 0.60)]),
@@ -147,6 +150,20 @@ class QwenAlignerWorkerTests(unittest.TestCase):
         self.assertEqual((aligned.segments[1].start_ms, aligned.segments[1].end_ms), (1250, 1800))
         self.assertEqual(aligner.calls[0]["text"], ["ねえ", "聞こえる"])
         self.assertEqual(aligner.calls[0]["language"], ["Japanese", "Japanese"])
+        self.assertEqual(aligner.clip_durations_ms, [1000, 1000])
+
+    def test_align_master_context_padding_can_move_bounds_outside_original_segment(self):
+        aligner = FakeAligner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audio_path = Path(tmpdir) / "audio.wav"
+            audio_path.write_bytes(mono_wav_bytes())
+
+            with mock.patch.dict("os.environ", {"CASRT_QWEN_ALIGNER_CONTEXT_MS": "200"}, clear=False):
+                aligned = align_master(sample_master(), audio_file=audio_path, aligner=aligner)
+
+        self.assertEqual((aligned.segments[0].start_ms, aligned.segments[0].end_ms), (100, 800))
+        self.assertEqual((aligned.segments[1].start_ms, aligned.segments[1].end_ms), (1050, 1600))
+        self.assertEqual(aligner.clip_durations_ms, [1200, 1400])
 
     def test_align_master_fails_when_aligner_result_count_mismatches_segments(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -166,6 +183,11 @@ class QwenAlignerWorkerTests(unittest.TestCase):
 
         with mock.patch.dict("os.environ", {"CASRT_QWEN_ALIGNER_MIN_COVERAGE_RATIO": "0.75"}, clear=False):
             self.assertIsNone(aligned_bounds_ms(result, 1000))
+
+    def test_aligned_bounds_uses_original_duration_for_context_coverage(self):
+        result = FakeAlignResult([FakeAlignItem("ね", 1.100, 1.800)])
+
+        self.assertEqual(aligned_bounds_ms(result, 3000, coverage_duration_ms=1000), (1100, 1800))
 
     def test_aligned_bounds_rejects_invalid_coverage_ratio(self):
         result = FakeAlignResult([FakeAlignItem("ね", 0.100, 0.900)])
