@@ -758,6 +758,23 @@ uv run casrt compare-review-effort qwen-report.json neosophie-report.json granit
 - candidate status 순서는 입력 report 순서를 유지한다. 같은 파일 stem이 반복되면 label은 `report`, `report#2`처럼 자동으로 분리한다.
 - 이 명령은 transcript를 수정하지 않고, WebUI 옵션을 늘리지 않는다. 후보 간 보완 가능성과 공통 실패 segment를 찾기 위한 CLI-only 진단 도구다.
 
+### Review Effort Merge
+
+```bash
+uv run casrt merge-review-effort reference-audit-review-effort.json reference-channel-audit-review-effort.json \
+  --json \
+  -o combined-review-effort.json
+```
+
+동작:
+
+- 입력은 `custom-asmr-review-effort-v1` report JSON이다.
+- output format도 `custom-asmr-review-effort-v1`이다.
+- 같은 `case_id`, `reference_id`, `candidate_id`, `start_ms`, `end_ms`를 가진 issue는 하나로 합치고, `reasons`, evidence field, `source_reports`, `merged_input_count`를 보존한다.
+- `priority_score`는 합쳐진 item 중 가장 높은 값을 유지하고, 출력 item 전체에 `priority_rank`를 다시 부여한다.
+- 모든 입력의 `source_case_index`가 같으면 출력에도 보존한다. 서로 다른 `source_case_index`가 섞이면 출력 파일을 쓰기 전에 실패한다.
+- 이 명령은 transcript, reference, candidate, audio를 수정하지 않고, WebUI 옵션을 늘리지 않는다. `review-pack` 앞단에서 여러 검수 queue를 하나의 priority queue로 합치기 위한 CLI-only 변환이다.
+
 ### Pipeline Readiness
 
 ```bash

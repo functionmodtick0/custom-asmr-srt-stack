@@ -4513,6 +4513,143 @@ class ProjectCliTests(unittest.TestCase):
                 "human-reviewed",
             )
 
+    def test_merge_review_effort_combines_same_reference_issue_and_preserves_case_index(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            first = root / "reference-structure.json"
+            second = root / "reference-channel.json"
+            output_path = root / "merged-review-effort.json"
+            first.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-effort-v1",
+                        "source_case_index": "cases/case-index.json",
+                        "items": [
+                            {
+                                "case_id": "front-a",
+                                "reference_id": "seg_000001",
+                                "candidate_id": None,
+                                "start_ms": 1000,
+                                "end_ms": 3000,
+                                "reasons": ["reference-needs-review"],
+                                "reference_text": "",
+                                "candidate_text": "",
+                                "reference_channel": "L",
+                                "candidate_channel": None,
+                                "priority_score": 5002.0,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            second.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-effort-v1",
+                        "source_case_index": "cases/case-index.json",
+                        "items": [
+                            {
+                                "case_id": "front-a",
+                                "reference_id": "seg_000001",
+                                "candidate_id": None,
+                                "start_ms": 1000,
+                                "end_ms": 3000,
+                                "reasons": ["reference-channel-energy-mismatch"],
+                                "reference_text": "",
+                                "candidate_text": "",
+                                "reference_channel": "L",
+                                "candidate_channel": "R",
+                                "left_dbfs": -45.0,
+                                "right_dbfs": -30.0,
+                                "delta_db": -15.0,
+                                "priority_score": 3502.0,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "merge-review-effort",
+                    "--json",
+                    "-o",
+                    str(output_path),
+                    str(first),
+                    str(second),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            saved = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual(saved, report)
+            self.assertEqual(report["format"], "custom-asmr-review-effort-v1")
+            self.assertEqual(report["source_case_index"], "cases/case-index.json")
+            self.assertEqual(report["input_report_count"], 2)
+            self.assertEqual(report["input_item_count"], 2)
+            self.assertEqual(report["item_count"], 1)
+            self.assertEqual(
+                report["reason_counts"],
+                {"reference-channel-energy-mismatch": 1, "reference-needs-review": 1},
+            )
+            item = report["items"][0]
+            self.assertEqual(
+                item["reasons"],
+                ["reference-needs-review", "reference-channel-energy-mismatch"],
+            )
+            self.assertEqual(item["candidate_channel"], "R")
+            self.assertEqual(item["left_dbfs"], -45.0)
+            self.assertEqual(item["priority_score"], 5002.0)
+            self.assertEqual(item["priority_rank"], 1)
+            self.assertEqual(item["merged_input_count"], 2)
+            self.assertEqual(item["source_reports"], [str(first), str(second)])
+
+    def test_merge_review_effort_rejects_conflicting_source_case_index_before_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            first = root / "first.json"
+            second = root / "second.json"
+            output_path = root / "merged.json"
+            for path, source_case_index in (
+                (first, "cases-a/case-index.json"),
+                (second, "cases-b/case-index.json"),
+            ):
+                path.write_text(
+                    json.dumps(
+                        {
+                            "format": "custom-asmr-review-effort-v1",
+                            "source_case_index": source_case_index,
+                            "items": [
+                                {
+                                    "case_id": "front-a",
+                                    "reference_id": "seg_000001",
+                                    "start_ms": 0,
+                                    "end_ms": 1000,
+                                    "reasons": ["reference-needs-review"],
+                                }
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+            result, _, error = run_cli_with_stderr(
+                [
+                    "merge-review-effort",
+                    "-o",
+                    str(output_path),
+                    str(first),
+                    str(second),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertIn("conflicting source_case_index", error)
+            self.assertFalse(output_path.exists())
+
     def test_review_pack_creates_audio_clips_from_review_effort_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

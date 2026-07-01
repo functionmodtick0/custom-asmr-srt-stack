@@ -61,6 +61,7 @@ from custom_asmr_srt_stack.reference_audit import (
     reference_audit_review_effort_report,
 )
 from custom_asmr_srt_stack.review_pack import DEFAULT_REVIEW_CONTEXT_MS, build_review_pack
+from custom_asmr_srt_stack.review_effort import merge_review_effort_reports
 from custom_asmr_srt_stack.server import run_server
 from custom_asmr_srt_stack.srt import format_srt, parse_srt
 from custom_asmr_srt_stack.translation import export_translation_json, parse_translated_texts
@@ -662,6 +663,21 @@ def compare_review_effort(args: argparse.Namespace) -> None:
             f"reference_issues={report['reference_issue_count']} "
             f"extra_candidate_issues={report['extra_candidate_issue_count']} "
             f"reports={report['report_count']}"
+        ),
+    )
+
+
+def merge_review_effort(args: argparse.Namespace) -> None:
+    report = merge_review_effort_reports(args.reports)
+    if args.output is not None:
+        write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    emit(
+        args,
+        report,
+        (
+            f"merged_review_effort_items={report['item_count']} "
+            f"input_items={report['input_item_count']} "
+            f"reasons={json.dumps(report['reason_counts'], ensure_ascii=False, sort_keys=True)}"
         ),
     )
 
@@ -1899,6 +1915,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print machine-readable JSON output.",
     )
     compare_review_effort_parser.set_defaults(func=compare_review_effort)
+
+    merge_review_effort_parser = subcommands.add_parser(
+        "merge-review-effort",
+        help="Merge review-effort JSON queues into one priority queue for review-pack.",
+    )
+    merge_review_effort_parser.add_argument("reports", type=Path, nargs="+")
+    merge_review_effort_parser.add_argument("-o", "--output", type=Path)
+    merge_review_effort_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON output.",
+    )
+    merge_review_effort_parser.set_defaults(func=merge_review_effort)
 
     pipeline_readiness_parser = subcommands.add_parser(
         "pipeline-readiness",
