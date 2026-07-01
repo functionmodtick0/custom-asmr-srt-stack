@@ -431,14 +431,27 @@ function renderReviewCaseItem(item, index) {
 
   const source = document.createElement("div");
   source.className = "review-pack-texts";
+  const nextReview = firstReviewSegment(item);
   source.append(
     reviewTextLine("AUDIO", null, item.audio),
     reviewTextLine("REF", null, item.reference),
+    reviewTextLine("NEXT", nextReview?.channel, reviewSegmentPreview(nextReview)),
   );
 
   row.addEventListener("click", () => loadReviewCaseItem(index));
   row.append(meta, counts, source);
   return row;
+}
+
+function firstReviewSegment(item) {
+  const segments = item?.reference_master?.segments;
+  if (!Array.isArray(segments)) return null;
+  return segments.find((segment) => segment?.needs_review) || null;
+}
+
+function reviewSegmentPreview(segment) {
+  if (!segment) return "검수 flag 없음";
+  return `${formatMsRange(segment.start_ms, segment.end_ms)} · ${segment.text || "-"}`;
 }
 
 function textBlock(className, value) {

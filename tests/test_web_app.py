@@ -4,7 +4,7 @@ import unittest
 
 
 class WebAppBehaviorTests(unittest.TestCase):
-    def test_local_granite_adapter_does_not_require_endpoint_settings(self):
+    def run_app_assertions(self, assertions: str) -> subprocess.CompletedProcess[str]:
         script = r"""
             const assert = require("assert");
             const fs = require("fs");
@@ -20,10 +20,11 @@ class WebAppBehaviorTests(unittest.TestCase):
                   hidden: false,
                   textContent: "",
                   style: {},
+                  children: [],
                   classList: { add() {}, remove() {}, toggle() {} },
                   addEventListener() {},
-                  append() {},
-                  replaceChildren() {},
+                  append(...children) { this.children.push(...children); },
+                  replaceChildren(...children) { this.children = children; },
                   querySelectorAll() { return []; },
                   removeAttribute() {},
                   load() {},
@@ -77,7 +78,18 @@ class WebAppBehaviorTests(unittest.TestCase):
             context.window.document = context.document;
             vm.createContext(context);
             vm.runInContext(fs.readFileSync("web/app.js", "utf8"), context);
+        """
+        result = subprocess.run(
+            ["node", "-e", textwrap.dedent(script + "\n" + assertions)],
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        return result
 
+    def test_local_granite_adapter_does_not_require_endpoint_settings(self):
+        result = self.run_app_assertions(
+            r"""
             assert.strictEqual(context.isLocalAdapter("local-granite-asr"), true);
             const adapter = elements.get("adapterInput");
             const endpoint = elements.get("endpointInput");
@@ -93,13 +105,29 @@ class WebAppBehaviorTests(unittest.TestCase):
             assert.strictEqual(endpoint.value, "");
             assert.strictEqual(apiKey.value, "");
             assert.match(model.placeholder, /granite-speech-4\.1-2b/);
-        """
+        """,
+        )
 
-        result = subprocess.run(
-            ["node", "-e", textwrap.dedent(script)],
-            check=False,
-            text=True,
-            capture_output=True,
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_review_case_preview_uses_first_remaining_review_segment(self):
+        result = self.run_app_assertions(
+            r"""
+            const item = {
+              reference_master: {
+                segments: [
+                  { id: "seg_000001", start_ms: 0, end_ms: 500, channel: "MIX", text: "済み", needs_review: false },
+                  { id: "seg_000002", start_ms: 1234, end_ms: 3456, channel: "L", text: "確認する", needs_review: true },
+                  { id: "seg_000003", start_ms: 5000, end_ms: 6000, channel: "R", text: "後", needs_review: true },
+                ],
+              },
+            };
+
+            const first = context.firstReviewSegment(item);
+            assert.strictEqual(first.id, "seg_000002");
+            assert.strictEqual(context.reviewSegmentPreview(first), "0:01.234 - 0:03.456 · 確認する");
+            assert.strictEqual(context.reviewSegmentPreview(null), "검수 flag 없음");
+        """,
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)

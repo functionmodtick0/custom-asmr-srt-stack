@@ -559,7 +559,7 @@ uv run casrt eval-manifest gold.json --product-gate
   - load API input: `/tmp/casrt-quality.Q5OdDf/all8-front120-review-cases`
   - result: `kind=review-case-set`, `case_count=8`, first case `id=01-front120-existing-srt`, `segments=10`, `review_count=2`.
   - first case audio GET: `200 audio/wav 23040044 bytes`.
-  - 동작: case list는 전체 `needs_review` flag 수와 flag가 남은 case를 표시한다. Case click은 reference master를 기존 segment editor에 붙이고, edit/save는 reference master JSON과 `case-index.json` count를 갱신한다. `검수 완료`는 현재 `needs_review` segment를 false로 바꾸고 다음 검수 segment로 이동한다. `case 목록`/`다음 case` 이동은 pending save를 flush한다.
+  - 동작: case list는 전체 `needs_review` flag 수, flag가 남은 case, 각 case의 첫 미검수 segment 시간/텍스트 preview를 표시한다. Case click은 reference master를 기존 segment editor에 붙이고, edit/save는 reference master JSON과 `case-index.json` count를 갱신한다. `검수 완료`는 현재 `needs_review` segment를 false로 바꾸고 다음 검수 segment로 이동한다. `case 목록`/`다음 case` 이동은 pending save를 flush한다.
   - 판단: human-reviewed gold 제작을 돕는 편집 경로이며, 검수 완료 판정은 하지 않는다.
 - 2026-06-30 real SRT import audit:
   - `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/outputs/02.敗北確定えっちバトル-c28f819996c9400cb05ec6ccbea1849f.srt` 같은 실제 산출물은 `[L:SPEAKER_01]`, `[R:SPEAKER_00]` prefix를 사용한다.
