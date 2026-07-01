@@ -605,12 +605,13 @@ uv run casrt pipeline-readiness \
   --reference-audit cases/reference-audit.json \
   --vad-comparison cases/vad-coverage-comparison.json \
   --eval-comparison cases/eval-comparison.json \
+  --channel-comparison cases/channel-sweep/comparison.json \
   --fail-unless-asr-only-ready \
   --json \
   -o cases/pipeline-readiness.json
 ```
 
-`pipeline-readiness`는 reference audit, VAD coverage comparison, eval comparison을 읽어 `custom-asmr-pipeline-readiness-v1`을 만듭니다. `asr_only_ready`는 reference, VAD/chunking, alignment, channel attribution stage가 모두 pass일 때만 true입니다. VAD comparison에 `quality_gate`가 있으면 통과 후보를 VAD stage pass로 보고, gate가 없으면 missed reference speech가 남은 후보를 fail로 봅니다. Text ASR은 별도 `text_asr` stage라서, “텍스트 모델만 남았는지”와 “제품 품질이 끝났는지”를 분리해 봅니다. `--fail-unless-asr-only-ready`는 report를 출력/저장한 뒤 아직 ASR-only 단계가 아니면 실패합니다.
+`pipeline-readiness`는 reference audit, VAD coverage comparison, eval comparison을 읽어 `custom-asmr-pipeline-readiness-v1`을 만듭니다. `asr_only_ready`는 reference, VAD/chunking, alignment, channel attribution stage가 모두 pass일 때만 true입니다. VAD comparison에 `quality_gate`가 있으면 통과 후보를 VAD stage pass로 보고, gate가 없으면 missed reference speech가 남은 후보를 fail로 봅니다. `--channel-comparison`을 주면 channel attribution stage만 별도 eval comparison에서 읽어, reference-copy channel sweep과 ASR text/timing 후보 평가를 분리할 수 있습니다. Text ASR은 별도 `text_asr` stage라서, “텍스트 모델만 남았는지”와 “제품 품질이 끝났는지”를 분리해 봅니다. `--fail-unless-asr-only-ready`는 report를 출력/저장한 뒤 아직 ASR-only 단계가 아니면 실패합니다.
 
 평가 report에서 사람이 바로 볼 수정 큐 JSON도 만들 수 있습니다.
 

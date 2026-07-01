@@ -622,6 +622,7 @@ def pipeline_readiness_command(args: argparse.Namespace) -> None:
         reference_audit_file=args.reference_audit,
         vad_comparison_file=args.vad_comparison,
         eval_comparison_file=args.eval_comparison,
+        channel_comparison_file=args.channel_comparison,
     )
     if args.output is not None:
         write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
@@ -1811,6 +1812,11 @@ def build_parser() -> argparse.ArgumentParser:
     pipeline_readiness_parser.add_argument("--reference-audit", type=Path)
     pipeline_readiness_parser.add_argument("--vad-comparison", type=Path)
     pipeline_readiness_parser.add_argument("--eval-comparison", type=Path)
+    pipeline_readiness_parser.add_argument(
+        "--channel-comparison",
+        type=Path,
+        help="Optional eval comparison report to use only for the channel_attribution readiness stage.",
+    )
     pipeline_readiness_parser.add_argument("-o", "--output", type=Path)
     pipeline_readiness_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
     pipeline_readiness_parser.add_argument(

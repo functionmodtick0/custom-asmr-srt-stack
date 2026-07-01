@@ -29,12 +29,15 @@ def build_pipeline_readiness(
     reference_audit_file: Path | None = None,
     vad_comparison_file: Path | None = None,
     eval_comparison_file: Path | None = None,
+    channel_comparison_file: Path | None = None,
 ) -> dict[str, Any]:
     stages = {
         "reference": reference_stage(reference_audit_file),
         "vad_chunking": vad_stage(vad_comparison_file),
     }
     stages.update(eval_stages(eval_comparison_file))
+    if channel_comparison_file is not None:
+        stages["channel_attribution"] = channel_stage(channel_comparison_file)
     asr_only_blocking_stages = [
         stage for stage in ASR_ONLY_STAGE_ORDER if stages[stage]["status"] == "fail"
     ]
@@ -184,22 +187,12 @@ def eval_stages(path: Path | None) -> dict[str, dict[str, Any]]:
             ),
             "text_asr": unknown_stage("text_asr", "eval comparison report was not provided"),
         }
-    report = read_json_report(path)
-    if report.get("format") != EVAL_COMPARISON_FORMAT:
-        raise ValueError(f"{path}: eval report format must be {EVAL_COMPARISON_FORMAT}")
-    items = require_non_empty_mapping_list(report.get("items"), f"{path}: eval comparison items")
-    best = items[0]
-    label = require_string(best.get("label"), f"{path}: eval best label")
+    label, best = best_eval_comparison_item(path)
 
     timing_ratio = require_number(best.get("timing_edit_segment_ratio"), f"{path}: timing_edit_segment_ratio")
     alignment_reasons = []
     if timing_ratio > 0.0:
         alignment_reasons.append(f"best candidate still needs timing edits: {timing_ratio:.4f}")
-
-    channel_ratio = require_number(best.get("channel_edit_segment_ratio"), f"{path}: channel_edit_segment_ratio")
-    channel_reasons = []
-    if channel_ratio > 0.0:
-        channel_reasons.append(f"best candidate still needs channel edits: {channel_ratio:.4f}")
 
     text_ratio = require_number(best.get("text_edit_segment_ratio"), f"{path}: text_edit_segment_ratio")
     edit_ratio = require_number(best.get("segments_needing_edit_ratio"), f"{path}: segments_needing_edit_ratio")
@@ -223,23 +216,7 @@ def eval_stages(path: Path | None) -> dict[str, dict[str, Any]]:
                 ),
             },
         ),
-        "channel_attribution": stage_report(
-            "channel_attribution",
-            reasons=channel_reasons,
-            metrics={
-                "report": str(path),
-                "best_label": label,
-                "channel_edit_segment_ratio": channel_ratio,
-                "channel_time_aligned_accuracy": optional_number(
-                    best.get("channel_time_aligned_accuracy"),
-                    f"{path}: channel_time_aligned_accuracy",
-                ),
-                "channel_time_aligned_mix_ratio": require_number(
-                    best.get("channel_time_aligned_mix_ratio"),
-                    f"{path}: channel_time_aligned_mix_ratio",
-                ),
-            },
-        ),
+        "channel_attribution": channel_stage(path),
         "text_asr": stage_report(
             "text_asr",
             reasons=text_reasons,
@@ -257,6 +234,41 @@ def eval_stages(path: Path | None) -> dict[str, dict[str, Any]]:
             },
         ),
     }
+
+
+def channel_stage(path: Path) -> dict[str, Any]:
+    label, best = best_eval_comparison_item(path)
+    channel_ratio = require_number(best.get("channel_edit_segment_ratio"), f"{path}: channel_edit_segment_ratio")
+    channel_reasons = []
+    if channel_ratio > 0.0:
+        channel_reasons.append(f"best candidate still needs channel edits: {channel_ratio:.4f}")
+    return stage_report(
+        "channel_attribution",
+        reasons=channel_reasons,
+        metrics={
+            "report": str(path),
+            "best_label": label,
+            "channel_edit_segment_ratio": channel_ratio,
+            "channel_time_aligned_accuracy": optional_number(
+                best.get("channel_time_aligned_accuracy"),
+                f"{path}: channel_time_aligned_accuracy",
+            ),
+            "channel_time_aligned_mix_ratio": require_number(
+                best.get("channel_time_aligned_mix_ratio"),
+                f"{path}: channel_time_aligned_mix_ratio",
+            ),
+        },
+    )
+
+
+def best_eval_comparison_item(path: Path) -> tuple[str, dict[str, Any]]:
+    report = read_json_report(path)
+    if report.get("format") != EVAL_COMPARISON_FORMAT:
+        raise ValueError(f"{path}: eval report format must be {EVAL_COMPARISON_FORMAT}")
+    items = require_non_empty_mapping_list(report.get("items"), f"{path}: eval comparison items")
+    best = items[0]
+    label = require_string(best.get("label"), f"{path}: eval best label")
+    return label, best
 
 
 def next_stage(stages: dict[str, dict[str, Any]]) -> str | None:
