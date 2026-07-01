@@ -385,6 +385,7 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 - `review_effort` breakdown ratios: 같은 denominator(`reference_segments + extra_candidate_segments`) 기준 text/channel/timing/missing/extra 수정 비율. 이 값은 오디오->텍스트 모델 문제와 VAD/chunking/alignment/channel attribution 문제를 분리해 다음 개선 단위를 정하는 데 쓴다.
 - `asr_artifacts`: candidate speech segment 기준 non-Japanese text, 15 chars/sec 초과 high text density, 12자 이상 repeated text pattern count/ratio. 이 값은 ASMR식 hallucination/repetition/chunking 실패를 CER와 분리해 보기 위한 보조 metric이며 product gate에는 쓰지 않는다.
 - case별 `review_effort.items`: human review와 heuristic 개선이 어느 segment를 봐야 하는지 알 수 있도록 reasons와 reference/candidate text/channel/timing을 보존한다.
+- `casrt vad coverage audio.wav reference.master.json --json -o vad-coverage.json`: built-in energy intervals 또는 `--intervals` JSON을 reference speech union과 비교해 VAD/chunking coverage를 계산한다. Reference recall, detected precision, missed reference duration, extra detected duration을 분리해 ASR text 품질과 VAD/chunking boundary 문제를 따로 본다.
 - `casrt review-effort eval-suite.json --json -o review-effort.json`: suite/single report에서 `custom-asmr-review-effort-v1` 수정 큐를 추출한다. manifest case context와 timing delta를 보존하므로 다음 human review 또는 heuristic 개선 순서를 정하는 기본 산출물이다.
 - `casrt review-pack review-effort.json --audio-map audio-map.json --source-case-index cases/case-index.json -o review-pack --json`: 수정 큐 item별 audio clip과 `custom-asmr-review-pack-v1` index를 만든다. `--source-case-index`를 지정하면 pack root와 item에 source `case-index.json`을 보존해 WebUI `case 열기`가 후보 실패 clip에서 원 reference segment 편집 화면으로 이동할 수 있다. pseudo-gold 비교에서 발견한 실패 구간을 사람이 빠르게 듣고 human-reviewed reference로 승격하기 위한 표준 산출물이다.
 
@@ -771,7 +772,9 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 3. VAD 후보 추가
    - VAD command hook은 추가됐다.
    - `casrt vad whisper-asmr-onnx` command는 추가됐다.
+   - `casrt vad coverage` command는 추가됐다.
    - 현재 energy splitter 500/200은 fallback-free baseline이다.
+   - 2026-07-01 durable all8 01-front120 energy coverage smoke: output `.casrt/experiments/all8-front120-review-cases/01-energy-vad-coverage.json`, `audio_duration_ms=120000`, `reference_segment_count=10`, `reference_interval_count=1`, `detected_interval_count=18`, `reference_speech_duration_ms=119969`, `detected_speech_duration_ms=109400`, `overlap_duration_ms=109400`, `reference_recall=91.2%`, `detected_precision=100.0%`. 판단: 이 pseudo-reference는 거의 전체 120초가 speech union이라 energy baseline은 약 10.6초를 missed reference로 남기며, ONNX VAD/energy tuning은 이 command로 먼저 coverage를 비교한 뒤 실제 ASR 평가로 이어간다.
    - `TransWithAI/Whisper-Vad-EncDec-ASMR-onnx`는 단독 chunker로 비교했고 기본 교체하지 않는다.
    - `--energy-rescue-min-ms 500` hybrid도 비교했고 기본 교체하지 않는다.
    - Silero VAD, TEN VAD wrapper는 ASMR ONNX VAD보다 후순위로 둔다.

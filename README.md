@@ -130,6 +130,15 @@ CASRT_VAD_COMMAND='/tmp/casrt-vad-venv/bin/casrt vad whisper-asmr-onnx --model /
 
 내장 energy splitter는 `CASRT_QWEN_ENERGY_*` env로 내부 튜닝할 수 있지만 WebUI 옵션으로 노출하지 않습니다. `CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 긴 interval을 자르는 실험 옵션이며 현재 실데이터 평가에서는 기본값으로 켜지 않습니다.
 
+VAD/chunking 후보의 reference speech coverage는 CLI에서만 비교합니다.
+
+```bash
+uv run casrt vad coverage audio.wav reference.master.json --json -o vad-coverage.json
+uv run casrt vad coverage audio.wav reference.master.json --intervals vad-intervals.json --json
+```
+
+Report는 reference recall, detected precision, missed reference duration, extra detected duration을 포함합니다. 이 값은 ASR text 품질이 아니라 VAD/chunking 경계 후보 비교용입니다.
+
 Qwen3-ForcedAligner는 `CASRT_QWEN_ASR_ALIGNER_MODEL_ID`로 내부 실험할 수 있습니다. `CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS`보다 짧은 timestamp span은 clip bounds로 되돌리며, 이 값도 WebUI 옵션으로 노출하지 않습니다. Generic Qwen aligner worker는 `CASRT_QWEN_ALIGNER_MIN_ALIGNED_DURATION_MS=80`과 `CASRT_QWEN_ALIGNER_MIN_COVERAGE_RATIO=0.5` 기본 guard로 비현실적으로 짧거나 원 segment 절반 미만으로 잘린 span을 원래 timing으로 유지합니다.
 
 `local-cohere-asr`는 Cohere Transcribe 03-2026을 위한 로컬 후보입니다. repo id가 아니라 exact revision의 local snapshot directory를 `--model-id`로 받아야 하며, worker는 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로만 로드합니다. 실제 모델 다운로드/평가는 revision pin과 `casrt model digest` report 기록 전까지 실행하지 않습니다.

@@ -930,6 +930,42 @@ def vad_whisper_asmr_onnx(args: argparse.Namespace) -> None:
     print(json.dumps({"intervals": list(intervals)}, ensure_ascii=False))
 
 
+def vad_coverage(args: argparse.Namespace) -> None:
+    from custom_asmr_srt_stack.audio import analyze_wav, speech_intervals_by_energy
+    from custom_asmr_srt_stack.vad import parse_vad_intervals, vad_coverage_report
+    from custom_asmr_srt_stack.workflow import qwen_energy_chunk_kwargs, qwen_energy_max_chunk_ms, split_long_chunks
+
+    audio_bytes = args.audio.read_bytes()
+    audio_info = analyze_wav(audio_bytes)
+    if args.intervals is not None:
+        interval_source = str(args.intervals)
+        intervals = parse_vad_intervals(json.loads(read_text(args.intervals)), duration_ms=audio_info.duration_ms)
+    else:
+        interval_source = "energy"
+        intervals = speech_intervals_by_energy(audio_bytes, **qwen_energy_chunk_kwargs())
+        max_energy_chunk_ms = qwen_energy_max_chunk_ms()
+        if max_energy_chunk_ms is not None:
+            intervals = split_long_chunks(intervals, max_energy_chunk_ms)
+
+    reference = load_transcript_document(args.reference, source_language=args.source_language)
+    report = vad_coverage_report(
+        reference=reference,
+        intervals=intervals,
+        audio_duration_ms=audio_info.duration_ms,
+        source=interval_source,
+    )
+    if args.output is not None:
+        write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    emit(
+        args,
+        report,
+        (
+            f"vad coverage: recall={report['reference_recall']} "
+            f"precision={report['detected_precision']} intervals={report['detected_interval_count']}"
+        ),
+    )
+
+
 def project_transcribe(args: argparse.Namespace) -> None:
     store = store_from_args(args)
     project = store.load_project(args.project_id)
@@ -1377,6 +1413,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Add ONNX-only gaps at least this long to the internal energy intervals.",
     )
     whisper_asmr_onnx.set_defaults(func=vad_whisper_asmr_onnx)
+    vad_coverage_parser = vad_subcommands.add_parser(
+        "coverage",
+        parents=[output_parent],
+        help="Compare VAD/chunk intervals against a reference transcript.",
+    )
+    vad_coverage_parser.add_argument("audio", type=Path)
+    vad_coverage_parser.add_argument("reference", type=Path)
+    vad_coverage_parser.add_argument("--source-language", default="ja")
+    vad_coverage_parser.add_argument("--intervals", type=Path, help="JSON file with {intervals:[{start_ms,end_ms}]}.")
+    vad_coverage_parser.add_argument("-o", "--output", type=Path)
+    vad_coverage_parser.set_defaults(func=vad_coverage)
 
     project = subcommands.add_parser("project", help="Manage transcript projects.")
     project_subcommands = project.add_subparsers(dest="project_command", required=True)

@@ -293,6 +293,42 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["file_count"], 1)
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["sha256"], report["sha256"])
 
+    def test_vad_coverage_outputs_interval_recall_and_precision(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "front.wav"
+            reference = root / "reference.srt"
+            intervals = root / "intervals.json"
+            report_path = root / "vad-coverage.json"
+            write_mono_wav(audio)
+            reference.write_text("1\n00:00:00,000 --> 00:00:00,002\nねえ\n", encoding="utf-8")
+            intervals.write_text(json.dumps({"intervals": [{"start_ms": 0, "end_ms": 1}]}), encoding="utf-8")
+
+            result, output = run_cli(
+                [
+                    "vad",
+                    "coverage",
+                    "--json",
+                    "-o",
+                    str(report_path),
+                    "--intervals",
+                    str(intervals),
+                    str(audio),
+                    str(reference),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["format"], "custom-asmr-vad-coverage-v1")
+            self.assertEqual(report["source"], str(intervals))
+            self.assertEqual(report["reference_speech_duration_ms"], 2)
+            self.assertEqual(report["detected_speech_duration_ms"], 1)
+            self.assertEqual(report["overlap_duration_ms"], 1)
+            self.assertEqual(report["reference_recall"], 0.5)
+            self.assertEqual(report["detected_precision"], 1.0)
+            self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["reference_recall"], 0.5)
+
     def test_eval_transcript_outputs_json_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

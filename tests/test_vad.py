@@ -7,7 +7,8 @@ import wave
 from pathlib import Path
 from unittest import mock
 
-from custom_asmr_srt_stack.vad import parse_vad_intervals, run_vad_command
+from custom_asmr_srt_stack.models import MasterDocument, Segment
+from custom_asmr_srt_stack.vad import parse_vad_intervals, run_vad_command, vad_coverage_report
 
 
 def make_wav_bytes(duration_ms: int = 100) -> bytes:
@@ -55,6 +56,38 @@ class VadTests(unittest.TestCase):
     def test_parse_vad_intervals_rejects_ranges_past_duration(self):
         with self.assertRaisesRegex(ValueError, "audio duration"):
             parse_vad_intervals({"intervals": [{"start_ms": 100, "end_ms": 1100}]}, duration_ms=1000)
+
+    def test_vad_coverage_report_uses_reference_union_for_overlapping_speech(self):
+        reference = MasterDocument(
+            source_language="ja",
+            source_file="voice.wav",
+            duration_ms=1000,
+            segments=(
+                Segment("seg_000001", 100, 500, "L", "speech", "左"),
+                Segment("seg_000002", 300, 700, "R", "speech", "右"),
+            ),
+        )
+
+        report = vad_coverage_report(
+            reference=reference,
+            intervals=(
+                {"start_ms": 0, "end_ms": 400},
+                {"start_ms": 600, "end_ms": 900},
+            ),
+            audio_duration_ms=1000,
+            source="unit-test",
+        )
+
+        self.assertEqual(report["format"], "custom-asmr-vad-coverage-v1")
+        self.assertEqual(report["reference_segment_count"], 2)
+        self.assertEqual(report["reference_interval_count"], 1)
+        self.assertEqual(report["reference_speech_duration_ms"], 600)
+        self.assertEqual(report["detected_speech_duration_ms"], 700)
+        self.assertEqual(report["overlap_duration_ms"], 400)
+        self.assertEqual(report["missed_reference_duration_ms"], 200)
+        self.assertEqual(report["extra_detected_duration_ms"], 300)
+        self.assertAlmostEqual(report["reference_recall"], 400 / 600)
+        self.assertAlmostEqual(report["detected_precision"], 400 / 700)
 
     def test_run_vad_command_strips_sensitive_environment(self):
         with tempfile.TemporaryDirectory() as tmpdir:
