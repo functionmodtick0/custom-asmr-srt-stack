@@ -117,7 +117,7 @@ ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한
 우선 구현 대상은 다음이다.
 
 - `Qwen/Qwen3-ASR-1.7B`: 주력 로컬 ASR 후보
-- `neosophie/Qwen3-ASR-1.7B-JA`: Qwen3-ASR-1.7B 기반 일본어 fine-tune 후보. 2026-06-28 01/04/07 front120 확장 gold에서 practical CER 29.6%, time-aligned 500ms ratio 29.5%, channel time-aligned accuracy 73.1%라 기본 승격하지 않는다.
+- `neosophie/Qwen3-ASR-1.7B-JA`: Qwen3-ASR-1.7B 기반 일본어 fine-tune 후보. 2026-06-28 01/04/07 front120 확장 gold에서 practical CER 29.6%, time-aligned 500ms ratio 29.5%, channel time-aligned accuracy 73.1%라 기본 승격하지 않는다. 2026-07-02 all8 front120 pseudo-gold에서는 persistent local snapshot `.casrt/models/neosophie-qwen3-asr-1.7b-ja-987bda160f2dabfa6757550bcff7cdda2ba0648c`로 practical CER 59.4%, Japanese relaxed CER 58.4%, time-aligned 500ms ratio 16.0%, channel time-aligned accuracy 53.3%, candidate MIX ratio 63.0%, review effort 100%였다. Qwen official all8보다 text만 아주 조금 낫지만 모든 promotion gate를 실패하므로 기본 승격하지 않는다.
 - `Qwen/Qwen3-ASR-1.7B-hf`: native Transformers 후보. 현재 설치된 Transformers 5.12.1에서는 `qwen3_asr` 아키텍처가 remote code 없이 로딩되지 않는다. 공식 Transformers main `5.13.0.dev0` commit `45b004d7bb505a258542d1965b0f9e0d8b03b89d`에서는 실행됐지만, 2026-06-30 01/04/07 front120 pseudo-gold에서 practical CER 29.4%, time-aligned 500ms ratio 27.3%, channel time-aligned accuracy 68.2%, review effort 75/75라 기본 승격하지 않는다.
 - `mistralai/Voxtral-Mini-4B-Realtime-2602`: remote model code 없이 native Transformers에서 실행 가능한 최신 로컬 후보. 2026-06-28 01/04/07 front120 확장 gold에서 practical CER 40.0%, time-aligned 500ms ratio 28.7%, channel time-aligned accuracy 63.6%라 기본 승격하지 않는다.
 - `mistralai/Voxtral Mini Transcribe 2.0`: Mistral API batch transcription 제품으로 확인됐다. open-weight 로컬 checkpoint가 확인되지 않았고 외부 API는 제품 방향이 아니므로 기본 경로에서 제외한다.

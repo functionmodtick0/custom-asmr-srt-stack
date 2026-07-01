@@ -57,7 +57,7 @@ CASRT_QWEN_ASR_WORKER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_sr
   uv run casrt serve
 ```
 
-2026-07-01 all8 front120 batch CLI 평가에서 official Qwen3-ASR 1.7B local snapshot은 practical CER 59.7%, time-aligned 500ms 16.0%, review effort 100%로 실패했습니다. Granite base보다 text CER는 낮지만 product gate에는 한참 못 미칩니다. 2026-07-02 energy VAD t54/pad800/max30s sweep 후보는 coverage recall을 99.5%까지 올렸지만 실제 Qwen ASR에서는 practical CER 60.2%, time-aligned 500ms 15.2%로 baseline보다 악화되어 기본값으로 승격하지 않습니다.
+2026-07-01 all8 front120 batch CLI 평가에서 official Qwen3-ASR 1.7B local snapshot은 practical CER 59.7%, time-aligned 500ms 16.0%, review effort 100%로 실패했습니다. Granite base보다 text CER는 낮지만 product gate에는 한참 못 미칩니다. 2026-07-02 energy VAD t54/pad800/max30s sweep 후보는 coverage recall을 99.5%까지 올렸지만 실제 Qwen ASR에서는 practical CER 60.2%, time-aligned 500ms 15.2%로 baseline보다 악화되어 기본값으로 승격하지 않습니다. 같은 all8 set에서 `neosophie/Qwen3-ASR-1.7B-JA` local snapshot은 practical CER 59.4%, time-aligned 500ms 16.0%, review effort 100%로 Qwen official보다 text만 아주 조금 낫지만 product gate를 통과하지 못했습니다. 따라서 현재 상태는 VAD/chunk/channel/alignment가 완료되고 ASR text만 남은 것이 아니라, 각 단계를 실제 품질 평가로 계속 분리 검증해야 하는 상태입니다.
 
 Gemma 4 E4B는 full checkpoint를 다운로드하더라도 로딩은 4-bit runtime quantization을 켜는 구성을 권장합니다. VRAM 여유가 있으면 품질 비교용으로 `CASRT_TRANSFORMERS_QUANTIZATION=8bit`도 사용할 수 있습니다.
 
