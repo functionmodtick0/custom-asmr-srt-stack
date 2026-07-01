@@ -322,6 +322,7 @@ function render() {
   els.applyEnergyChannelButton.disabled = true;
   els.reviewDoneButton.hidden = !state.reviewCaseReference;
   els.caseListButton.hidden = !state.reviewCaseReference;
+  els.caseListButton.textContent = state.reviewCaseReference?.returnReviewPack ? "pack 목록" : "case 목록";
   els.nextCaseButton.hidden = !state.reviewCaseReference;
   els.nextCaseButton.disabled = nextReviewCaseIndex() === null;
   updateSelectedActionState();
@@ -1096,7 +1097,13 @@ async function loadReviewPath() {
   throw new Error("지원하지 않는 review path입니다.");
 }
 
-function loadReviewCaseItem(index, selectedSegmentId = null, secondarySegmentId = null, sourceReviewItem = null) {
+function loadReviewCaseItem(
+  index,
+  selectedSegmentId = null,
+  secondarySegmentId = null,
+  sourceReviewItem = null,
+  returnReviewPack = null,
+) {
   const caseSet = state.reviewCaseSet;
   const item = caseSet?.items?.[index];
   if (!caseSet || !item?.reference_master) return;
@@ -1125,6 +1132,7 @@ function loadReviewCaseItem(index, selectedSegmentId = null, secondarySegmentId 
     focusSegmentId: sourceReviewItem?.reference_id || null,
     focusStartMs: focusRange?.startMs ?? null,
     focusEndMs: focusRange?.endMs ?? null,
+    returnReviewPack,
   };
   render();
   drawWaveform();
@@ -1140,8 +1148,12 @@ async function openSelectedReviewPackSourceCase() {
   if (caseIndex < 0) {
     throw new Error(`source case를 찾을 수 없습니다: ${target.caseId}`);
   }
+  const returnReviewPack = {
+    reviewPack: state.reviewPack,
+    selectedIndex: state.reviewPackSelectedIndex,
+  };
   state.reviewCaseSet = caseSet;
-  loadReviewCaseItem(caseIndex, target.segmentId, reviewPackSecondaryReferenceId(item), item);
+  loadReviewCaseItem(caseIndex, target.segmentId, reviewPackSecondaryReferenceId(item), item, returnReviewPack);
   const sourceHint = reviewPackSourceHintText(item);
   if (sourceHint) {
     setStatus("Review case", sourceHint);
@@ -1150,6 +1162,7 @@ async function openSelectedReviewPackSourceCase() {
 
 async function returnToReviewCases() {
   if (!state.reviewCaseSet) return;
+  const returnReviewPack = state.reviewCaseReference?.returnReviewPack || null;
   await saveCurrentMasterNow();
   window.clearTimeout(state.stopTimer);
   els.audioPlayer.removeAttribute("src");
@@ -1160,6 +1173,15 @@ async function returnToReviewCases() {
   state.hasAudio = false;
   state.audioBuffer = null;
   state.reviewCaseReference = null;
+  if (returnReviewPack?.reviewPack) {
+    state.reviewPack = returnReviewPack.reviewPack;
+    state.reviewPackSelectedIndex = returnReviewPack.selectedIndex;
+    state.reviewCaseSet = null;
+    render();
+    drawWaveform();
+    setStatus("Review pack", "원래 review pack 목록으로 돌아왔습니다.");
+    return;
+  }
   render();
   drawWaveform();
   setStatus("Review cases", `${state.reviewCaseSet.items.length}개 case 목록으로 돌아왔습니다.`);

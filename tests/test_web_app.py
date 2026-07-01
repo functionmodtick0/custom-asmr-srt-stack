@@ -591,6 +591,7 @@ class WebAppBehaviorTests(unittest.TestCase):
               assert.strictEqual(elements.get("applyEnergyChannelButton").hidden, false);
               assert.strictEqual(elements.get("applyEnergyChannelButton").disabled, false);
               assert.strictEqual(elements.get("applyEnergyChannelButton").textContent, "ENERGY R 적용");
+              assert.strictEqual(elements.get("caseListButton").textContent, "pack 목록");
               assert.strictEqual(
                 elements.get("statusText").textContent,
                 "front-a/seg_000002 · ENERGY R · L -37.5 dBFS · R -33.0 dBFS · delta -4.6 dB · focus 0:01.200 - 0:01.700",
@@ -622,6 +623,15 @@ class WebAppBehaviorTests(unittest.TestCase):
               assert.strictEqual(
                 elements.get("statusText").textContent,
                 "seg_000002 channel을 ENERGY R로 저장했습니다.",
+              );
+
+              await context.returnToReviewCases();
+              assert.strictEqual(elements.get("segmentCount").textContent, "1 review clips");
+              assert.strictEqual(elements.get("selectedLabel").textContent, "#1 0:01.000 - 0:02.000");
+              assert.strictEqual(elements.get("caseListButton").hidden, true);
+              assert.strictEqual(
+                elements.get("statusText").textContent,
+                "원래 review pack 목록으로 돌아왔습니다.",
               );
             })().catch((error) => {
               console.error(error);

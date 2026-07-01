@@ -579,6 +579,7 @@ uv run casrt eval-manifest gold.json --product-gate
   - 2026-07-02 behavior update: review-pack root `duration_summary`가 있으면 WebUI header에 `listen` duration과 `focus effective/source` duration을 표시한다. Item `review_clip_*`가 원 segment bounds와 다르면 row meta에도 `focus 0:01.200 - 0:01.700` 같은 focus time range를 표시한다. Example test fixture header: `2 review clips · 2 cases · listen 0:06.000 · focus 0:05.000/0:10.000 · next front-b`. 판단: focus-window 검수 부담 감소를 JSON 파일을 열지 않고 확인할 수 있게 하며, WebUI option은 추가하지 않는다.
   - 2026-07-02 behavior update: channel audit item에서 source case를 열면 `ENERGY L/R 적용` 버튼으로 현재 source reference segment의 channel을 suggested energy channel로 저장할 수 있다. 이 동작은 사람이 명시적으로 누르는 편집 shortcut이며, `needs_review`는 그대로 둬 `검수 완료`와 분리한다. 판단: energy evidence를 정답으로 자동 승격하지 않으면서 channel label correction 클릭 수를 줄인다.
   - 2026-07-02 behavior update: focus range가 있는 review-pack item에서 source case를 열면 status hint에 focus range를 유지하고, 해당 source segment를 재생할 때 original segment bounds 대신 focus range만 재생한다. Segment `start_ms/end_ms`는 그대로 보존한다. 판단: pack에서 짧게 들은 evidence를 source editor에서도 다시 긴 segment 전체로 되돌리지 않고 검수할 수 있다.
+  - 2026-07-02 behavior update: review-pack에서 source case를 열 때 원 pack context와 selected index를 보존하고, source editor의 `pack 목록` button으로 원래 review pack queue에 돌아갈 수 있게 했다. 판단: channel 적용/검수 완료 후 사람이 pack path를 다시 입력하거나 reload하지 않고 다음 priority item으로 이어갈 수 있다.
 - 2026-06-30 WebUI review case set smoke:
   - server: `uv run casrt serve --port 5174`
   - load API input: `/tmp/casrt-quality.Q5OdDf/all8-front120-review-cases`
