@@ -536,6 +536,12 @@ function reviewPackReferenceAuditEvidenceText(item) {
   return parts.join(" · ") || formatMsRange(item?.start_ms, item?.end_ms);
 }
 
+function reviewPackSecondaryReferenceId(item) {
+  if (reviewPackIsReferenceChannelAuditItem(item)) return null;
+  if (!reviewPackIsReferenceAuditItem(item)) return null;
+  return typeof item?.candidate_id === "string" && item.candidate_id ? item.candidate_id : null;
+}
+
 function formatDbfs(value) {
   return Number.isFinite(value) ? `${value.toFixed(1)} dBFS` : null;
 }
@@ -602,6 +608,8 @@ function renderSegment(segment) {
   const row = document.createElement("div");
   row.className = `segment-row${segment.id === state.selectedId ? " is-selected" : ""}${
     segment.needs_review ? " needs-review" : ""
+  }${
+    segment.id === state.reviewCaseReference?.secondarySegmentId ? " is-secondary-reference" : ""
   }`;
   row.dataset.id = segment.id;
 
@@ -734,8 +742,10 @@ function syncSelectedReviewPackItem() {
 function syncSelectedSegment() {
   els.selectedLabel.textContent = state.selectedId ? state.selectedId : "선택 없음";
   updateSelectedActionState();
+  const secondarySegmentId = state.reviewCaseReference?.secondarySegmentId;
   for (const row of els.segmentList.querySelectorAll(".segment-row")) {
     row.classList.toggle("is-selected", row.dataset.id === state.selectedId);
+    row.classList.toggle("is-secondary-reference", row.dataset.id === secondarySegmentId);
   }
 }
 
@@ -968,7 +978,7 @@ async function loadReviewPath() {
   throw new Error("지원하지 않는 review path입니다.");
 }
 
-function loadReviewCaseItem(index, selectedSegmentId = null) {
+function loadReviewCaseItem(index, selectedSegmentId = null, secondarySegmentId = null) {
   const caseSet = state.reviewCaseSet;
   const item = caseSet?.items?.[index];
   if (!caseSet || !item?.reference_master) return;
@@ -990,6 +1000,7 @@ function loadReviewCaseItem(index, selectedSegmentId = null) {
     caseIndexPath: caseSet.case_index_path,
     caseId: item.id,
     itemIndex: index,
+    secondarySegmentId,
   };
   render();
   drawWaveform();
@@ -1006,7 +1017,7 @@ async function openSelectedReviewPackSourceCase() {
     throw new Error(`source case를 찾을 수 없습니다: ${target.caseId}`);
   }
   state.reviewCaseSet = caseSet;
-  loadReviewCaseItem(caseIndex, target.segmentId);
+  loadReviewCaseItem(caseIndex, target.segmentId, reviewPackSecondaryReferenceId(item));
   const sourceHint = reviewPackSourceHintText(item);
   if (sourceHint) {
     setStatus("Review case", sourceHint);

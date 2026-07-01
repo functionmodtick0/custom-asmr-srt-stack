@@ -10,6 +10,7 @@
   --accent: #7dd9b9;
   --accent-strong: #a8f0d7;
   --danger: #ff9f8f;
+  --warning: #f3c969;
   --radius: 8px;
 }
 
@@ -302,6 +303,16 @@ canvas {
 .segment-row.needs-review,
 .review-case-row.needs-review {
   box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.segment-row.is-secondary-reference {
+  box-shadow: inset 0 0 0 1px var(--warning);
+}
+
+.segment-row.needs-review.is-secondary-reference {
+  box-shadow:
+    inset 3px 0 0 var(--danger),
+    inset 0 0 0 1px var(--warning);
 }
 
 .review-pack-row,

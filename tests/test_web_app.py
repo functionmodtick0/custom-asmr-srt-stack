@@ -369,6 +369,8 @@ class WebAppBehaviorTests(unittest.TestCase):
               assert.strictEqual(elements.get("audioPlayer").src, "/api/review-case/audio?x=1");
               assert.strictEqual(elements.get("segmentCount").textContent, "front-a · 2 segments");
               assert.strictEqual(elements.get("selectedLabel").textContent, "seg_000002");
+              assert.ok(elements.get("segmentList").children[0].className.includes("is-secondary-reference"));
+              assert.ok(!elements.get("segmentList").children[1].className.includes("is-secondary-reference"));
               assert.strictEqual(elements.get("reviewDoneButton").hidden, false);
               assert.strictEqual(elements.get("sourceCaseButton").hidden, true);
               assert.strictEqual(
