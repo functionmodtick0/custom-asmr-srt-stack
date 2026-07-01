@@ -582,6 +582,7 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
 - text, channel, kind는 aligner contract상 변경하지 않는다.
 - `--diagnostics-output`은 `custom-asmr-alignment-diagnostics-v1` JSON을 쓴다. 각 segment의 original/aligned start/end, start/end/duration delta, review flag 변화와 boundary count, mean absolute boundary delta, 250ms/500ms 이내 boundary 비율을 담으며 WebUI 옵션으로 노출하지 않는다.
 - 이 명령은 기존 후보를 평가 harness에 넣기 위한 도구이며 WebUI 옵션을 늘리지 않는다.
+- 현재 제품 기본 정책은 forced aligner를 자동 적용하지 않는 no-op이다. `CASRT_ALIGNER_COMMAND`는 새 aligner 후보가 no-op baseline보다 나은지 검증할 때만 사용한다.
 
 prepared case set의 모든 candidate를 같은 aligner로 재정렬할 때는 `align-review-case-candidates`를 사용한다.
 
@@ -601,6 +602,7 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
 - `--candidate-id`가 없으면 기존 `candidate_id` 또는 candidate filename에 `-aligned`를 붙인다.
 - 생성된 `eval-manifest.json`은 바로 `eval-manifest --product-gate`에 넣어 base candidate와 비교한다. 생성된 `attach-plan.json`은 필요하면 별도 copied case set에 `attach-review-case-candidates --replace`로 붙일 수 있다.
 - 이 명령도 WebUI 옵션을 늘리지 않는 CLI-only benchmark 도구다.
+- 새 aligner 후보는 all8 reference-copy no-op baseline의 time-aligned 500ms `95.1%`를 최소 비교선으로 넘겨야 기본 alignment 계층 승격 대상이 된다. Qwen3-ForcedAligner는 reference-copy oracle에서 `51.2%`로 악화되어 현재 승격하지 않는다.
 
 ### 기존 Transcript Channel Attribution
 
