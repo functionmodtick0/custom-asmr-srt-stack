@@ -128,6 +128,7 @@ def vad_coverage_report(
     detected_intervals = merged_intervals(intervals, duration_ms=audio_duration_ms)
     reference_duration_ms = interval_duration_ms(reference_intervals)
     detected_duration_ms = interval_duration_ms(detected_intervals)
+    detected_duration_stats = interval_duration_stats(detected_intervals)
     overlap_duration_ms = interval_overlap_duration_ms(reference_intervals, detected_intervals)
     missed_reference_duration_ms = max(0, reference_duration_ms - overlap_duration_ms)
     extra_detected_duration_ms = max(0, detected_duration_ms - overlap_duration_ms)
@@ -140,6 +141,8 @@ def vad_coverage_report(
         "reference_segment_count": sum(1 for segment in reference.segments if segment.kind == "speech" and segment.text),
         "reference_interval_count": len(reference_intervals),
         "detected_interval_count": len(detected_intervals),
+        "detected_max_interval_ms": detected_duration_stats["max_interval_ms"],
+        "detected_mean_interval_ms": detected_duration_stats["mean_interval_ms"],
         "reference_speech_duration_ms": reference_duration_ms,
         "detected_speech_duration_ms": detected_duration_ms,
         "overlap_duration_ms": overlap_duration_ms,
@@ -159,6 +162,7 @@ def aggregate_vad_coverage_reports(reports: list[dict[str, Any]] | tuple[dict[st
         "reference_segment_count": 0,
         "reference_interval_count": 0,
         "detected_interval_count": 0,
+        "detected_max_interval_ms": 0,
         "reference_speech_duration_ms": 0,
         "detected_speech_duration_ms": 0,
         "overlap_duration_ms": 0,
@@ -182,11 +186,20 @@ def aggregate_vad_coverage_reports(reports: list[dict[str, Any]] | tuple[dict[st
             "extra_detected_duration_ms",
         ):
             totals[key] += require_int(report.get(key), f"VAD coverage report {index}.{key}")
+        detected_max_interval_ms = optional_number(
+            report.get("detected_max_interval_ms"),
+            f"VAD coverage report {index}.detected_max_interval_ms",
+        )
+        if detected_max_interval_ms is not None:
+            totals["detected_max_interval_ms"] = max(totals["detected_max_interval_ms"], int(detected_max_interval_ms))
     reference_duration_ms = totals["reference_speech_duration_ms"]
     detected_duration_ms = totals["detected_speech_duration_ms"]
+    detected_interval_count = totals["detected_interval_count"]
     overlap_duration_ms = totals["overlap_duration_ms"]
     return {
         **totals,
+        "detected_max_interval_ms": None if detected_interval_count == 0 else totals["detected_max_interval_ms"],
+        "detected_mean_interval_ms": None if detected_interval_count == 0 else detected_duration_ms / detected_interval_count,
         "reference_recall": None if reference_duration_ms == 0 else overlap_duration_ms / reference_duration_ms,
         "detected_precision": None if detected_duration_ms == 0 else overlap_duration_ms / detected_duration_ms,
     }
@@ -250,6 +263,14 @@ def vad_coverage_comparison_item(path: Path, report: dict[str, Any]) -> dict[str
         "detected_interval_count": require_int(
             metrics.get("detected_interval_count"),
             "VAD coverage detected_interval_count",
+        ),
+        "detected_max_interval_ms": optional_number(
+            metrics.get("detected_max_interval_ms"),
+            "VAD coverage detected_max_interval_ms",
+        ),
+        "detected_mean_interval_ms": optional_number(
+            metrics.get("detected_mean_interval_ms"),
+            "VAD coverage detected_mean_interval_ms",
         ),
         "reference_speech_duration_ms": require_int(
             metrics.get("reference_speech_duration_ms"),
@@ -338,6 +359,16 @@ def merged_intervals(intervals: list[dict[str, int]] | tuple[dict[str, int], ...
 
 def interval_duration_ms(intervals: tuple[dict[str, int], ...]) -> int:
     return sum(interval["end_ms"] - interval["start_ms"] for interval in intervals)
+
+
+def interval_duration_stats(intervals: tuple[dict[str, int], ...]) -> dict[str, float | int | None]:
+    if not intervals:
+        return {"max_interval_ms": None, "mean_interval_ms": None}
+    duration_ms = interval_duration_ms(intervals)
+    return {
+        "max_interval_ms": max(interval["end_ms"] - interval["start_ms"] for interval in intervals),
+        "mean_interval_ms": duration_ms / len(intervals),
+    }
 
 
 def interval_difference(

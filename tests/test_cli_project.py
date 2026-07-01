@@ -324,6 +324,8 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["source"], str(intervals))
             self.assertEqual(report["reference_speech_duration_ms"], 2)
             self.assertEqual(report["detected_speech_duration_ms"], 1)
+            self.assertEqual(report["detected_max_interval_ms"], 1)
+            self.assertEqual(report["detected_mean_interval_ms"], 1)
             self.assertEqual(report["overlap_duration_ms"], 1)
             self.assertEqual(report["reference_recall"], 0.5)
             self.assertEqual(report["detected_precision"], 1.0)
@@ -386,6 +388,8 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["source"], f"command:{sys.executable} {vad_script}")
             self.assertEqual(report["summary"]["reference_speech_duration_ms"], 2)
             self.assertEqual(report["summary"]["detected_speech_duration_ms"], 1)
+            self.assertEqual(report["summary"]["detected_max_interval_ms"], 1)
+            self.assertEqual(report["summary"]["detected_mean_interval_ms"], 1)
             self.assertEqual(report["summary"]["overlap_duration_ms"], 1)
             self.assertEqual(report["summary"]["reference_recall"], 0.5)
             self.assertEqual(report["summary"]["detected_precision"], 1.0)
@@ -414,6 +418,8 @@ class ProjectCliTests(unittest.TestCase):
                             "reference_segment_count": 1,
                             "reference_interval_count": 1,
                             "detected_interval_count": 1,
+                            "detected_max_interval_ms": 110,
+                            "detected_mean_interval_ms": 110,
                             "reference_speech_duration_ms": 100,
                             "detected_speech_duration_ms": 110,
                             "overlap_duration_ms": 100,
@@ -447,6 +453,8 @@ class ProjectCliTests(unittest.TestCase):
                             "reference_segment_count": 1,
                             "reference_interval_count": 1,
                             "detected_interval_count": 1,
+                            "detected_max_interval_ms": 50,
+                            "detected_mean_interval_ms": 50,
                             "reference_speech_duration_ms": 100,
                             "detected_speech_duration_ms": 50,
                             "overlap_duration_ms": 50,
@@ -486,6 +494,8 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(comparison["format"], "custom-asmr-vad-coverage-comparison-v1")
             self.assertEqual([item["label"] for item in comparison["items"]], ["low-miss", "high-miss"])
             self.assertEqual(comparison["items"][0]["missed_reference_duration_ms"], 0)
+            self.assertEqual(comparison["items"][0]["detected_max_interval_ms"], 110)
+            self.assertEqual(comparison["items"][0]["detected_mean_interval_ms"], 110)
             self.assertEqual(comparison["items"][0]["extra_detected_interval_count"], 1)
             self.assertEqual(comparison["items"][1]["missed_reference_interval_count"], 1)
             self.assertEqual(

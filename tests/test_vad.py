@@ -81,6 +81,8 @@ class VadTests(unittest.TestCase):
         self.assertEqual(report["format"], "custom-asmr-vad-coverage-v1")
         self.assertEqual(report["reference_segment_count"], 2)
         self.assertEqual(report["reference_interval_count"], 1)
+        self.assertEqual(report["detected_max_interval_ms"], 400)
+        self.assertEqual(report["detected_mean_interval_ms"], 350)
         self.assertEqual(report["reference_speech_duration_ms"], 600)
         self.assertEqual(report["detected_speech_duration_ms"], 700)
         self.assertEqual(report["overlap_duration_ms"], 400)
@@ -108,6 +110,7 @@ class VadTests(unittest.TestCase):
                 "reference_segment_count": 1,
                 "reference_interval_count": 1,
                 "detected_interval_count": 1,
+                "detected_max_interval_ms": 50,
                 "reference_speech_duration_ms": 100,
                 "detected_speech_duration_ms": 50,
                 "overlap_duration_ms": 50,
@@ -120,6 +123,7 @@ class VadTests(unittest.TestCase):
                 "reference_segment_count": 2,
                 "reference_interval_count": 2,
                 "detected_interval_count": 1,
+                "detected_max_interval_ms": 300,
                 "reference_speech_duration_ms": 300,
                 "detected_speech_duration_ms": 300,
                 "overlap_duration_ms": 150,
@@ -133,6 +137,8 @@ class VadTests(unittest.TestCase):
         self.assertEqual(summary["case_count"], 2)
         self.assertEqual(summary["reference_speech_duration_ms"], 400)
         self.assertEqual(summary["detected_speech_duration_ms"], 350)
+        self.assertEqual(summary["detected_max_interval_ms"], 300)
+        self.assertEqual(summary["detected_mean_interval_ms"], 175)
         self.assertEqual(summary["overlap_duration_ms"], 200)
         self.assertAlmostEqual(summary["reference_recall"], 200 / 400)
         self.assertAlmostEqual(summary["detected_precision"], 200 / 350)
