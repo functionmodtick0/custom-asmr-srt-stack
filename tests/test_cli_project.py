@@ -1582,6 +1582,60 @@ class ProjectCliTests(unittest.TestCase):
         self.assertEqual(report["summary"]["same_channel_overlap_pair_count"], 1)
         self.assertEqual(report["summary"]["flag_type_counts"], {"same_channel_overlap": 1})
 
+    def test_audit_review_case_references_can_fail_after_writing_outputs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            references = root / "references"
+            references.mkdir()
+            master = MasterDocument(
+                source_language="ja",
+                source_file="voice.wav",
+                duration_ms=2000,
+                segments=(
+                    Segment("seg_000001", 0, 1000, "L", "speech", "あ"),
+                    Segment("seg_000002", 500, 1200, "L", "speech", "い"),
+                ),
+            )
+            (references / "front.master.json").write_text(
+                json.dumps(master.to_json(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            case_index = root / "case-index.json"
+            output_path = root / "audit.json"
+            review_effort_path = root / "audit-review-effort.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [{"id": "front", "reference": "references/front.master.json"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "audit-review-case-references",
+                    "--json",
+                    "--fail-on-audit",
+                    "-o",
+                    str(output_path),
+                    "--review-effort-output",
+                    str(review_effort_path),
+                    str(case_index),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(json.loads(output)["format"], "custom-asmr-reference-audit-suite-v1")
+            self.assertEqual(json.loads(output_path.read_text(encoding="utf-8"))["summary"]["overlap_pair_count"], 1)
+            self.assertEqual(
+                json.loads(review_effort_path.read_text(encoding="utf-8"))["reason_counts"],
+                {"reference-same-channel-overlap": 1},
+            )
+            self.assertIn("reference_audit_item_count=1", error)
+            self.assertIn("reference-same-channel-overlap", error)
+
     def test_review_case_status_can_fail_after_reporting_candidate_review_flags(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

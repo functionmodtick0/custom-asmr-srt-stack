@@ -391,6 +391,10 @@ uv run casrt audit-review-case-references cases/case-index.json \
   --json \
   -o cases/reference-audit.json \
   --review-effort-output cases/reference-audit-review-effort.json
+uv run casrt audit-review-case-references cases/case-index.json \
+  --fail-on-audit \
+  --json \
+  -o cases/reference-audit.json
 ```
 
 동작:
@@ -400,6 +404,7 @@ uv run casrt audit-review-case-references cases/case-index.json \
 - 각 case와 summary에 segment count, channel counts, speech union coverage, overlap pair count, same-channel/cross-channel/exact-boundary overlap count, long segment count, review flag count를 저장한다.
 - `overlap_pairs`, `long_segments`, `review_segments`는 segment id/time/channel 중심으로 저장하고 transcript text는 저장하지 않는다.
 - `--review-effort-output`을 지정하면 same-channel overlap, exact-boundary overlap, long segment, reference review flag를 기존 `review-pack`에 넣을 수 있는 `custom-asmr-review-effort-v1` queue로 저장한다.
+- `--fail-on-audit`은 같은 구조 검수 queue item이 남아 있으면 report 출력/저장 후 실패한다. 이 gate 기준은 `freeze-case-references --fail-on-reference-audit`, `build-eval-manifest --fail-on-reference-audit`와 같다.
 - 기본 threshold는 overlap `1ms` 이상, long segment `30000ms` 이상, near-full speech coverage `0.95` 이상이다. CLI 옵션으로 바꿀 수 있지만 WebUI 옵션으로 노출하지 않는다.
 - 이 명령은 reference를 수정하거나 human-reviewed 여부를 추정하지 않는다. Pseudo-gold를 human-reviewed로 올리기 전 구조 검수 우선순위를 정하는 CLI-only 진단 도구다.
 

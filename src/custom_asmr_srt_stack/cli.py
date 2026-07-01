@@ -363,12 +363,16 @@ def audit_review_case_references_command(args: argparse.Namespace) -> None:
         long_segment_ms=args.long_segment_ms,
         high_speech_coverage_ratio=args.high_speech_coverage_ratio,
     )
-    if args.review_effort_output is not None:
+    review_effort_report = None
+    if args.review_effort_output is not None or args.fail_on_audit:
         review_effort_report = reference_audit_review_effort_report(
             report,
             source_report=str(args.output or args.case_index),
             source_case_index=str(args.case_index),
         )
+    if args.review_effort_output is not None:
+        if review_effort_report is None:
+            raise ValueError("reference audit review effort report was not generated")
         write_text(
             args.review_effort_output,
             json.dumps(review_effort_report, ensure_ascii=False, indent=2) + "\n",
@@ -387,6 +391,12 @@ def audit_review_case_references_command(args: argparse.Namespace) -> None:
             f"same_channel_overlap_pairs={summary['same_channel_overlap_pair_count']}"
         ),
     )
+    if args.fail_on_audit and review_effort_report is not None and review_effort_report["item_count"] > 0:
+        reason_counts = json.dumps(review_effort_report["reason_counts"], ensure_ascii=False, sort_keys=True)
+        raise ValueError(
+            "reference audit failed: "
+            f"reference_audit_item_count={review_effort_report['item_count']} reason_counts={reason_counts}"
+        )
 
 
 def save_review_case_reference_command(args: argparse.Namespace) -> None:
@@ -1504,6 +1514,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--review-effort-output",
         type=Path,
         help="Also write a custom-asmr-review-effort-v1 queue that can be passed to review-pack.",
+    )
+    audit_review_case_references_parser.add_argument(
+        "--fail-on-audit",
+        action="store_true",
+        help="Return a failing exit code after emitting the report if reference audit review items remain.",
     )
     audit_review_case_references_parser.add_argument("--source-language", default="ja")
     audit_review_case_references_parser.add_argument(

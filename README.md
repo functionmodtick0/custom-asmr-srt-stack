@@ -398,9 +398,13 @@ uv run casrt audit-review-case-references cases/case-index.json \
   --json \
   -o cases/reference-audit.json \
   --review-effort-output cases/reference-audit-review-effort.json
+uv run casrt audit-review-case-references cases/case-index.json \
+  --fail-on-audit \
+  --json \
+  -o cases/reference-audit.json
 ```
 
-`audit-review-case-references`는 prepared reference set의 overlap, same-channel overlap, exact-boundary overlap, long segment, near-full speech coverage, 남은 review flag를 text 없이 segment id/time/channel 중심으로 진단합니다. `--review-effort-output`을 주면 기존 `review-pack`에 넣을 수 있는 구조 검수 queue도 만듭니다. Pseudo-gold를 human-reviewed로 올리기 전 구조 검수 우선순위를 정하는 CLI-only 도구이며 reference를 수정하지 않습니다.
+`audit-review-case-references`는 prepared reference set의 overlap, same-channel overlap, exact-boundary overlap, long segment, near-full speech coverage, 남은 review flag를 text 없이 segment id/time/channel 중심으로 진단합니다. `--review-effort-output`을 주면 기존 `review-pack`에 넣을 수 있는 구조 검수 queue도 만듭니다. `--fail-on-audit`은 queue item이 남아 있을 때 report를 출력/저장한 뒤 실패합니다. Pseudo-gold를 human-reviewed로 올리기 전 구조 검수 우선순위를 정하는 CLI-only 도구이며 reference를 수정하지 않습니다.
 
 ```bash
 uv run casrt review-pack cases/reference-audit-review-effort.json \
