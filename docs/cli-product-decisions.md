@@ -371,7 +371,8 @@ uv run casrt review-case-status cases/case-index.json --fail-on-issues --fail-on
 - output format은 `custom-asmr-review-case-status-v1`이다.
 - 각 case의 파일 존재 여부, reference/candidate segment count, reference/candidate review count를 실제 파일에서 다시 계산한다.
 - `case-index.json`에 기록된 `segments`/`review_count`와 실제 reference가 다르면 `issues`에 남긴다.
-- `reference_review_case_count`와 `reference_review_clear_case_count`를 함께 남겨 검수 flag가 남은 case 진행률을 볼 수 있게 한다. Clear count는 reference가 실제로 읽혔고 `needs_review` flag가 없는 case만 세며, human-reviewed 판정은 아니다.
+- `reference_review_case_count`, `reference_review_clear_case_count`, `cases_needing_review`, `next_review_case_id`를 함께 남겨 검수 flag가 남은 case 진행률을 볼 수 있게 한다. Clear count는 reference가 실제로 읽혔고 `needs_review` flag가 없는 case만 세며, human-reviewed 판정은 아니다.
+- 각 item의 `first_review_segment`는 reference에서 첫 `needs_review=true` segment의 `id`, `start_ms`, `end_ms`, `channel`, `kind`, `text`, `needs_review`를 담는다. 남은 review flag가 없거나 reference를 읽을 수 없으면 `null`이다.
 - 기본 exit code는 report 생성을 우선해 성공이다. `--fail-on-issues`는 missing file, parse failure, stale count가 있을 때 report 출력/저장 후 실패한다.
 - `--fail-on-review`는 reference에 `needs_review=true`가 남아 있으면 report 출력/저장 후 실패한다.
 - 이 명령도 human-reviewed 여부를 추정하지 않는다. `reference_type`은 index에 기록된 값을 집계할 뿐이며, 모델 승격 평가는 여전히 `eval-manifest --require-reference-type human-reviewed`가 담당한다.

@@ -997,8 +997,22 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["reference_review_case_count"], 1)
             self.assertEqual(report["reference_review_clear_case_count"], 0)
             self.assertEqual(report["cases_needing_review"], ["front-a"])
+            self.assertEqual(report["next_review_case_id"], "front-a")
             self.assertEqual(report["items"][0]["reference_segments"], 2)
             self.assertEqual(report["items"][0]["reference_review_count"], 1)
+            self.assertEqual(
+                {
+                    key: report["items"][0]["first_review_segment"][key]
+                    for key in ("start_ms", "end_ms", "channel", "text", "needs_review")
+                },
+                {
+                    "start_ms": 0,
+                    "end_ms": 1,
+                    "channel": "MIX",
+                    "text": "前半",
+                    "needs_review": True,
+                },
+            )
             self.assertEqual(json.loads(status_path.read_text(encoding="utf-8"))["case_count"], 1)
 
     def test_review_case_status_can_fail_after_reporting_missing_files(self):
@@ -1043,6 +1057,8 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["missing_file_count"], 2)
             self.assertEqual(report["reference_review_case_count"], 0)
             self.assertEqual(report["reference_review_clear_case_count"], 0)
+            self.assertIsNone(report["next_review_case_id"])
+            self.assertIsNone(report["items"][0]["first_review_segment"])
             self.assertIn("audio file is missing", report["items"][0]["issues"][0])
             self.assertEqual(json.loads(status_path.read_text(encoding="utf-8"))["missing_file_count"], 2)
             self.assertIn("review case status failed", error)

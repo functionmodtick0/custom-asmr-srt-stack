@@ -224,6 +224,7 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
         "reference_review_case_count": len(cases_needing_review),
         "reference_review_clear_case_count": reference_review_clear_case_count,
         "cases_needing_review": cases_needing_review,
+        "next_review_case_id": cases_needing_review[0] if cases_needing_review else None,
         "ok": missing_file_count == 0 and not cases_with_issues,
         "items": items,
     }
@@ -543,13 +544,15 @@ def review_case_status_item(
 
     reference_segments = 0
     reference_review_count = 0
+    first_review_segment = None
     if reference["exists"]:
-        reference_counts, reference_issue = transcript_counts(
+        reference_counts, reference_issue = transcript_status(
             Path(reference["resolved_path"]),
             source_language=source_language,
         )
         reference_segments = reference_counts["segments"]
         reference_review_count = reference_counts["review_count"]
+        first_review_segment = reference_counts["first_review_segment"]
         if reference_issue is not None:
             issues.append(f"reference {reference_issue}")
         else:
@@ -574,7 +577,7 @@ def review_case_status_item(
             missing_file_count += 1
             issues.append(f"candidate file is missing: {candidate['path']}")
         else:
-            candidate_counts, candidate_issue = transcript_counts(
+            candidate_counts, candidate_issue = transcript_status(
                 Path(candidate["resolved_path"]),
                 source_language=source_language,
             )
@@ -594,6 +597,7 @@ def review_case_status_item(
         "index_review_count": raw_item.get("review_count"),
         "reference_segments": reference_segments,
         "reference_review_count": reference_review_count,
+        "first_review_segment": first_review_segment,
         "candidate_segments": candidate_segments,
         "candidate_review_count": candidate_review_count,
         "missing_file_count": missing_file_count,
@@ -610,14 +614,16 @@ def file_reference_status(path_value: str, *, base_dir: Path) -> dict[str, Any]:
     }
 
 
-def transcript_counts(path: Path, *, source_language: str) -> tuple[dict[str, int], str | None]:
+def transcript_status(path: Path, *, source_language: str) -> tuple[dict[str, Any], str | None]:
     try:
         master = load_transcript_document(path, source_language=source_language)
     except (OSError, ValueError, json.JSONDecodeError) as error:
-        return {"segments": 0, "review_count": 0}, f"cannot be loaded: {error}"
+        return {"segments": 0, "review_count": 0, "first_review_segment": None}, f"cannot be loaded: {error}"
+    first_review_segment = next((segment.to_json() for segment in master.segments if segment.needs_review), None)
     return {
         "segments": len(master.segments),
         "review_count": sum(1 for segment in master.segments if segment.needs_review),
+        "first_review_segment": first_review_segment,
     }, None
 
 
