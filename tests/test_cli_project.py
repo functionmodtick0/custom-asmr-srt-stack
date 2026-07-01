@@ -1403,6 +1403,7 @@ class ProjectCliTests(unittest.TestCase):
             )
             case_index = root / "case-index.json"
             output_path = root / "audit.json"
+            review_effort_path = root / "audit-review-effort.json"
             case_index.write_text(
                 json.dumps(
                     {
@@ -1420,15 +1421,22 @@ class ProjectCliTests(unittest.TestCase):
                     "--json",
                     "-o",
                     str(output_path),
+                    "--review-effort-output",
+                    str(review_effort_path),
                     str(case_index),
                 ]
             )
             saved_report = json.loads(output_path.read_text(encoding="utf-8"))
+            review_effort_report = json.loads(review_effort_path.read_text(encoding="utf-8"))
 
         self.assertEqual(result, 0)
         report = json.loads(output)
         self.assertEqual(report["format"], "custom-asmr-reference-audit-suite-v1")
+        self.assertEqual(report["review_effort_output"], str(review_effort_path))
         self.assertEqual(saved_report["format"], "custom-asmr-reference-audit-suite-v1")
+        self.assertEqual(saved_report["review_effort_output"], str(review_effort_path))
+        self.assertEqual(review_effort_report["format"], "custom-asmr-review-effort-v1")
+        self.assertEqual(review_effort_report["reason_counts"], {"reference-same-channel-overlap": 1})
         self.assertEqual(report["summary"]["overlap_pair_count"], 1)
         self.assertEqual(report["summary"]["same_channel_overlap_pair_count"], 1)
         self.assertEqual(report["summary"]["flag_type_counts"], {"same_channel_overlap": 1})

@@ -9,9 +9,16 @@ from custom_asmr_srt_stack.models import MasterDocument, Segment
 
 REFERENCE_AUDIT_FORMAT = "custom-asmr-reference-audit-v1"
 REFERENCE_AUDIT_SUITE_FORMAT = "custom-asmr-reference-audit-suite-v1"
+REFERENCE_AUDIT_REVIEW_EFFORT_FORMAT = "custom-asmr-review-effort-v1"
 DEFAULT_REFERENCE_AUDIT_OVERLAP_MIN_MS = 1
 DEFAULT_REFERENCE_AUDIT_LONG_SEGMENT_MS = 30000
 DEFAULT_REFERENCE_AUDIT_HIGH_SPEECH_COVERAGE_RATIO = 0.95
+REFERENCE_AUDIT_REASON_PRIORITY = {
+    "reference-needs-review": 5000.0,
+    "reference-exact-boundary-overlap": 4000.0,
+    "reference-same-channel-overlap": 3000.0,
+    "reference-long-segment": 2000.0,
+}
 
 
 def audit_master_reference(
@@ -149,6 +156,156 @@ def audit_review_case_references(
         "summary": aggregate_reference_audits(cases),
         "cases": cases,
     }
+
+
+def reference_audit_review_effort_report(
+    audit_report: dict[str, Any],
+    *,
+    source_report: str | None = None,
+    source_case_index: str | None = None,
+) -> dict[str, Any]:
+    if audit_report.get("format") != REFERENCE_AUDIT_SUITE_FORMAT:
+        raise ValueError(f"reference audit review effort input must be {REFERENCE_AUDIT_SUITE_FORMAT}")
+    cases = audit_report.get("cases")
+    if not isinstance(cases, list):
+        raise ValueError("reference audit cases must be an array")
+
+    items = []
+    for case in cases:
+        if not isinstance(case, dict):
+            raise ValueError("reference audit case must be an object")
+        case_id = require_non_empty_string(case.get("case_id"), "reference audit case_id")
+        items.extend(reference_audit_case_review_items(case_id, case))
+
+    sorted_items = sorted(items, key=reference_audit_review_item_sort_key)
+    for index, item in enumerate(sorted_items, start=1):
+        item["priority_rank"] = index
+
+    result = {
+        "format": REFERENCE_AUDIT_REVIEW_EFFORT_FORMAT,
+        "sort": "priority_score_desc",
+        "item_count": len(sorted_items),
+        "reason_counts": reference_audit_reason_counts(sorted_items),
+        "items": sorted_items,
+    }
+    if source_report is not None:
+        result["source_report"] = source_report
+    if source_case_index is not None:
+        result["source_case_index"] = source_case_index
+    return result
+
+
+def reference_audit_case_review_items(case_id: str, case: dict[str, Any]) -> list[dict[str, Any]]:
+    items = []
+    for review_segment in require_audit_items(case, "review_segments"):
+        segment_id = require_non_empty_string(review_segment.get("segment_id"), "review segment segment_id")
+        item = {
+            "case_id": case_id,
+            "reference_id": segment_id,
+            "candidate_id": None,
+            "start_ms": require_audit_int(review_segment, "start_ms"),
+            "end_ms": require_audit_int(review_segment, "end_ms"),
+            "reasons": ["reference-needs-review"],
+            "reference_text": "",
+            "candidate_text": "",
+            "reference_channel": review_segment.get("channel"),
+            "candidate_channel": None,
+        }
+        item["priority_score"] = reference_audit_review_priority_score(item)
+        items.append(item)
+
+    for long_segment in require_audit_items(case, "long_segments"):
+        segment_id = require_non_empty_string(long_segment.get("segment_id"), "long segment segment_id")
+        item = {
+            "case_id": case_id,
+            "reference_id": segment_id,
+            "candidate_id": None,
+            "start_ms": require_audit_int(long_segment, "start_ms"),
+            "end_ms": require_audit_int(long_segment, "end_ms"),
+            "reasons": ["reference-long-segment"],
+            "reference_text": "",
+            "candidate_text": "",
+            "reference_channel": long_segment.get("channel"),
+            "candidate_channel": None,
+        }
+        item["priority_score"] = reference_audit_review_priority_score(item)
+        items.append(item)
+
+    for pair in require_audit_items(case, "overlap_pairs"):
+        reasons = []
+        if pair.get("exact_boundary") is True:
+            reasons.append("reference-exact-boundary-overlap")
+        if pair.get("same_channel") is True:
+            reasons.append("reference-same-channel-overlap")
+        if not reasons:
+            continue
+        item = {
+            "case_id": case_id,
+            "reference_id": require_non_empty_string(pair.get("left_segment_id"), "overlap pair left_segment_id"),
+            "candidate_id": require_non_empty_string(pair.get("right_segment_id"), "overlap pair right_segment_id"),
+            "start_ms": require_audit_int(pair, "start_ms"),
+            "end_ms": require_audit_int(pair, "end_ms"),
+            "reasons": reasons,
+            "reference_text": "",
+            "candidate_text": "",
+            "reference_channel": pair.get("left_channel"),
+            "candidate_channel": pair.get("right_channel"),
+            "overlap_ms": require_audit_int(pair, "overlap_ms"),
+        }
+        item["priority_score"] = reference_audit_review_priority_score(item)
+        items.append(item)
+    return items
+
+
+def require_audit_items(case: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    value = case.get(key)
+    if not isinstance(value, list):
+        raise ValueError(f"reference audit case {key} must be an array")
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError(f"reference audit case {key} items must be objects")
+    return value
+
+
+def require_audit_int(item: dict[str, Any], key: str) -> int:
+    value = item.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"reference audit item {key} must be an integer")
+    return value
+
+
+def reference_audit_review_priority_score(item: dict[str, Any]) -> float:
+    reasons = item["reasons"]
+    score = sum(REFERENCE_AUDIT_REASON_PRIORITY.get(reason, 0.0) for reason in reasons)
+    start_ms = item.get("start_ms")
+    end_ms = item.get("end_ms")
+    if isinstance(start_ms, int) and isinstance(end_ms, int):
+        score += min(99.0, max(0, end_ms - start_ms) / 1000.0)
+    return score
+
+
+def reference_audit_review_item_sort_key(item: dict[str, Any]) -> tuple[float, str, int, str, str]:
+    start_ms = item.get("start_ms")
+    return (
+        -float(item["priority_score"]),
+        str(item.get("case_id") or ""),
+        start_ms if isinstance(start_ms, int) else 0,
+        str(item.get("reference_id") or ""),
+        str(item.get("candidate_id") or ""),
+    )
+
+
+def reference_audit_reason_counts(items: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        reasons = item.get("reasons")
+        if not isinstance(reasons, list):
+            raise ValueError("reference audit review item reasons must be an array")
+        for reason in reasons:
+            if not isinstance(reason, str):
+                raise ValueError("reference audit review item reasons must be strings")
+            counts[reason] = counts.get(reason, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def reference_overlap_pairs(segments: tuple[Segment, ...], *, min_overlap_ms: int) -> list[dict[str, Any]]:

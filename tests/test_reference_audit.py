@@ -9,6 +9,7 @@ from custom_asmr_srt_stack.reference_audit import (
     REFERENCE_AUDIT_SUITE_FORMAT,
     audit_master_reference,
     audit_review_case_references,
+    reference_audit_review_effort_report,
 )
 
 
@@ -103,6 +104,51 @@ class ReferenceAuditTests(unittest.TestCase):
         self.assertEqual(report["summary"]["channel_counts"], {"L": 2, "R": 1, "MIX": 1})
         self.assertEqual(report["summary"]["flag_type_counts"], {"review_flag_segments": 1, "same_channel_overlap": 1})
         self.assertEqual([case["case_id"] for case in report["cases"]], ["first", "second"])
+
+    def test_reference_audit_review_effort_report_exports_packable_queue_without_text(self):
+        master = master_with_segments(
+            [
+                Segment("seg_000001", 0, 1000, "L", "speech", "ねえ"),
+                Segment("seg_000002", 500, 1500, "L", "speech", "そこ"),
+                Segment("seg_000003", 0, 1000, "R", "speech", "ねえ"),
+                Segment("seg_000004", 2000, 33000, "MIX", "speech", "長い", needs_review=True),
+            ]
+        )
+        audit = {
+            "format": REFERENCE_AUDIT_SUITE_FORMAT,
+            "case_index": "cases/case-index.json",
+            "case_count": 1,
+            "summary": {},
+            "cases": [
+                audit_master_reference(master, case_id="front-a", reference="references/front-a.master.json")
+            ],
+        }
+
+        report = reference_audit_review_effort_report(
+            audit,
+            source_report="reference-audit.json",
+            source_case_index="cases/case-index.json",
+        )
+
+        self.assertEqual(report["format"], "custom-asmr-review-effort-v1")
+        self.assertEqual(report["source_report"], "reference-audit.json")
+        self.assertEqual(report["source_case_index"], "cases/case-index.json")
+        self.assertEqual(
+            report["reason_counts"],
+            {
+                "reference-exact-boundary-overlap": 1,
+                "reference-long-segment": 1,
+                "reference-needs-review": 1,
+                "reference-same-channel-overlap": 1,
+            },
+        )
+        self.assertEqual(report["item_count"], 4)
+        self.assertEqual([item["priority_rank"] for item in report["items"]], [1, 2, 3, 4])
+        self.assertEqual(report["items"][0]["reasons"], ["reference-needs-review"])
+        self.assertEqual(report["items"][1]["reasons"], ["reference-exact-boundary-overlap"])
+        self.assertEqual(report["items"][2]["reasons"], ["reference-same-channel-overlap"])
+        self.assertEqual(report["items"][3]["reasons"], ["reference-long-segment"])
+        self.assertNotIn("ねえ", json.dumps(report, ensure_ascii=False))
 
 
 if __name__ == "__main__":

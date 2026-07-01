@@ -52,6 +52,7 @@ from custom_asmr_srt_stack.reference_audit import (
     DEFAULT_REFERENCE_AUDIT_LONG_SEGMENT_MS,
     DEFAULT_REFERENCE_AUDIT_OVERLAP_MIN_MS,
     audit_review_case_references,
+    reference_audit_review_effort_report,
 )
 from custom_asmr_srt_stack.review_pack import DEFAULT_REVIEW_CONTEXT_MS, build_review_pack
 from custom_asmr_srt_stack.server import run_server
@@ -358,6 +359,17 @@ def audit_review_case_references_command(args: argparse.Namespace) -> None:
         long_segment_ms=args.long_segment_ms,
         high_speech_coverage_ratio=args.high_speech_coverage_ratio,
     )
+    if args.review_effort_output is not None:
+        review_effort_report = reference_audit_review_effort_report(
+            report,
+            source_report=str(args.output or args.case_index),
+            source_case_index=str(args.case_index),
+        )
+        write_text(
+            args.review_effort_output,
+            json.dumps(review_effort_report, ensure_ascii=False, indent=2) + "\n",
+        )
+        report["review_effort_output"] = str(args.review_effort_output)
     if args.output is not None:
         write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     summary = report["summary"]
@@ -1456,6 +1468,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     audit_review_case_references_parser.add_argument("case_index", type=Path)
     audit_review_case_references_parser.add_argument("-o", "--output", type=Path)
+    audit_review_case_references_parser.add_argument(
+        "--review-effort-output",
+        type=Path,
+        help="Also write a custom-asmr-review-effort-v1 queue that can be passed to review-pack.",
+    )
     audit_review_case_references_parser.add_argument("--source-language", default="ja")
     audit_review_case_references_parser.add_argument(
         "--overlap-min-ms",
