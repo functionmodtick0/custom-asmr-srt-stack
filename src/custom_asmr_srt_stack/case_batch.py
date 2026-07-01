@@ -708,6 +708,12 @@ def align_review_case_candidates(
                 "changed_segments": item["diagnostics"]["changed_segments"],
                 "review_count": sum(1 for segment in item["aligned_master"].segments if segment.needs_review),
                 "max_boundary_delta_ms": item["diagnostics"]["max_boundary_delta_ms"],
+                "boundary_count": item["diagnostics"]["boundary_count"],
+                "mean_abs_boundary_delta_ms": item["diagnostics"]["mean_abs_boundary_delta_ms"],
+                "within_250ms_boundary_count": item["diagnostics"]["within_250ms_boundary_count"],
+                "within_250ms_boundary_ratio": item["diagnostics"]["within_250ms_boundary_ratio"],
+                "within_500ms_boundary_count": item["diagnostics"]["within_500ms_boundary_count"],
+                "within_500ms_boundary_ratio": item["diagnostics"]["within_500ms_boundary_ratio"],
             }
         )
 
@@ -730,12 +736,14 @@ def align_review_case_candidates(
         manifest["reference_notes"] = reference_notes
     eval_manifest_file = output_dir / "eval-manifest.json"
     eval_manifest_file.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    diagnostics_summary = alignment_batch_summary(report_items)
 
     report = {
         "format": REVIEW_CASE_CANDIDATE_ALIGN_FORMAT,
         "case_index": str(case_index_file),
         "output": str(output_dir),
         "candidate_count": len(report_items),
+        **diagnostics_summary,
         "attach_plan": str(attach_plan_file),
         "eval_manifest": str(eval_manifest_file),
         "items": report_items,
@@ -743,6 +751,39 @@ def align_review_case_candidates(
     report_file = output_dir / "index.json"
     report_file.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return report
+
+
+def alignment_batch_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
+    segments = sum(int(item["segments"]) for item in items)
+    changed_segments = sum(int(item["changed_segments"]) for item in items)
+    review_count = sum(int(item["review_count"]) for item in items)
+    boundary_count = sum(int(item["boundary_count"]) for item in items)
+    max_boundary_delta_ms = max((int(item["max_boundary_delta_ms"]) for item in items), default=0)
+    total_abs_boundary_delta_ms = 0.0
+    within_250ms_boundary_count = 0
+    within_500ms_boundary_count = 0
+    for item in items:
+        item_boundary_count = int(item["boundary_count"])
+        mean_abs_boundary_delta_ms = item.get("mean_abs_boundary_delta_ms")
+        if mean_abs_boundary_delta_ms is not None:
+            total_abs_boundary_delta_ms += float(mean_abs_boundary_delta_ms) * item_boundary_count
+        within_250ms_boundary_count += int(item["within_250ms_boundary_count"])
+        within_500ms_boundary_count += int(item["within_500ms_boundary_count"])
+    mean_abs_boundary_delta_ms = None if boundary_count == 0 else total_abs_boundary_delta_ms / boundary_count
+    within_250ms_boundary_ratio = None if boundary_count == 0 else within_250ms_boundary_count / boundary_count
+    within_500ms_boundary_ratio = None if boundary_count == 0 else within_500ms_boundary_count / boundary_count
+    return {
+        "segments": segments,
+        "changed_segments": changed_segments,
+        "review_count": review_count,
+        "max_boundary_delta_ms": max_boundary_delta_ms,
+        "boundary_count": boundary_count,
+        "mean_abs_boundary_delta_ms": mean_abs_boundary_delta_ms,
+        "within_250ms_boundary_count": within_250ms_boundary_count,
+        "within_250ms_boundary_ratio": within_250ms_boundary_ratio,
+        "within_500ms_boundary_count": within_500ms_boundary_count,
+        "within_500ms_boundary_ratio": within_500ms_boundary_ratio,
+    }
 
 
 def matching_candidate_files(candidate_dir: Path, case_id: str) -> list[Path]:

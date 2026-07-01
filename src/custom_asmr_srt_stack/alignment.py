@@ -141,6 +141,10 @@ def alignment_diagnostics(
     changed_segments = 0
     review_flag_changes = 0
     max_boundary_delta_ms = 0
+    boundary_count = 0
+    total_abs_boundary_delta_ms = 0
+    within_250ms_boundary_count = 0
+    within_500ms_boundary_count = 0
     for segment in original.segments:
         aligned_segment = aligned_by_id.get(segment.id)
         if aligned_segment is None:
@@ -155,6 +159,14 @@ def alignment_diagnostics(
         if review_flag_changed:
             review_flag_changes += 1
         max_boundary_delta_ms = max(max_boundary_delta_ms, abs(start_delta), abs(end_delta))
+        for delta in (start_delta, end_delta):
+            abs_delta = abs(delta)
+            boundary_count += 1
+            total_abs_boundary_delta_ms += abs_delta
+            if abs_delta <= 250:
+                within_250ms_boundary_count += 1
+            if abs_delta <= 500:
+                within_500ms_boundary_count += 1
         items.append(
             {
                 "id": segment.id,
@@ -179,6 +191,9 @@ def alignment_diagnostics(
     if unknown_ids:
         raise ValueError(f"aligned master contains unknown segment ids: {', '.join(unknown_ids)}")
 
+    mean_abs_boundary_delta_ms = None if boundary_count == 0 else total_abs_boundary_delta_ms / boundary_count
+    within_250ms_boundary_ratio = None if boundary_count == 0 else within_250ms_boundary_count / boundary_count
+    within_500ms_boundary_ratio = None if boundary_count == 0 else within_500ms_boundary_count / boundary_count
     return {
         "format": "custom-asmr-alignment-diagnostics-v1",
         "audio": str(audio_file),
@@ -188,6 +203,12 @@ def alignment_diagnostics(
         "changed_segments": changed_segments,
         "review_flag_changes": review_flag_changes,
         "max_boundary_delta_ms": max_boundary_delta_ms,
+        "boundary_count": boundary_count,
+        "mean_abs_boundary_delta_ms": mean_abs_boundary_delta_ms,
+        "within_250ms_boundary_count": within_250ms_boundary_count,
+        "within_250ms_boundary_ratio": within_250ms_boundary_ratio,
+        "within_500ms_boundary_count": within_500ms_boundary_count,
+        "within_500ms_boundary_ratio": within_500ms_boundary_ratio,
         "items": items,
     }
 

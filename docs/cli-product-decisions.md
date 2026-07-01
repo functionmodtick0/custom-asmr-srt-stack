@@ -553,7 +553,7 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
 - audio path와 transcript를 `CASRT_ALIGNER_COMMAND`에 넘겨 segment timing을 갱신한다.
 - output은 `master.json`으로 저장한다.
 - text, channel, kind는 aligner contract상 변경하지 않는다.
-- `--diagnostics-output`은 `custom-asmr-alignment-diagnostics-v1` JSON을 쓴다. 각 segment의 original/aligned start/end, start/end/duration delta, review flag 변화를 담으며 WebUI 옵션으로 노출하지 않는다.
+- `--diagnostics-output`은 `custom-asmr-alignment-diagnostics-v1` JSON을 쓴다. 각 segment의 original/aligned start/end, start/end/duration delta, review flag 변화와 boundary count, mean absolute boundary delta, 250ms/500ms 이내 boundary 비율을 담으며 WebUI 옵션으로 노출하지 않는다.
 - 이 명령은 기존 후보를 평가 harness에 넣기 위한 도구이며 WebUI 옵션을 늘리지 않는다.
 
 prepared case set의 모든 candidate를 같은 aligner로 재정렬할 때는 `align-review-case-candidates`를 사용한다.
@@ -569,6 +569,7 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
 - `CASRT_ALIGNER_COMMAND`가 없으면 실패한다.
 - 각 case의 audio와 candidate master를 aligner에 넘겨 segment timing만 갱신한다.
 - output directory는 비어 있어야 하며, `candidates/*.master.json`, `diagnostics/*.alignment-diagnostics.json`, `attach-plan.json`, `eval-manifest.json`, `index.json`을 쓴다.
+- `index.json` top-level과 item별 summary에는 changed segment 수, review count, max/mean boundary delta, 250ms/500ms 이내 boundary 비율을 기록한다. 이 값은 aligner가 후보 timing을 얼마나 크게 흔들었는지 빠르게 보기 위한 diagnostics이며, 최종 승격은 생성된 eval manifest의 timing/channel/text gate로 판단한다.
 - 원본 case set과 원본 candidate 파일은 수정하지 않는다.
 - `--candidate-id`가 없으면 기존 `candidate_id` 또는 candidate filename에 `-aligned`를 붙인다.
 - 생성된 `eval-manifest.json`은 바로 `eval-manifest --product-gate`에 넣어 base candidate와 비교한다. 생성된 `attach-plan.json`은 필요하면 별도 copied case set에 `attach-review-case-candidates --replace`로 붙일 수 있다.
@@ -632,7 +633,7 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 - speech text strict CER, practical CER, Japanese relaxed CER를 계산한다.
 - segment index 기준 mean start/end/boundary error를 계산한다.
 - segment 수나 split이 다른 후보를 평가하기 위해 time-overlap 기반 `timing_time_aligned`를 계산한다.
-- forced alignment 재평가를 위해 boundary sample 수, max boundary error, 250ms/500ms 이내 boundary ratio를 계산한다.
+- forced alignment 재평가를 위해 boundary sample 수, max/mean boundary delta, 250ms/500ms 이내 boundary ratio를 계산한다.
 - channel attribution 튜닝을 위해 index 기반 `channel`과 time-overlap 기반 `channel_time_aligned`의 L/R/MIX confusion, candidate MIX 유지 비율, L/R channel accuracy를 계산한다.
 - candidate `needs_review` 비율을 계산한다. 이 값은 모델/heuristic 승격 gate에서 0이어야 한다.
 - `review_effort`는 practical text mismatch, channel mismatch, 500ms 초과 timing mismatch, missing reference, extra candidate를 세고, 같은 reference segment의 중복 수정 필요는 한 번만 `segments_needing_edit`에 반영한다.

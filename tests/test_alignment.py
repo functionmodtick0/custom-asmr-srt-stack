@@ -5,7 +5,13 @@ import tempfile
 from pathlib import Path
 from unittest import mock
 
-from custom_asmr_srt_stack.alignment import aligner_env, apply_alignment_review_flags, merge_alignment_output, run_alignment_command
+from custom_asmr_srt_stack.alignment import (
+    aligner_env,
+    alignment_diagnostics,
+    apply_alignment_review_flags,
+    merge_alignment_output,
+    run_alignment_command,
+)
 from custom_asmr_srt_stack.models import MasterDocument, Segment
 
 
@@ -58,6 +64,34 @@ class AlignmentTests(unittest.TestCase):
                 sample_master(),
                 {"segments": [{"id": "seg_000001", "start_ms": 100, "end_ms": 1200}]},
             )
+
+    def test_alignment_diagnostics_summarizes_boundary_delta_distribution(self):
+        original = sample_master()
+        aligned = MasterDocument(
+            source_language="ja",
+            source_file="voice.wav",
+            duration_ms=60_000,
+            segments=(
+                Segment("seg_000001", 100, 1600, "L", "speech", "ねえ"),
+                Segment("seg_000002", 1700, 3900, "R", "speech", "聞こえる？"),
+            ),
+        )
+
+        diagnostics = alignment_diagnostics(
+            original,
+            aligned,
+            audio_file=Path("voice.wav"),
+            input_file=Path("candidate.master.json"),
+            output_file=Path("aligned.master.json"),
+        )
+
+        self.assertEqual(diagnostics["boundary_count"], 4)
+        self.assertEqual(diagnostics["max_boundary_delta_ms"], 900)
+        self.assertEqual(diagnostics["mean_abs_boundary_delta_ms"], 475)
+        self.assertEqual(diagnostics["within_250ms_boundary_count"], 1)
+        self.assertEqual(diagnostics["within_250ms_boundary_ratio"], 0.25)
+        self.assertEqual(diagnostics["within_500ms_boundary_count"], 2)
+        self.assertEqual(diagnostics["within_500ms_boundary_ratio"], 0.5)
 
     def test_review_flags_mark_empty_speech_and_long_segments(self):
         master = MasterDocument(
