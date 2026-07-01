@@ -484,6 +484,8 @@ class ProjectCliTests(unittest.TestCase):
                     "--json",
                     "-o",
                     str(comparison_path),
+                    "--max-detected-interval-ms",
+                    "100",
                     str(high_miss),
                     str(low_miss),
                 ]
@@ -493,11 +495,15 @@ class ProjectCliTests(unittest.TestCase):
             comparison = json.loads(output)
             self.assertEqual(comparison["format"], "custom-asmr-vad-coverage-comparison-v1")
             self.assertEqual([item["label"] for item in comparison["items"]], ["low-miss", "high-miss"])
+            self.assertEqual(comparison["quality_gate"], {"max_detected_interval_ms": 100})
             self.assertEqual(comparison["items"][0]["missed_reference_duration_ms"], 0)
             self.assertEqual(comparison["items"][0]["detected_max_interval_ms"], 110)
             self.assertEqual(comparison["items"][0]["detected_mean_interval_ms"], 110)
             self.assertEqual(comparison["items"][0]["extra_detected_interval_count"], 1)
+            self.assertFalse(comparison["items"][0]["gate_passed"])
+            self.assertIn("detected max interval", comparison["items"][0]["gate_failures"][0])
             self.assertEqual(comparison["items"][1]["missed_reference_interval_count"], 1)
+            self.assertTrue(comparison["items"][1]["gate_passed"])
             self.assertEqual(
                 json.loads(comparison_path.read_text(encoding="utf-8"))["items"][0]["label"],
                 "low-miss",

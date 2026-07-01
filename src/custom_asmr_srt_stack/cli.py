@@ -1071,6 +1071,7 @@ def vad_compare_coverage(args: argparse.Namespace) -> None:
     from custom_asmr_srt_stack.vad import compare_vad_coverage_reports
 
     report = compare_vad_coverage_reports(args.reports)
+    annotate_vad_coverage_gates(report, args)
     if args.output is not None:
         write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     best = report["items"][0]
@@ -1084,6 +1085,24 @@ def vad_compare_coverage(args: argparse.Namespace) -> None:
             f"missed_ms={best['missed_reference_duration_ms']}"
         ),
     )
+
+
+def annotate_vad_coverage_gates(report: dict[str, Any], args: argparse.Namespace) -> None:
+    max_detected_interval_ms = getattr(args, "max_detected_interval_ms", None)
+    if max_detected_interval_ms is None:
+        return
+    if max_detected_interval_ms <= 0:
+        raise ValueError("--max-detected-interval-ms must be positive")
+    report["quality_gate"] = {"max_detected_interval_ms": max_detected_interval_ms}
+    for item in report["items"]:
+        gate_failures = []
+        detected_max_interval_ms = item.get("detected_max_interval_ms")
+        if detected_max_interval_ms is not None and detected_max_interval_ms > max_detected_interval_ms:
+            gate_failures.append(
+                f"detected max interval {detected_max_interval_ms:g}ms > {max_detected_interval_ms:g}ms"
+            )
+        item["gate_passed"] = not gate_failures
+        item["gate_failures"] = gate_failures
 
 
 def project_transcribe(args: argparse.Namespace) -> None:
@@ -1571,6 +1590,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vad_compare_coverage_parser.add_argument("reports", type=Path, nargs="+")
     vad_compare_coverage_parser.add_argument("-o", "--output", type=Path)
+    vad_compare_coverage_parser.add_argument(
+        "--max-detected-interval-ms",
+        type=int,
+        help="Mark candidates with a detected chunk longer than this as gate failures.",
+    )
     vad_compare_coverage_parser.set_defaults(func=vad_compare_coverage)
 
     project = subcommands.add_parser("project", help="Manage transcript projects.")
