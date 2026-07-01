@@ -337,6 +337,7 @@ function render() {
 function renderReviewPack() {
   const items = state.reviewPack.items || [];
   const selectedItem = items[state.reviewPackSelectedIndex];
+  const sourceItem = reviewPackSelectedOrDefaultSourceItem();
   const caseCount = state.reviewPack.case_count;
   const nextCaseId = state.reviewPack.next_case_id;
   const summaryParts = [`${items.length} review clips`];
@@ -352,7 +353,7 @@ function renderReviewPack() {
   els.retranscribeButton.disabled = true;
   els.retranscribeButton.hidden = false;
   els.sourceCaseButton.hidden = !items.some((item) => reviewPackSourceTarget(item));
-  els.sourceCaseButton.disabled = !reviewPackSourceTarget(selectedItem);
+  els.sourceCaseButton.disabled = !reviewPackSourceTarget(sourceItem);
   els.reviewDoneButton.hidden = true;
   els.reviewDoneButton.disabled = true;
   els.caseListButton.hidden = true;
@@ -569,6 +570,19 @@ function reviewPackSourceTarget(item) {
   };
 }
 
+function reviewPackSelectedOrDefaultSourceItem() {
+  const selected = state.reviewPack?.items?.[state.reviewPackSelectedIndex];
+  if (reviewPackSourceTarget(selected)) return selected;
+  if (state.reviewPackSelectedIndex !== null) return null;
+  const items = state.reviewPack?.items || [];
+  const nextCaseId = state.reviewPack?.next_case_id;
+  if (nextCaseId) {
+    const nextCaseItem = items.find((item) => item?.case_id === nextCaseId && reviewPackSourceTarget(item));
+    if (nextCaseItem) return nextCaseItem;
+  }
+  return null;
+}
+
 function textBlock(className, value) {
   const block = document.createElement("span");
   block.className = className;
@@ -742,7 +756,7 @@ function selectReviewPackItem(index, play) {
 function syncSelectedReviewPackItem() {
   const item = state.reviewPack?.items?.[state.reviewPackSelectedIndex];
   els.selectedLabel.textContent = reviewPackSelectedLabel(item);
-  els.sourceCaseButton.disabled = !reviewPackSourceTarget(item);
+  els.sourceCaseButton.disabled = !reviewPackSourceTarget(reviewPackSelectedOrDefaultSourceItem());
   for (const row of els.segmentList.querySelectorAll(".review-pack-row")) {
     row.classList.toggle("is-selected", Number(row.dataset.index) === state.reviewPackSelectedIndex);
   }
@@ -1017,7 +1031,7 @@ function loadReviewCaseItem(index, selectedSegmentId = null, secondarySegmentId 
 }
 
 async function openSelectedReviewPackSourceCase() {
-  const item = state.reviewPack?.items?.[state.reviewPackSelectedIndex];
+  const item = reviewPackSelectedOrDefaultSourceItem();
   const target = reviewPackSourceTarget(item);
   if (!target) return;
   const caseSet = await apiPost("/api/review-case/load", { path: target.caseIndexPath });

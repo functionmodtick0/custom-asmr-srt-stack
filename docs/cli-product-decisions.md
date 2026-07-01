@@ -862,7 +862,7 @@ uv run casrt review-pack review-effort.json \
 - input report에 `case_summaries`, `case_count`, `next_case_id`가 있으면 pack root에도 보존한다. WebUI는 이 값을 사용해 review-pack header에서 case 수와 다음 검수 case를 표시할 수 있다.
 - `--source-case-index`를 지정하거나 input report에 `source_case_index`가 있으면 pack-level과 case/reference id가 있는 item에 `source_case_index`를 보존한다. WebUI는 이 값을 사용해 후보 실패 clip에서 source review case editor의 reference segment로 이동한다.
 - Pack 생성은 human-reviewed gold 제작을 쉽게 하기 위한 CLI 도구이며 WebUI 옵션을 늘리지 않는다.
-- WebUI는 생성된 pack directory 또는 `index.json` path를 열어 priority 순서와 `clips/*.wav`를 재생할 수 있다. WebUI는 pack을 생성하거나 context/threshold를 바꾸지 않는다.
+- WebUI는 생성된 pack directory 또는 `index.json` path를 열어 priority 순서와 `clips/*.wav`를 재생할 수 있다. Pack root에 `next_case_id`가 있고 아직 clip을 선택하지 않았다면 기존 `case 열기` 버튼은 해당 case의 첫 source item을 연다. WebUI는 pack을 생성하거나 context/threshold를 바꾸지 않는다.
 
 ### 선택 segment 재전사
 

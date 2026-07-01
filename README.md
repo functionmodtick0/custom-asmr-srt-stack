@@ -98,7 +98,7 @@ translated.json 가져오기
 SRT 내보내기
 ```
 
-검수 큐를 볼 때는 CLI로 만든 `review-pack` directory, `index.json`, review case directory, `case-index.json` 경로를 WebUI의 Review path 입력에 넣고 엽니다. Review pack은 priority 순서, reason, reference/candidate text와 `clips/*.wav`를 보여줍니다. Review case set은 case를 클릭하면 audio와 reference master를 편집 화면에 붙이고, 수정 내용을 reference file과 `case-index.json` count에 자동 저장합니다.
+검수 큐를 볼 때는 CLI로 만든 `review-pack` directory, `index.json`, review case directory, `case-index.json` 경로를 WebUI의 Review path 입력에 넣고 엽니다. Review pack은 priority 순서, reason, reference/candidate text와 `clips/*.wav`를 보여줍니다. `case_summaries`와 `next_case_id`가 있는 pack은 clip을 고르기 전에도 `case 열기`로 다음 검수 case를 바로 엽니다. Review case set은 case를 클릭하면 audio와 reference master를 편집 화면에 붙이고, 수정 내용을 reference file과 `case-index.json` count에 자동 저장합니다.
 
 모델 설정은 UI에서 직접 입력합니다.
 오디오를 먼저 연 뒤 SRT 또는 `master.json`을 열면, 아직 transcript가 없는 현재 오디오 project에 해당 transcript를 연결합니다.
@@ -671,7 +671,7 @@ uv run casrt review-pack review-effort.json \
   --json
 ```
 
-`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다. `review-effort`의 priority 순서와 score/rank, root `case_summaries`/`case_count`/`next_case_id`는 pack index에도 보존됩니다. `--source-case-index`를 주면 case-index의 `items[].audio`에서 case별 audio path를 자동으로 가져오고, WebUI에서 후보 실패 clip을 보다가 `case 열기`로 원 reference segment 편집 화면에 바로 들어갈 수 있습니다. `review-effort` 안에 `source_case_index`가 이미 들어 있으면 이 옵션도 생략할 수 있습니다.
+`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다. `review-effort`의 priority 순서와 score/rank, root `case_summaries`/`case_count`/`next_case_id`는 pack index에도 보존됩니다. `--source-case-index`를 주면 case-index의 `items[].audio`에서 case별 audio path를 자동으로 가져오고, WebUI에서 후보 실패 clip을 보다가 `case 열기`로 원 reference segment 편집 화면에 바로 들어갈 수 있습니다. `next_case_id`가 있으면 clip을 선택하지 않아도 `case 열기`가 해당 case의 첫 queue item으로 이동합니다. `review-effort` 안에 `source_case_index`가 이미 들어 있으면 이 옵션도 생략할 수 있습니다.
 
 생성된 pack은 WebUI에서도 열 수 있습니다.
 
