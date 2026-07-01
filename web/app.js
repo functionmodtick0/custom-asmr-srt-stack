@@ -511,6 +511,12 @@ function reviewPackChannelEvidenceText(item) {
   return parts.join(" · ") || item?.candidate_text || item?.candidate_id;
 }
 
+function reviewPackSourceHintText(item) {
+  if (!reviewPackIsReferenceChannelAuditItem(item)) return null;
+  const verdict = item?.candidate_channel ? `ENERGY ${item.candidate_channel}` : "ENERGY -";
+  return `${item.case_id || "case -"}/${item.reference_id || "ref -"} · ${verdict} · ${reviewPackChannelEvidenceText(item)}`;
+}
+
 function formatDbfs(value) {
   return Number.isFinite(value) ? `${value.toFixed(1)} dBFS` : null;
 }
@@ -982,6 +988,10 @@ async function openSelectedReviewPackSourceCase() {
   }
   state.reviewCaseSet = caseSet;
   loadReviewCaseItem(caseIndex, target.segmentId);
+  const sourceHint = reviewPackSourceHintText(item);
+  if (sourceHint) {
+    setStatus("Review case", sourceHint);
+  }
 }
 
 async function returnToReviewCases() {

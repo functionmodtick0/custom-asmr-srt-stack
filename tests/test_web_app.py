@@ -377,6 +377,89 @@ class WebAppBehaviorTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_review_pack_source_case_keeps_channel_audit_status_hint(self):
+        result = self.run_app_assertions(
+            r"""
+            (async () => {
+              const pathInput = elements.get("reviewPackPathInput");
+              pathInput.value = "/packs/channel-audit-pack";
+              context.fetch = async (path, options) => {
+                assert.strictEqual(path, "/api/review/load");
+                assert.deepStrictEqual(JSON.parse(options.body), { path: "/packs/channel-audit-pack" });
+                return {
+                  ok: true,
+                  async json() {
+                    return {
+                      kind: "review-pack",
+                      source_case_index: "/cases/case-index.json",
+                      items: [
+                        {
+                          priority_rank: 1,
+                          case_id: "front-a",
+                          reference_id: "seg_000002",
+                          start_ms: 1000,
+                          end_ms: 2000,
+                          reasons: ["reference-channel-energy-mismatch"],
+                          reference_channel: "L",
+                          reference_text: "",
+                          candidate_channel: "R",
+                          left_dbfs: -37.536,
+                          right_dbfs: -32.968,
+                          delta_db: -4.568,
+                          clip_url: "/api/review-pack/clip?x=1",
+                        },
+                      ],
+                    };
+                  },
+                };
+              };
+
+              await context.loadReviewPath();
+              context.selectReviewPackItem(0, false);
+
+              context.fetch = async (path, options) => {
+                assert.strictEqual(path, "/api/review-case/load");
+                assert.deepStrictEqual(JSON.parse(options.body), { path: "/cases/case-index.json" });
+                return {
+                  ok: true,
+                  async json() {
+                    return {
+                      kind: "review-case-set",
+                      case_index_path: "/cases/case-index.json",
+                      items: [
+                        {
+                          id: "front-a",
+                          audio_url: "/api/review-case/audio?x=1",
+                          reference_master: {
+                            format: "custom-asmr-master-v1",
+                            source_language: "ja",
+                            audio: { source_file: "front-a.wav", duration_ms: 3000 },
+                            segments: [
+                              { id: "seg_000002", start_ms: 1000, end_ms: 2000, channel: "L", kind: "speech", text: "確認", needs_review: true },
+                            ],
+                          },
+                        },
+                      ],
+                    };
+                  },
+                };
+              };
+
+              await context.openSelectedReviewPackSourceCase();
+              assert.strictEqual(elements.get("selectedLabel").textContent, "seg_000002");
+              assert.strictEqual(
+                elements.get("statusText").textContent,
+                "front-a/seg_000002 · ENERGY R · L -37.5 dBFS · R -33.0 dBFS · delta -4.6 dB",
+              );
+            })().catch((error) => {
+              console.error(error);
+              process.exit(1);
+            });
+        """,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_model_adapter_select_exposes_all_local_adapters(self):
         parser = AdapterSelectParser()
         with open("web/index.html", encoding="utf-8") as html_file:
