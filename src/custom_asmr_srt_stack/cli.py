@@ -316,7 +316,8 @@ def review_case_status_command(args: argparse.Namespace) -> None:
         report,
         (
             f"review case status: cases={report['case_count']} "
-            f"review={report['reference_review_count']} issues={report['case_issue_count']}"
+            f"review={report['reference_review_count']} "
+            f"candidate_review={report['candidate_review_count']} issues={report['case_issue_count']}"
         ),
     )
     if args.fail_on_issues and not report["ok"]:
@@ -331,6 +332,8 @@ def review_case_status_command(args: argparse.Namespace) -> None:
             "review case status failed: "
             f"missing_candidate_count={report['missing_candidate_case_count']}"
         )
+    if args.fail_on_candidate_review and report["candidate_review_count"] > 0:
+        raise ValueError(f"review case status failed: candidate_review_count={report['candidate_review_count']}")
 
 
 def save_review_case_reference_command(args: argparse.Namespace) -> None:
@@ -1117,6 +1120,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--fail-on-missing-candidates",
         action="store_true",
         help="Return a failing exit code after emitting the report if cases have no candidate transcript path.",
+    )
+    review_case_status_parser.add_argument(
+        "--fail-on-candidate-review",
+        action="store_true",
+        help="Return a failing exit code after emitting the report if candidate segments still need review.",
     )
     review_case_status_parser.set_defaults(func=review_case_status_command)
 

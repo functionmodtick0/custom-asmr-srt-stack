@@ -996,6 +996,11 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["missing_candidate_case_count"], 1)
             self.assertEqual(report["cases_missing_candidate"], ["front-a"])
             self.assertEqual(report["next_missing_candidate_case_id"], "front-a")
+            self.assertEqual(report["candidate_review_count"], 0)
+            self.assertEqual(report["candidate_review_case_count"], 0)
+            self.assertEqual(report["candidate_review_clear_case_count"], 0)
+            self.assertEqual(report["cases_with_candidate_review"], [])
+            self.assertIsNone(report["next_candidate_review_case_id"])
             self.assertEqual(report["reference_type_counts"], {"pseudo-gold": 1})
             self.assertEqual(report["reference_review_count"], 1)
             self.assertEqual(report["reference_review_case_count"], 1)
@@ -1043,6 +1048,93 @@ class ProjectCliTests(unittest.TestCase):
                 1,
             )
             self.assertIn("missing_candidate_count=1", fail_error)
+
+    def test_review_case_status_can_fail_after_reporting_candidate_review_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_dir = root / "audio"
+            reference_dir = root / "references"
+            candidate_dir = root / "candidates"
+            audio_dir.mkdir()
+            reference_dir.mkdir()
+            candidate_dir.mkdir()
+            (audio_dir / "front.wav").write_bytes(b"RIFFcaseWAVE")
+            reference = {
+                "format": "custom-asmr-master-v1",
+                "source_language": "ja",
+                "audio": {"source_file": "front.wav", "duration_ms": 2},
+                "segments": [
+                    {
+                        "id": "seg_000001",
+                        "start_ms": 0,
+                        "end_ms": 2,
+                        "channel": "MIX",
+                        "kind": "speech",
+                        "text": "参照",
+                        "needs_review": False,
+                    }
+                ],
+            }
+            candidate = {
+                "format": "custom-asmr-master-v1",
+                "source_language": "ja",
+                "audio": {"source_file": "front.wav", "duration_ms": 2},
+                "segments": [
+                    {
+                        "id": "seg_000001",
+                        "start_ms": 0,
+                        "end_ms": 2,
+                        "channel": "MIX",
+                        "kind": "speech",
+                        "text": "候補",
+                        "needs_review": True,
+                    }
+                ],
+            }
+            (reference_dir / "front.master.json").write_text(json.dumps(reference), encoding="utf-8")
+            (candidate_dir / "front.master.json").write_text(json.dumps(candidate), encoding="utf-8")
+            case_index = root / "case-index.json"
+            status_path = root / "status.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [
+                            {
+                                "id": "front-a",
+                                "audio": "audio/front.wav",
+                                "reference": "references/front.master.json",
+                                "candidate": "candidates/front.master.json",
+                                "segments": 1,
+                                "review_count": 0,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "review-case-status",
+                    "--json",
+                    "-o",
+                    str(status_path),
+                    "--fail-on-candidate-review",
+                    str(case_index),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            report = json.loads(output)
+            self.assertTrue(report["ok"])
+            self.assertEqual(report["candidate_review_count"], 1)
+            self.assertEqual(report["candidate_review_case_count"], 1)
+            self.assertEqual(report["candidate_review_clear_case_count"], 0)
+            self.assertEqual(report["cases_with_candidate_review"], ["front-a"])
+            self.assertEqual(report["next_candidate_review_case_id"], "front-a")
+            self.assertEqual(json.loads(status_path.read_text(encoding="utf-8"))["candidate_review_count"], 1)
+            self.assertIn("candidate_review_count=1", error)
 
     def test_review_case_status_can_fail_after_reporting_missing_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1295,6 +1387,7 @@ class ProjectCliTests(unittest.TestCase):
                     "review-case-status",
                     "--json",
                     "--fail-on-missing-candidates",
+                    "--fail-on-candidate-review",
                     str(output_dir / "case-index.json"),
                 ]
             )
@@ -1304,6 +1397,11 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(status["missing_candidate_case_count"], 0)
             self.assertEqual(status["cases_missing_candidate"], [])
             self.assertIsNone(status["next_missing_candidate_case_id"])
+            self.assertEqual(status["candidate_review_count"], 0)
+            self.assertEqual(status["candidate_review_case_count"], 0)
+            self.assertEqual(status["candidate_review_clear_case_count"], 1)
+            self.assertEqual(status["cases_with_candidate_review"], [])
+            self.assertIsNone(status["next_candidate_review_case_id"])
 
             manifest_result, manifest_output = run_cli(
                 [

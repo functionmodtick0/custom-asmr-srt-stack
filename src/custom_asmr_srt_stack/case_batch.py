@@ -194,8 +194,11 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
     reference_review_count = 0
     reference_review_clear_case_count = 0
     candidate_case_count = 0
+    candidate_review_count = 0
+    candidate_review_clear_case_count = 0
     cases_missing_candidate: list[str] = []
     cases_needing_review: list[str] = []
+    cases_with_candidate_review: list[str] = []
     cases_with_issues: list[str] = []
 
     for index, raw_item in enumerate(raw_items):
@@ -214,6 +217,13 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
         reference_review_count += item["reference_review_count"]
         if item.get("candidate") is not None:
             candidate_case_count += 1
+            item_candidate_review_count = item.get("candidate_review_count")
+            if isinstance(item_candidate_review_count, int):
+                candidate_review_count += item_candidate_review_count
+                if item_candidate_review_count > 0:
+                    cases_with_candidate_review.append(item["id"])
+                elif candidate_loaded_without_issues(item):
+                    candidate_review_clear_case_count += 1
         else:
             cases_missing_candidate.append(item["id"])
         if item["reference_review_count"] > 0:
@@ -231,6 +241,11 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
         "missing_candidate_case_count": len(cases_missing_candidate),
         "cases_missing_candidate": cases_missing_candidate,
         "next_missing_candidate_case_id": cases_missing_candidate[0] if cases_missing_candidate else None,
+        "candidate_review_count": candidate_review_count,
+        "candidate_review_case_count": len(cases_with_candidate_review),
+        "candidate_review_clear_case_count": candidate_review_clear_case_count,
+        "cases_with_candidate_review": cases_with_candidate_review,
+        "next_candidate_review_case_id": cases_with_candidate_review[0] if cases_with_candidate_review else None,
         "reference_type_counts": reference_type_counts,
         "missing_file_count": missing_file_count,
         "cases_with_issues": cases_with_issues,
@@ -355,6 +370,14 @@ def reference_loaded_without_issues(item: dict[str, Any]) -> bool:
         return False
     issues = item.get("issues")
     return isinstance(issues, list) and not any(str(issue).startswith("reference ") for issue in issues)
+
+
+def candidate_loaded_without_issues(item: dict[str, Any]) -> bool:
+    candidate = item.get("candidate")
+    if not isinstance(candidate, dict) or not candidate.get("exists"):
+        return False
+    issues = item.get("issues")
+    return isinstance(issues, list) and not any(str(issue).startswith("candidate ") for issue in issues)
 
 
 def save_review_case_reference(
