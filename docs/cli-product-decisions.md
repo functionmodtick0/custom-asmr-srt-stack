@@ -413,6 +413,11 @@ uv run casrt save-review-case-reference cases/case-index.json case-id edited.mas
 이미 준비된 case set에 case-local candidate transcript를 붙일 때는 `attach-review-case-candidates`를 사용한다.
 
 ```bash
+uv run casrt transcribe-review-case-candidates cases/case-index.json \
+  -o candidate-outputs \
+  --adapter local-granite-asr \
+  --model-id /path/to/granite-speech-snapshot \
+  --json
 uv run casrt build-candidate-attach-plan cases/case-index.json candidate-outputs \
   -o attach-candidates.json \
   --candidate-id granite-base-filtered \
@@ -437,6 +442,10 @@ uv run casrt attach-review-case-candidates cases/case-index.json attach-candidat
 
 동작:
 
+- `transcribe-review-case-candidates`는 prepared `case-index.json`의 audio file을 기존 project workflow로 분석/전사하고 candidate directory에 `<case-id>.master.json`을 쓴다.
+- 이 명령은 VAD/energy chunking, local adapter mix-first 정책, channel attribution, optional aligner hook을 `project transcribe`와 같은 경로로 사용한다.
+- 기본 사용은 `local-*` adapter와 로컬 model/snapshot id다. OpenAI-compatible/Gemini adapter는 기존 호환성을 위해 사용할 수 있지만 제품 기본 품질 경로는 아니다.
+- output directory는 비어 있어야 한다. 기본 project artifact 위치는 output directory 아래 `projects/`이고, `--project-root`로 따로 지정할 수 있다.
 - `build-candidate-attach-plan`은 prepared `case-index.json`의 case id를 candidate directory의 `<case-id>.master.json`, `<case-id>.json`, `<case-id>.srt`와 매칭해 `custom-asmr-case-candidate-attach-plan-v1` file을 만든다.
 - 생성 plan의 candidate path는 plan file 위치 기준 상대경로로 기록한다.
 - 모든 case id가 정확히 하나의 candidate file과 매칭되어야 한다. 누락이나 같은 case의 `.json`/`.srt` 중복처럼 모호한 매칭이 있으면 output file을 만들기 전에 실패한다.

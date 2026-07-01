@@ -1480,6 +1480,135 @@ class ProjectCliTests(unittest.TestCase):
             self.assertIn("ambiguous case files", error)
             self.assertFalse(output_plan.exists())
 
+    def test_transcribe_review_case_candidates_creates_case_named_outputs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_dir = root / "cases"
+            audio_dir = case_dir / "audio"
+            output_dir = root / "candidate-outputs"
+            project_root = root / "projects"
+            audio_dir.mkdir(parents=True)
+            write_stereo_samples(audio_dir / "front-a.wav", [(100, 200), (300, 400)])
+            write_stereo_samples(audio_dir / "front-b.wav", [(500, 600), (700, 800)])
+            case_index = case_dir / "case-index.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [
+                            {
+                                "id": "front-a",
+                                "audio": "audio/front-a.wav",
+                                "reference": "references/front-a.master.json",
+                                "segments": 0,
+                                "review_count": 0,
+                            },
+                            {
+                                "id": "front-b",
+                                "audio": "audio/front-b.wav",
+                                "reference": "references/front-b.master.json",
+                                "segments": 0,
+                                "review_count": 0,
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            calls = []
+
+            def fake_transcribe(endpoint, audio_bytes, *, mime_type, channel, source_language):
+                del endpoint, mime_type, source_language
+                calls.append((channel, analyze_wav(audio_bytes).duration_ms))
+                return (
+                    Segment(
+                        id="ignored",
+                        start_ms=0,
+                        end_ms=analyze_wav(audio_bytes).duration_ms,
+                        channel=channel,
+                        kind="speech",
+                        text=f"{channel}候補",
+                    ),
+                )
+
+            with mock.patch("custom_asmr_srt_stack.cli.transcribe_audio", side_effect=fake_transcribe):
+                result, output = run_cli(
+                    [
+                        "transcribe-review-case-candidates",
+                        "--project-root",
+                        str(project_root),
+                        "--adapter",
+                        "openai-compatible",
+                        "--endpoint-url",
+                        "http://localhost:8000/v1",
+                        "--model-id",
+                        "local-test-model",
+                        "--json",
+                        str(case_index),
+                        "-o",
+                        str(output_dir),
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["format"], "custom-asmr-case-candidate-transcription-v1")
+            self.assertEqual(report["candidate_count"], 2)
+            self.assertEqual([item["case_id"] for item in report["items"]], ["front-a", "front-b"])
+            self.assertTrue((output_dir / "front-a.master.json").is_file())
+            self.assertTrue((output_dir / "front-b.master.json").is_file())
+            front_a = json.loads((output_dir / "front-a.master.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                [(segment["channel"], segment["text"]) for segment in front_a["segments"]],
+                [("L", "L候補"), ("R", "R候補")],
+            )
+            self.assertEqual(calls, [("L", 2), ("R", 2), ("L", 2), ("R", 2)])
+            self.assertEqual(len(list(project_root.iterdir())), 2)
+
+    def test_transcribe_review_case_candidates_rejects_missing_audio_before_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_index = root / "case-index.json"
+            output_dir = root / "candidate-outputs"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [
+                            {
+                                "id": "front-a",
+                                "audio": "audio/missing.wav",
+                                "reference": "references/front-a.master.json",
+                                "segments": 0,
+                                "review_count": 0,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "transcribe-review-case-candidates",
+                    "--adapter",
+                    "openai-compatible",
+                    "--endpoint-url",
+                    "http://localhost:8000/v1",
+                    "--model-id",
+                    "local-test-model",
+                    "--json",
+                    str(case_index),
+                    "-o",
+                    str(output_dir),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(output, "")
+            self.assertIn("review case audio file does not exist", error)
+            self.assertFalse(output_dir.exists())
+
     def test_attach_review_case_candidates_rejects_incomplete_plan_before_side_effects(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

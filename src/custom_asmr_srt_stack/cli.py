@@ -24,6 +24,7 @@ from custom_asmr_srt_stack.case_batch import (
     review_case_status,
     save_review_case_reference,
 )
+from custom_asmr_srt_stack.case_transcription import transcribe_review_case_candidates
 from custom_asmr_srt_stack.case_slicing import slice_master_document
 from custom_asmr_srt_stack.channel_attribution import (
     CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
@@ -367,6 +368,22 @@ def build_case_candidate_attach_plan_command(args: argparse.Namespace) -> None:
         args,
         report,
         f"candidate attach plan built: {args.output} candidates={report['candidate_count']}",
+    )
+
+
+def transcribe_review_case_candidates_command(args: argparse.Namespace) -> None:
+    report = transcribe_review_case_candidates(
+        args.case_index,
+        output_dir=args.output,
+        model_endpoint=model_endpoint_from_args(args),
+        project_root=args.project_root,
+        source_language=args.source_language,
+        transcribe_audio_func=transcribe_audio,
+    )
+    emit(
+        args,
+        report,
+        f"review case candidates transcribed: {args.output} candidates={report['candidate_count']}",
     )
 
 
@@ -1142,6 +1159,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Candidate id to store at the plan level for every matched case.",
     )
     build_case_candidate_attach_plan_parser.set_defaults(func=build_case_candidate_attach_plan_command)
+
+    transcribe_review_case_candidates_parser = subcommands.add_parser(
+        "transcribe-review-case-candidates",
+        parents=[project_parent, model_parent, output_parent],
+        help="Transcribe every prepared review case audio into case-local candidate master files.",
+    )
+    transcribe_review_case_candidates_parser.add_argument("case_index", type=Path)
+    transcribe_review_case_candidates_parser.add_argument("-o", "--output", type=Path, required=True)
+    transcribe_review_case_candidates_parser.add_argument("--source-language", default="ja")
+    transcribe_review_case_candidates_parser.set_defaults(func=transcribe_review_case_candidates_command)
 
     freeze_case_references_parser = subcommands.add_parser(
         "freeze-case-references",

@@ -396,6 +396,11 @@ uv run casrt save-review-case-reference cases/case-index.json case-id edited.mas
 이미 준비된 case set에 case-local candidate transcript를 붙이기:
 
 ```bash
+uv run casrt transcribe-review-case-candidates cases/case-index.json \
+  -o candidate-outputs \
+  --adapter local-granite-asr \
+  --model-id /path/to/granite-speech-snapshot \
+  --json
 uv run casrt build-candidate-attach-plan cases/case-index.json candidate-outputs \
   -o attach-candidates.json \
   --candidate-id granite-base-filtered \
@@ -403,7 +408,7 @@ uv run casrt build-candidate-attach-plan cases/case-index.json candidate-outputs
 uv run casrt attach-review-case-candidates cases/case-index.json attach-candidates.json --json
 ```
 
-`build-candidate-attach-plan`은 candidate directory에서 `<case-id>.master.json`, `<case-id>.json`, `<case-id>.srt`를 찾아 `custom-asmr-case-candidate-attach-plan-v1` plan을 만듭니다. 모든 case가 정확히 하나의 파일에 매칭되어야 하며, 누락/모호한 중복은 output을 만들기 전에 실패합니다. Candidate 입력은 해당 case audio 기준의 SRT 또는 master JSON이어야 하며, `attach-review-case-candidates`는 `candidates/*.master.json`을 쓰고 `case-index.json`을 갱신합니다. 기존 candidate를 덮어쓸 때만 `--replace`를 사용합니다.
+`transcribe-review-case-candidates`는 prepared case audio를 기존 project 분석/전사 workflow로 처리해 `<case-id>.master.json` 후보 파일을 만듭니다. 기본 local 품질 경로에서는 `local-*` adapter와 로컬 snapshot/model id를 사용합니다. `build-candidate-attach-plan`은 candidate directory에서 `<case-id>.master.json`, `<case-id>.json`, `<case-id>.srt`를 찾아 `custom-asmr-case-candidate-attach-plan-v1` plan을 만듭니다. 모든 case가 정확히 하나의 파일에 매칭되어야 하며, 누락/모호한 중복은 output을 만들기 전에 실패합니다. Candidate 입력은 해당 case audio 기준의 SRT 또는 master JSON이어야 하며, `attach-review-case-candidates`는 `candidates/*.master.json`을 쓰고 `case-index.json`을 갱신합니다. 기존 candidate를 덮어쓸 때만 `--replace`를 사용합니다.
 
 검수한 case reference를 한 번에 고정:
 
