@@ -417,6 +417,13 @@ class WebAppBehaviorTests(unittest.TestCase):
                       source_case_index: "/cases/case-index.json",
                       case_count: 2,
                       next_case_id: "front-b",
+                      duration_summary: {
+                        source_item_duration_ms_sum: 10000,
+                        effective_item_duration_ms_sum: 5000,
+                        clip_duration_ms_sum: 6000,
+                        clip_duration_ms_max: 6000,
+                        focus_item_count: 2,
+                      },
                       items: [
                         {
                           priority_rank: 1,
@@ -443,7 +450,10 @@ class WebAppBehaviorTests(unittest.TestCase):
               };
 
               await context.loadReviewPath();
-              assert.strictEqual(elements.get("segmentCount").textContent, "2 review clips · 2 cases · next front-b");
+              assert.strictEqual(
+                elements.get("segmentCount").textContent,
+                "2 review clips · 2 cases · listen 0:06.000 · focus 0:05.000/0:10.000 · next front-b",
+              );
               assert.strictEqual(sourceButton.hidden, false);
               assert.strictEqual(sourceButton.disabled, false);
 

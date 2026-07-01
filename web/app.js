@@ -344,6 +344,7 @@ function renderReviewPack() {
   if (Number.isInteger(caseCount)) {
     summaryParts.push(`${caseCount} cases`);
   }
+  summaryParts.push(...reviewPackDurationSummaryParts(state.reviewPack.duration_summary));
   if (nextCaseId) {
     summaryParts.push(`next ${nextCaseId}`);
   }
@@ -612,6 +613,30 @@ function formatScore(score) {
 
 function formatDuration(ms) {
   return Number.isFinite(ms) ? formatMs(ms) : "duration -";
+}
+
+function reviewPackDurationSummaryParts(summary) {
+  if (!summary || typeof summary !== "object") return [];
+  const clipDurationMs = finiteNumber(summary.clip_duration_ms_sum);
+  if (!Number.isFinite(clipDurationMs)) return [];
+  const parts = [`listen ${formatDuration(clipDurationMs)}`];
+  const sourceDurationMs = finiteNumber(summary.source_item_duration_ms_sum);
+  const effectiveDurationMs = finiteNumber(summary.effective_item_duration_ms_sum);
+  const focusItemCount = finiteNumber(summary.focus_item_count);
+  if (
+    Number.isFinite(sourceDurationMs) &&
+    Number.isFinite(effectiveDurationMs) &&
+    Number.isFinite(focusItemCount) &&
+    focusItemCount > 0 &&
+    effectiveDurationMs !== sourceDurationMs
+  ) {
+    parts.push(`focus ${formatDuration(effectiveDurationMs)}/${formatDuration(sourceDurationMs)}`);
+  }
+  return parts;
+}
+
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function formatMsRange(startMs, endMs) {
