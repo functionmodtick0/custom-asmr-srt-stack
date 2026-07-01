@@ -411,7 +411,7 @@ uv run casrt audit-review-case-references cases/case-index.json \
   -o cases/reference-audit.json
 ```
 
-`audit-review-case-references`는 prepared reference set의 overlap, same-channel overlap, exact-boundary overlap, long segment, near-full speech coverage, 남은 review flag를 text 없이 segment id/time/channel 중심으로 진단합니다. `--review-effort-output`을 주면 기존 `review-pack`에 넣을 수 있는 구조 검수 queue도 만듭니다. `--fail-on-audit`은 queue item이 남아 있을 때 report를 출력/저장한 뒤 실패합니다. Pseudo-gold를 human-reviewed로 올리기 전 구조 검수 우선순위를 정하는 CLI-only 도구이며 reference를 수정하지 않습니다.
+`audit-review-case-references`는 prepared reference set의 overlap, same-channel overlap, exact-boundary overlap, long segment, near-full speech coverage, 남은 review flag를 text 없이 segment id/time/channel 중심으로 진단합니다. 기본 overlap 기준은 100ms 이상이라 SRT 경계의 20ms 안팎 jitter는 product blocker로 보지 않습니다. 1ms strict 진단이 필요하면 `--overlap-min-ms 1`을 명시합니다. `--review-effort-output`을 주면 기존 `review-pack`에 넣을 수 있는 구조 검수 queue도 만듭니다. `--fail-on-audit`은 queue item이 남아 있을 때 report를 출력/저장한 뒤 실패합니다. Pseudo-gold를 human-reviewed로 올리기 전 구조 검수 우선순위를 정하는 CLI-only 도구이며 reference를 수정하지 않습니다.
 
 ```bash
 uv run casrt audit-review-case-channels cases/case-index.json \
@@ -476,7 +476,7 @@ uv run casrt freeze-case-references cases/case-index.json \
   --json
 ```
 
-`freeze-case-references`는 reference id를 안정화하고 `needs_review=false`로 저장한 새 case set을 만듭니다. 사람이 실제로 검수한 경우에만 `--reference-type human-reviewed`를 사용합니다. `--fail-on-review`를 같이 쓰면 검수 flag가 남아 있을 때 output을 만들기 전에 실패하고, `--fail-on-reference-audit`은 same-channel overlap, exact-boundary overlap, long segment 같은 구조 검수 항목이 남아 있을 때 output을 만들기 전에 실패합니다. 입력 case set에 candidate가 있으면 `eval-manifest.json`도 함께 생성합니다.
+`freeze-case-references`는 reference id를 안정화하고 `needs_review=false`로 저장한 새 case set을 만듭니다. 사람이 실제로 검수한 경우에만 `--reference-type human-reviewed`를 사용합니다. `--fail-on-review`를 같이 쓰면 검수 flag가 남아 있을 때 output을 만들기 전에 실패하고, `--fail-on-reference-audit`은 기본 100ms 이상 same-channel overlap, exact-boundary overlap, long segment 같은 구조 검수 항목이 남아 있을 때 output을 만들기 전에 실패합니다. 입력 case set에 candidate가 있으면 `eval-manifest.json`도 함께 생성합니다.
 
 candidate가 포함된 case set에서 평가 manifest 재생성:
 

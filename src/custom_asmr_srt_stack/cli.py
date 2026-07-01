@@ -1700,7 +1700,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--overlap-min-ms",
         type=int,
         default=DEFAULT_REFERENCE_AUDIT_OVERLAP_MIN_MS,
-        help="Minimum positive overlap to report as a reference overlap pair.",
+        help="Minimum overlap duration to report as a reference overlap pair; use 1 for strict diagnostics.",
     )
     audit_review_case_references_parser.add_argument(
         "--long-segment-ms",

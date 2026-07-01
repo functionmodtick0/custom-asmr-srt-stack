@@ -50,6 +50,27 @@ class ReferenceAuditTests(unittest.TestCase):
         )
         self.assertNotIn("text", json.dumps(report, ensure_ascii=False))
 
+    def test_default_reference_audit_ignores_tiny_boundary_overlap(self):
+        master = master_with_segments(
+            [
+                Segment("seg_000001", 0, 1000, "L", "speech", "前"),
+                Segment("seg_000002", 980, 2000, "L", "speech", "後"),
+            ],
+            duration_ms=3000,
+        )
+
+        product_report = audit_master_reference(master)
+        strict_report = audit_master_reference(master, overlap_min_ms=1)
+
+        self.assertEqual(product_report["thresholds"]["overlap_min_ms"], 100)
+        self.assertEqual(product_report["overlap_pair_count"], 0)
+        self.assertEqual(product_report["same_channel_overlap_pair_count"], 0)
+        self.assertEqual(product_report["flags"], [])
+        self.assertEqual(strict_report["thresholds"]["overlap_min_ms"], 1)
+        self.assertEqual(strict_report["overlap_pair_count"], 1)
+        self.assertEqual(strict_report["same_channel_overlap_pair_count"], 1)
+        self.assertEqual(strict_report["flags"], [{"type": "same_channel_overlap", "count": 1}])
+
     def test_audit_review_case_references_aggregates_prepared_case_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
