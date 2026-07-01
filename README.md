@@ -377,6 +377,14 @@ uv run casrt review-case-status cases/case-index.json --json -o cases/status.jso
 
 `review-case-status`는 `case-index.json` 기준으로 audio/reference/candidate 파일 존재 여부, 실제 segment 수, 남은 `needs_review` 수를 다시 계산합니다. Report에는 `next_review_case_id`와 case별 `first_review_segment`도 포함되어 CLI/WebUI가 같은 다음 검수 위치를 표시할 수 있습니다. `--fail-on-issues`는 파일 누락이나 stale count가 있을 때, `--fail-on-review`는 reference에 검수 flag가 남았을 때 report를 출력/저장한 뒤 실패 exit code를 반환합니다.
 
+준비된 case set의 남은 reference 검수 구간만 audio clip queue로 만들기:
+
+```bash
+uv run casrt review-case-pack cases/case-index.json -o cases/review-case-pack --json
+```
+
+`review-case-pack`은 각 reference master의 `needs_review=true` segment를 기존 `custom-asmr-review-pack-v1` 형식으로 잘라냅니다. 생성된 `index.json`은 WebUI Review path에서 열 수 있고, 사람이 pseudo-gold reference를 human-reviewed로 올리기 전에 남은 구간만 빠르게 들을 때 사용합니다.
+
 편집한 단일 case reference를 저장하고 `case-index.json` count를 갱신:
 
 ```bash
@@ -529,7 +537,7 @@ Review path: /path/to/review-pack
 Review path: /path/to/review-cases
 ```
 
-WebUI는 review pack을 새 project로 저장하지 않고, priority item을 클릭할 때 해당 clip만 재생하는 검수 큐 보기 모드로 다룹니다. Review case set은 사람이 reference를 고치는 편집 모드로 열며, 목록에서 전체 `needs_review` flag 수, flag가 남은 case, 각 case의 첫 미검수 segment 시간/텍스트를 표시합니다. `검수 완료`로 현재 `needs_review` segment를 처리하고 다음 검수 segment로 이동할 수 있습니다. `case 목록`과 `다음 case`로 검수 case 사이를 이동할 수 있습니다. 모델/VAD/threshold 옵션은 추가하지 않습니다.
+WebUI는 review pack을 새 project로 저장하지 않고, priority item을 클릭할 때 해당 clip만 재생하는 검수 큐 보기 모드로 다룹니다. `review-effort`에서 만든 후보 수정 pack과 `review-case-pack`에서 만든 reference 검수 pack은 같은 loader를 사용합니다. Review case set은 사람이 reference를 고치는 편집 모드로 열며, 목록에서 전체 `needs_review` flag 수, flag가 남은 case, 각 case의 첫 미검수 segment 시간/텍스트를 표시합니다. `검수 완료`로 현재 `needs_review` segment를 처리하고 다음 검수 segment로 이동할 수 있습니다. `case 목록`과 `다음 case`로 검수 case 사이를 이동할 수 있습니다. 모델/VAD/threshold 옵션은 추가하지 않습니다.
 
 ## 테스트
 

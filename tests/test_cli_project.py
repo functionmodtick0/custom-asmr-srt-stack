@@ -2047,6 +2047,148 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(result, 1)
             self.assertIn("output directory must be empty", error)
 
+    def test_review_case_pack_creates_audio_clips_from_reference_review_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_dir = root / "cases"
+            audio_dir = case_dir / "audio"
+            reference_dir = case_dir / "references"
+            audio_dir.mkdir(parents=True)
+            reference_dir.mkdir()
+            audio_path = audio_dir / "front-a.wav"
+            reference_path = reference_dir / "front-a.master.json"
+            case_index_path = case_dir / "case-index.json"
+            pack_dir = root / "review-case-pack"
+            write_stereo_samples(audio_path, [(100, 200)] * 8)
+            reference_path.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "front-a.wav", "duration_ms": 8},
+                        "segments": [
+                            {
+                                "id": "seg_000001",
+                                "start_ms": 0,
+                                "end_ms": 2,
+                                "channel": "MIX",
+                                "kind": "speech",
+                                "text": "確認済み",
+                                "needs_review": False,
+                            },
+                            {
+                                "id": "seg_000002",
+                                "start_ms": 2,
+                                "end_ms": 4,
+                                "channel": "L",
+                                "kind": "speech",
+                                "text": "前半確認",
+                                "needs_review": True,
+                            },
+                            {
+                                "id": "seg_000003",
+                                "start_ms": 6,
+                                "end_ms": 8,
+                                "channel": "R",
+                                "kind": "speech",
+                                "text": "後半確認",
+                                "needs_review": True,
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            case_index_path.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "reference_type": "pseudo-gold",
+                        "items": [
+                            {
+                                "id": "front-a",
+                                "audio": "audio/front-a.wav",
+                                "reference": "references/front-a.master.json",
+                                "segments": 3,
+                                "review_count": 2,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "review-case-pack",
+                    "--json",
+                    "--context-ms",
+                    "1",
+                    "-o",
+                    str(pack_dir),
+                    str(case_index_path),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["format"], "custom-asmr-review-pack-v1")
+            self.assertEqual(report["source_case_index"], str(case_index_path))
+            self.assertEqual(report["clip_count"], 2)
+            self.assertEqual([item["reference_id"] for item in report["items"]], ["seg_000002", "seg_000003"])
+            self.assertEqual([item["priority_rank"] for item in report["items"]], [1, 2])
+            self.assertEqual(report["items"][0]["reasons"], ["reference-needs-review"])
+            self.assertEqual(report["items"][0]["reference_channel"], "L")
+            self.assertEqual(report["items"][0]["reference_text"], "前半確認")
+            self.assertEqual(report["items"][0]["candidate_text"], "")
+            self.assertEqual(report["items"][0]["clip_start_ms"], 1)
+            self.assertEqual(report["items"][0]["clip_end_ms"], 5)
+            first_clip = pack_dir / report["items"][0]["clip_file"]
+            second_clip = pack_dir / report["items"][1]["clip_file"]
+            self.assertTrue(first_clip.exists())
+            self.assertTrue(second_clip.exists())
+            self.assertEqual(analyze_wav(first_clip.read_bytes()).duration_ms, 4)
+            self.assertEqual(analyze_wav(second_clip.read_bytes()).duration_ms, 3)
+            index = json.loads((pack_dir / "index.json").read_text(encoding="utf-8"))
+            self.assertEqual(index["items"][1]["clip_start_ms"], 5)
+            self.assertEqual(index["items"][1]["clip_end_ms"], 8)
+
+    def test_review_case_pack_rejects_missing_inputs_before_output_side_effects(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_index_path = root / "case-index.json"
+            pack_dir = root / "review-case-pack"
+            case_index_path.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [
+                            {
+                                "id": "front-a",
+                                "audio": "missing.wav",
+                                "reference": "missing.master.json",
+                                "segments": 1,
+                                "review_count": 1,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, _, error = run_cli_with_stderr(
+                [
+                    "review-case-pack",
+                    "-o",
+                    str(pack_dir),
+                    str(case_index_path),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertIn("audio file is missing", error)
+            self.assertFalse(pack_dir.exists())
+
     def test_eval_manifest_quality_gate_passes_when_thresholds_are_met(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

@@ -377,6 +377,21 @@ uv run casrt review-case-status cases/case-index.json --fail-on-issues --fail-on
 - `--fail-on-review`는 reference에 `needs_review=true`가 남아 있으면 report 출력/저장 후 실패한다.
 - 이 명령도 human-reviewed 여부를 추정하지 않는다. `reference_type`은 index에 기록된 값을 집계할 뿐이며, 모델 승격 평가는 여전히 `eval-manifest --require-reference-type human-reviewed`가 담당한다.
 
+준비된 case set의 남은 reference 검수 구간은 `review-case-pack`으로 clip queue를 만든다.
+
+```bash
+uv run casrt review-case-pack cases/case-index.json -o cases/review-case-pack --json
+```
+
+동작:
+
+- 입력은 `custom-asmr-review-case-set-v1` `case-index.json`이다.
+- 출력은 기존 WebUI loader가 읽는 `custom-asmr-review-pack-v1`이다. 새 WebUI 모드나 옵션을 추가하지 않는다.
+- 각 reference master에서 `needs_review=true` segment만 잘라 `reasons=["reference-needs-review"]` item으로 만든다.
+- item에는 `case_id`, `reference_id`, reference channel/text, original `start_ms`/`end_ms`, clip file과 context bounds가 포함된다.
+- `--context-ms` 기본값은 review pack 기본 context 500ms이며, CLI-only 검수 보조값이다.
+- audio/reference 파일이나 master parse가 실패하면 output directory를 만들기 전에 실패한다.
+
 편집한 단일 case reference를 저장하고 `case-index.json` count를 갱신할 때는 `save-review-case-reference`를 사용한다.
 
 ```bash

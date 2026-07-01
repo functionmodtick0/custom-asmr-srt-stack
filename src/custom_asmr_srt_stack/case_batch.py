@@ -6,11 +6,16 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from custom_asmr_srt_stack.audio import normalize_audio_to_wav, slice_wav
+from custom_asmr_srt_stack.audio import analyze_wav, normalize_audio_to_wav, slice_wav
 from custom_asmr_srt_stack.case_slicing import slice_master_document
 from custom_asmr_srt_stack.evaluation import EVAL_MANIFEST_FORMAT, load_transcript_document
 from custom_asmr_srt_stack.models import MasterDocument
-from custom_asmr_srt_stack.review_pack import REVIEW_AUDIO_MAP_FORMAT
+from custom_asmr_srt_stack.review_pack import (
+    DEFAULT_REVIEW_CONTEXT_MS,
+    REVIEW_AUDIO_MAP_FORMAT,
+    REVIEW_PACK_FORMAT,
+    sanitize_clip_name,
+)
 
 CASE_SLICE_PLAN_FORMAT = "custom-asmr-case-slice-plan-v1"
 REVIEW_CASE_SET_FORMAT = "custom-asmr-review-case-set-v1"
@@ -228,6 +233,110 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
         "ok": missing_file_count == 0 and not cases_with_issues,
         "items": items,
     }
+
+
+def build_review_case_pack(
+    case_index_file: Path,
+    *,
+    output_dir: Path,
+    context_ms: int = DEFAULT_REVIEW_CONTEXT_MS,
+    source_language: str = "ja",
+) -> dict[str, Any]:
+    if context_ms < 0:
+        raise ValueError("context_ms must be non-negative")
+    case_index = load_review_case_index(case_index_file)
+    raw_items = case_index.get("items")
+    if not isinstance(raw_items, list):
+        raise ValueError("review case index items must be an array")
+
+    base_dir = case_index_file.parent
+    case_sources: list[dict[str, Any]] = []
+    for item_index, raw_item in enumerate(raw_items):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"review case index item {item_index} must be an object")
+        case_id = require_index_string(raw_item, "id", item_index)
+        audio_value = require_index_string(raw_item, "audio", item_index)
+        reference_value = require_index_string(raw_item, "reference", item_index)
+        audio_path = resolve_plan_path(base_dir, audio_value)
+        reference_path = resolve_plan_path(base_dir, reference_value)
+        if not audio_path.is_file():
+            raise ValueError(f"review case audio file is missing: {audio_value}")
+        if not reference_path.is_file():
+            raise ValueError(f"review case reference file is missing: {reference_value}")
+        audio_bytes = audio_path.read_bytes()
+        audio_duration_ms = analyze_wav(audio_bytes).duration_ms
+        master = load_transcript_document(reference_path, source_language=source_language)
+        case_sources.append(
+            {
+                "case_id": case_id,
+                "audio": audio_value,
+                "reference": reference_value,
+                "audio_bytes": audio_bytes,
+                "audio_duration_ms": audio_duration_ms,
+                "master": master,
+            }
+        )
+
+    prepare_output_dir(output_dir)
+    clips_dir = output_dir / "clips"
+    clips_dir.mkdir()
+
+    packed_items: list[dict[str, Any]] = []
+    for source in case_sources:
+        case_id = source["case_id"]
+        audio_value = source["audio"]
+        reference_value = source["reference"]
+        audio_bytes = source["audio_bytes"]
+        audio_duration_ms = source["audio_duration_ms"]
+        master = source["master"]
+        for segment in master.segments:
+            if not segment.needs_review:
+                continue
+            clip_start_ms = max(0, segment.start_ms - context_ms)
+            clip_end_ms = min(audio_duration_ms, segment.end_ms + context_ms)
+            if clip_end_ms <= clip_start_ms:
+                raise ValueError(f"review case segment {case_id}/{segment.id} selects an empty audio range")
+            rank = len(packed_items) + 1
+            clip_file = str(Path("clips") / review_case_clip_name(rank, case_id, segment.id))
+            (output_dir / clip_file).write_bytes(slice_wav(audio_bytes, start_ms=clip_start_ms, end_ms=clip_end_ms))
+            packed_items.append(
+                {
+                    "case_id": case_id,
+                    "reference_id": segment.id,
+                    "candidate_id": None,
+                    "start_ms": segment.start_ms,
+                    "end_ms": segment.end_ms,
+                    "reasons": ["reference-needs-review"],
+                    "reference_channel": segment.channel,
+                    "reference_text": segment.text,
+                    "candidate_channel": None,
+                    "candidate_text": "",
+                    "priority_score": float(segment.end_ms - segment.start_ms),
+                    "priority_rank": rank,
+                    "source_case_index": str(case_index_file),
+                    "audio": audio_value,
+                    "reference": reference_value,
+                    "clip_file": clip_file,
+                    "clip_start_ms": clip_start_ms,
+                    "clip_end_ms": clip_end_ms,
+                    "clip_context_ms": context_ms,
+                }
+            )
+
+    result = {
+        "format": REVIEW_PACK_FORMAT,
+        "source_case_index": str(case_index_file),
+        "clip_count": len(packed_items),
+        "context_ms": context_ms,
+        "items": packed_items,
+    }
+    (output_dir / "index.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return result
+
+
+def review_case_clip_name(index: int, case_id: str, segment_id: str) -> str:
+    value = f"{index:06d}__{case_id}__reference-needs-review__{segment_id}__no-cand"
+    return sanitize_clip_name(value) + ".wav"
 
 
 def reference_loaded_without_issues(item: dict[str, Any]) -> bool:

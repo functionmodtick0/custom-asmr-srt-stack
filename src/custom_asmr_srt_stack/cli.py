@@ -15,6 +15,7 @@ from custom_asmr_srt_stack.alignment import alignment_diagnostics, run_alignment
 from custom_asmr_srt_stack.audio import normalize_audio_to_wav, slice_wav, split_wav_channels
 from custom_asmr_srt_stack.case_batch import (
     EVAL_MANIFEST_BUILD_FORMAT,
+    build_review_case_pack,
     build_eval_manifest_from_case_index,
     freeze_case_references as freeze_case_references_batch,
     prepare_review_cases,
@@ -38,7 +39,7 @@ from custom_asmr_srt_stack.evaluation import (
 from custom_asmr_srt_stack.model_snapshot import snapshot_digest
 from custom_asmr_srt_stack.models import MasterDocument
 from custom_asmr_srt_stack.projects import ProjectStore
-from custom_asmr_srt_stack.review_pack import build_review_pack
+from custom_asmr_srt_stack.review_pack import DEFAULT_REVIEW_CONTEXT_MS, build_review_pack
 from custom_asmr_srt_stack.server import run_server
 from custom_asmr_srt_stack.srt import format_srt, parse_srt
 from custom_asmr_srt_stack.translation import export_translation_json, parse_translated_texts
@@ -542,6 +543,20 @@ def review_pack(args: argparse.Namespace) -> None:
         args,
         report,
         f"review pack: {args.output} clips={report['clip_count']}",
+    )
+
+
+def review_case_pack(args: argparse.Namespace) -> None:
+    report = build_review_case_pack(
+        args.case_index,
+        output_dir=args.output,
+        context_ms=args.context_ms,
+        source_language=args.source_language,
+    )
+    emit(
+        args,
+        report,
+        f"review case pack: {args.output} clips={report['clip_count']}",
     )
 
 
@@ -1150,6 +1165,22 @@ def build_parser() -> argparse.ArgumentParser:
     review_pack_parser.add_argument("--audio-map", type=Path, help="JSON map from case_id to WAV file.")
     review_pack_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
     review_pack_parser.set_defaults(func=review_pack)
+
+    review_case_pack_parser = subcommands.add_parser(
+        "review-case-pack",
+        help="Create audio clips from prepared review case reference flags.",
+    )
+    review_case_pack_parser.add_argument("case_index", type=Path)
+    review_case_pack_parser.add_argument("-o", "--output", type=Path, required=True)
+    review_case_pack_parser.add_argument("--source-language", default="ja")
+    review_case_pack_parser.add_argument(
+        "--context-ms",
+        type=int,
+        default=DEFAULT_REVIEW_CONTEXT_MS,
+        help="Milliseconds of audio context to include before and after each review segment.",
+    )
+    review_case_pack_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
+    review_case_pack_parser.set_defaults(func=review_case_pack)
 
     serve_web = subcommands.add_parser("serve", help="Run the local WebUI server.")
     serve_web.add_argument("--host", default="127.0.0.1")

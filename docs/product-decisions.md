@@ -162,6 +162,7 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 - `attribute-channels`: 기존 SRT/master transcript와 stereo audio를 받아 `MIX` speech segment에만 L/R energy channel attribution을 적용한다. 기존 text/timing은 변경하지 않는다.
 - `slice-case`: 긴 원본 audio와 SRT/master에서 matching WAV/master case를 만들고, 경계에 걸쳐 잘린 segment를 `needs_review=true`로 표시해 human-reviewed gold 제작을 돕는다.
 - `review-case-status`: `case-index.json`에서 준비된 case set의 파일 존재 여부, stale segment/review count, 남은 reference `needs_review` 수를 실제 파일 기준으로 다시 계산한다. Report에는 `next_review_case_id`와 item별 `first_review_segment`를 포함해 CLI/WebUI가 같은 다음 검수 위치를 보여준다. 이 명령은 검수 완료를 자동 판정하지 않고, human-reviewed 승격 판단은 manifest의 `reference_type` gate가 담당한다.
+- `review-case-pack`: 준비된 case set의 reference `needs_review=true` segment만 잘라 기존 `custom-asmr-review-pack-v1` clip queue를 만든다. Human-reviewed 승격 전 사람이 남은 pseudo-gold 검수 구간만 빠르게 듣기 위한 CLI-only 보조 도구이며, 새 WebUI 옵션을 추가하지 않는다.
 - `save-review-case-reference`: 편집한 단일 SRT/master를 준비된 case reference로 저장하고 `case-index.json`의 segment/review count를 갱신한다. 이 명령도 reference authority를 바꾸지 않는다.
 - `freeze-case-references`: 준비된 case set의 reference들을 batch로 stable id와 `needs_review=false` 상태로 고정하고 새 case set을 만든다. 사람이 실제 검수한 reference에만 `--reference-type human-reviewed`를 사용하며, 승격 전에는 `--fail-on-review`로 남은 검수 flag를 막는다.
 - `build-eval-manifest`: candidate가 포함된 준비 case set에서 `custom-asmr-eval-manifest-v1`을 다시 만든다. 사람이 reference를 검수한 뒤 `--reference-type human-reviewed --fail-on-review`로 모델 승격 평가 manifest를 만들 때 사용한다.
@@ -440,6 +441,7 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - `slice-case`는 audio와 transcript를 같은 구간으로 자르고 transcript timestamp를 0 기준으로 rebase한다. 경계에서 잘린 segment는 검수 필요 상태로 남긴다.
 - `prepare-review-cases`는 여러 `slice-case` 작업을 plan 파일로 재현 가능하게 실행하고, `audio-map.json`, `case-index.json`, reference/candidate master, eval manifest 산출물을 만든다. 이 명령도 검수 완료를 판정하지 않는다.
 - `review-case-status`는 준비된 `case-index.json`의 audio/reference/candidate 파일 존재 여부와 실제 segment/review count를 다시 읽어 `custom-asmr-review-case-status-v1` report를 만든다. Report에는 `next_review_case_id`와 item별 `first_review_segment`를 포함한다. 운영 gate로 쓸 때는 `--fail-on-issues`와 `--fail-on-review`를 사용한다.
+- `review-case-pack`은 `case-index.json`의 reference `needs_review=true` segment를 기존 review pack 형식으로 잘라 WebUI review-pack loader에서 들을 수 있게 한다. 이 산출물은 편의용 queue일 뿐 reference 편집/승격 source of truth는 여전히 case set이다.
 - `freeze-case-references`는 준비된 `case-index.json`의 reference들을 새 output directory의 `references/*.master.json`으로 고정하고, 새 `case-index.json`, `audio-map.json`, optional `eval-manifest.json`을 쓴다.
 - `build-eval-manifest`는 `case-index.json`의 candidate paths를 평가 manifest로 재생성한다. stale count나 missing file이 있으면 manifest를 쓰지 않는다.
 - `sweep-channel-attribution`은 eval manifest와 audio map으로 여러 L/R attribution threshold를 비교하고 setting별 eval report와 comparison을 만든다. `--product-gate`를 함께 쓰면 comparison에 gate 결과를 남기지만, 기본 threshold를 자동 변경하지 않고 WebUI 옵션으로 노출하지 않는다.
