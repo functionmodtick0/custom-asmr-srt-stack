@@ -1933,7 +1933,10 @@ def build_parser() -> argparse.ArgumentParser:
     review_pack_parser.add_argument(
         "--source-case-index",
         type=Path,
-        help="Prepared review case-index.json to attach so WebUI can open the source case from pack items.",
+        help=(
+            "Prepared review case-index.json to attach so WebUI can open the source case from pack items; "
+            "also supplies per-case audio paths when --audio/--audio-map is omitted."
+        ),
     )
     review_pack_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
     review_pack_parser.set_defaults(func=review_pack)

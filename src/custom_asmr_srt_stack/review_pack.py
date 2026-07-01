@@ -23,16 +23,16 @@ def build_review_pack(
 ) -> dict[str, Any]:
     if context_ms < 0:
         raise ValueError("context_ms must be non-negative")
-    if audio_file is None and audio_map_file is None:
-        raise ValueError("review pack requires --audio or --audio-map")
-    if audio_file is not None and audio_map_file is not None:
-        raise ValueError("review pack accepts only one of --audio or --audio-map")
 
     items = review_effort_items(review_effort_report)
     if audio_file is not None:
         validate_single_audio_scope(items)
     source_case_index_value = review_pack_source_case_index(review_effort_report, source_case_index)
-    audio_by_case = load_audio_by_case(audio_file=audio_file, audio_map_file=audio_map_file)
+    audio_by_case = load_audio_by_case(
+        audio_file=audio_file,
+        audio_map_file=audio_map_file,
+        source_case_index_value=source_case_index_value,
+    )
     prepare_output_dir(output_dir)
     clips_dir = output_dir / "clips"
     clips_dir.mkdir()
@@ -118,10 +118,23 @@ def validate_single_audio_scope(items: list[dict[str, Any]]) -> None:
         raise ValueError("review pack with multiple case_id values requires --audio-map")
 
 
-def load_audio_by_case(*, audio_file: Path | None, audio_map_file: Path | None) -> dict[str | None, Path]:
+def load_audio_by_case(
+    *,
+    audio_file: Path | None,
+    audio_map_file: Path | None,
+    source_case_index_value: str | None = None,
+) -> dict[str | None, Path]:
+    if audio_file is None and audio_map_file is None and source_case_index_value is None:
+        raise ValueError(
+            "review pack requires --audio, --audio-map, --source-case-index, or embedded source_case_index"
+        )
+    if audio_file is not None and audio_map_file is not None:
+        raise ValueError("review pack accepts only one of --audio or --audio-map")
     if audio_file is not None:
         return {None: audio_file}
-    assert audio_map_file is not None
+    if audio_map_file is None:
+        assert source_case_index_value is not None
+        return load_audio_by_source_case_index(Path(source_case_index_value))
     data = json.loads(audio_map_file.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("audio map must be a JSON object")
@@ -149,6 +162,29 @@ def load_audio_by_case(*, audio_file: Path | None, audio_map_file: Path | None) 
         if not isinstance(audio, str) or not audio:
             raise ValueError("audio map values must be non-empty strings")
         mapping[case_id] = resolve_audio_map_path(audio_map_file.parent, audio)
+    return mapping
+
+
+def load_audio_by_source_case_index(case_index_file: Path) -> dict[str | None, Path]:
+    if not case_index_file.exists():
+        raise ValueError(f"source case index is missing: {case_index_file}")
+    data = json.loads(case_index_file.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or data.get("format") != "custom-asmr-review-case-set-v1":
+        raise ValueError("source case index must be custom-asmr-review-case-set-v1")
+    raw_items = data.get("items")
+    if not isinstance(raw_items, list):
+        raise ValueError("source case index items must be an array")
+    mapping: dict[str | None, Path] = {}
+    for index, item in enumerate(raw_items):
+        if not isinstance(item, dict):
+            raise ValueError(f"source case index item {index} must be an object")
+        case_id = item.get("id")
+        audio = item.get("audio")
+        if not isinstance(case_id, str) or not case_id:
+            raise ValueError(f"source case index item {index} id must be a non-empty string")
+        if not isinstance(audio, str) or not audio:
+            raise ValueError(f"source case index item {index} audio must be a non-empty string")
+        mapping[case_id] = resolve_audio_map_path(case_index_file.parent, audio)
     return mapping
 
 

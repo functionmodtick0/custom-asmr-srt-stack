@@ -434,7 +434,7 @@ Audit queue는 기존 review pack 생성 경로를 그대로 사용한다.
 
 ```bash
 uv run casrt review-pack cases/reference-audit-review-effort.json \
-  --audio-map cases/audio-map.json \
+  --source-case-index cases/case-index.json \
   -o cases/reference-audit-review-pack \
   --json
 ```
@@ -791,7 +791,6 @@ uv run casrt pipeline-readiness \
 
 ```bash
 uv run casrt review-pack review-effort.json \
-  --audio-map audio-map.json \
   --source-case-index cases/case-index.json \
   -o review-pack \
   --json
@@ -801,11 +800,13 @@ uv run casrt review-pack review-effort.json \
 
 - 입력은 `custom-asmr-review-effort-v1` report다.
 - `--audio`는 단일 audio file report에 사용하고, `--audio-map`은 manifest case별 audio file에 사용한다. 둘 중 하나만 허용한다. 여러 `case_id`가 있는 report에 `--audio`를 쓰면 실패한다.
+- Prepared case set에서 나온 review-effort는 `--source-case-index cases/case-index.json`만으로 case별 audio를 찾는다. 이때 `case-index.json`의 `items[].audio`를 case index directory 기준으로 해석한다.
+- Review-effort 안에 `source_case_index`가 이미 있으면 `--audio`, `--audio-map`, `--source-case-index` 없이도 그 case index에서 audio를 추론할 수 있다.
 - audio map은 `custom-asmr-review-audio-map-v1` 또는 `{ "case_id": "audio.wav" }` object를 받는다.
 - output directory는 없거나 비어 있어야 한다. 기존 clip과 새 index가 섞이는 것을 막기 위해 non-empty directory에는 쓰지 않는다.
 - 각 item의 `start_ms/end_ms`에 기본 500ms context를 붙이고 audio duration 안으로 clamp해서 `clips/*.wav`를 만든다.
 - `index.json` format은 `custom-asmr-review-pack-v1`이다. 각 item은 원래 review reason/text/timing, priority score/rank, `clip_file`, `clip_start_ms`, `clip_end_ms`, `clip_context_ms`를 보존한다.
-- `--source-case-index`를 지정하면 pack-level과 case/reference id가 있는 item에 `source_case_index`를 보존한다. WebUI는 이 값을 사용해 후보 실패 clip에서 source review case editor의 reference segment로 이동한다.
+- `--source-case-index`를 지정하거나 input report에 `source_case_index`가 있으면 pack-level과 case/reference id가 있는 item에 `source_case_index`를 보존한다. WebUI는 이 값을 사용해 후보 실패 clip에서 source review case editor의 reference segment로 이동한다.
 - Pack 생성은 human-reviewed gold 제작을 쉽게 하기 위한 CLI 도구이며 WebUI 옵션을 늘리지 않는다.
 - WebUI는 생성된 pack directory 또는 `index.json` path를 열어 priority 순서와 `clips/*.wav`를 재생할 수 있다. WebUI는 pack을 생성하거나 context/threshold를 바꾸지 않는다.
 

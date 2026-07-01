@@ -426,7 +426,7 @@ uv run casrt audit-review-case-channels cases/case-index.json \
 
 ```bash
 uv run casrt review-pack cases/reference-audit-review-effort.json \
-  --audio-map cases/audio-map.json \
+  --source-case-index cases/case-index.json \
   -o cases/reference-audit-review-pack \
   --json
 ```
@@ -638,13 +638,12 @@ uv run casrt review-effort eval-suite.json --json -o review-effort.json
 
 ```bash
 uv run casrt review-pack review-effort.json \
-  --audio-map audio-map.json \
   --source-case-index cases/case-index.json \
   -o review-pack \
   --json
 ```
 
-`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다. `review-effort`의 priority 순서와 score/rank는 pack index에도 보존됩니다. `--source-case-index`를 같이 주면 WebUI에서 후보 실패 clip을 보다가 `case 열기`로 원 reference segment 편집 화면에 바로 들어갈 수 있습니다.
+`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다. `review-effort`의 priority 순서와 score/rank는 pack index에도 보존됩니다. `--source-case-index`를 주면 case-index의 `items[].audio`에서 case별 audio path를 자동으로 가져오고, WebUI에서 후보 실패 clip을 보다가 `case 열기`로 원 reference segment 편집 화면에 바로 들어갈 수 있습니다. `review-effort` 안에 `source_case_index`가 이미 들어 있으면 이 옵션도 생략할 수 있습니다.
 
 생성된 pack은 WebUI에서도 열 수 있습니다.
 
