@@ -939,29 +939,75 @@ def vad_coverage_interval_source(
     audio_duration_ms: int,
     intervals_path: Path | None,
     vad_adapter_command: str | None,
-) -> tuple[str, tuple[dict[str, int], ...]]:
+    energy_kwargs: dict[str, float | int],
+    energy_max_chunk_ms: int | None,
+) -> tuple[str, tuple[dict[str, int], ...], dict[str, float | int | None] | None]:
     from custom_asmr_srt_stack.audio import speech_intervals_by_energy
     from custom_asmr_srt_stack.vad import parse_vad_intervals, run_vad_command
-    from custom_asmr_srt_stack.workflow import qwen_energy_chunk_kwargs, qwen_energy_max_chunk_ms, split_long_chunks
+    from custom_asmr_srt_stack.workflow import split_long_chunks
 
     if intervals_path is not None and vad_adapter_command is not None:
         raise ValueError("--intervals and --vad-command cannot be used together")
     if intervals_path is not None:
-        return str(intervals_path), parse_vad_intervals(
-            json.loads(read_text(intervals_path)),
-            duration_ms=audio_duration_ms,
+        return (
+            str(intervals_path),
+            parse_vad_intervals(
+                json.loads(read_text(intervals_path)),
+                duration_ms=audio_duration_ms,
+            ),
+            None,
         )
     if vad_adapter_command is not None:
-        return f"command:{vad_adapter_command}", run_vad_command(
-            audio_bytes,
-            command=shlex.split(vad_adapter_command),
+        return (
+            f"command:{vad_adapter_command}",
+            run_vad_command(
+                audio_bytes,
+                command=shlex.split(vad_adapter_command),
+            ),
+            None,
         )
 
-    intervals = speech_intervals_by_energy(audio_bytes, **qwen_energy_chunk_kwargs())
-    max_energy_chunk_ms = qwen_energy_max_chunk_ms()
-    if max_energy_chunk_ms is not None:
-        intervals = split_long_chunks(intervals, max_energy_chunk_ms)
-    return "energy", intervals
+    intervals = speech_intervals_by_energy(audio_bytes, **energy_kwargs)
+    if energy_max_chunk_ms is not None:
+        intervals = split_long_chunks(intervals, energy_max_chunk_ms)
+    return "energy", intervals, {**energy_kwargs, "max_chunk_ms": energy_max_chunk_ms}
+
+
+def vad_coverage_energy_settings(args: argparse.Namespace) -> tuple[dict[str, float | int], int | None]:
+    from custom_asmr_srt_stack.workflow import qwen_energy_chunk_kwargs, qwen_energy_max_chunk_ms
+
+    kwargs = qwen_energy_chunk_kwargs()
+    if args.energy_threshold_dbfs is not None:
+        kwargs["threshold_dbfs"] = args.energy_threshold_dbfs
+    if args.energy_window_ms is not None:
+        kwargs["window_ms"] = args.energy_window_ms
+    if args.energy_min_silence_ms is not None:
+        kwargs["min_silence_ms"] = args.energy_min_silence_ms
+    if args.energy_min_speech_ms is not None:
+        kwargs["min_speech_ms"] = args.energy_min_speech_ms
+    if args.energy_pad_ms is not None:
+        kwargs["pad_ms"] = args.energy_pad_ms
+    max_chunk_ms = args.energy_max_chunk_ms if args.energy_max_chunk_ms is not None else qwen_energy_max_chunk_ms()
+    if max_chunk_ms is not None and max_chunk_ms <= 0:
+        raise ValueError("--energy-max-chunk-ms must be positive")
+    return kwargs, max_chunk_ms
+
+
+def ensure_energy_options_apply(args: argparse.Namespace) -> None:
+    if not any(
+        value is not None
+        for value in (
+            args.energy_threshold_dbfs,
+            args.energy_window_ms,
+            args.energy_min_silence_ms,
+            args.energy_min_speech_ms,
+            args.energy_pad_ms,
+            args.energy_max_chunk_ms,
+        )
+    ):
+        return
+    if getattr(args, "intervals", None) is not None or getattr(args, "vad_adapter_command", None) is not None:
+        raise ValueError("energy options can only be used with built-in energy intervals")
 
 
 def vad_coverage(args: argparse.Namespace) -> None:
@@ -970,11 +1016,15 @@ def vad_coverage(args: argparse.Namespace) -> None:
 
     audio_bytes = args.audio.read_bytes()
     audio_info = analyze_wav(audio_bytes)
-    interval_source, intervals = vad_coverage_interval_source(
+    ensure_energy_options_apply(args)
+    energy_kwargs, energy_max_chunk_ms = vad_coverage_energy_settings(args)
+    interval_source, intervals, source_settings = vad_coverage_interval_source(
         audio_bytes,
         audio_duration_ms=audio_info.duration_ms,
         intervals_path=args.intervals,
         vad_adapter_command=args.vad_adapter_command,
+        energy_kwargs=energy_kwargs,
+        energy_max_chunk_ms=energy_max_chunk_ms,
     )
 
     reference = load_transcript_document(args.reference, source_language=args.source_language)
@@ -984,6 +1034,8 @@ def vad_coverage(args: argparse.Namespace) -> None:
         audio_duration_ms=audio_info.duration_ms,
         source=interval_source,
     )
+    if source_settings is not None:
+        report["source_settings"] = source_settings
     if args.output is not None:
         write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     emit(
@@ -1009,8 +1061,11 @@ def vad_coverage_cases(args: argparse.Namespace) -> None:
     if not isinstance(raw_items, list):
         raise ValueError("review case index items must be an array")
 
+    ensure_energy_options_apply(args)
+    energy_kwargs, energy_max_chunk_ms = vad_coverage_energy_settings(args)
     case_reports = []
     reports = []
+    suite_source_settings = None
     interval_source = f"command:{args.vad_adapter_command}" if args.vad_adapter_command is not None else "energy"
     for index, raw_item in enumerate(raw_items):
         if not isinstance(raw_item, dict):
@@ -1022,13 +1077,16 @@ def vad_coverage_cases(args: argparse.Namespace) -> None:
         reference_path = resolve_plan_path(args.case_index.parent, reference_value)
         audio_bytes = audio_path.read_bytes()
         audio_info = analyze_wav(audio_bytes)
-        case_interval_source, intervals = vad_coverage_interval_source(
+        case_interval_source, intervals, source_settings = vad_coverage_interval_source(
             audio_bytes,
             audio_duration_ms=audio_info.duration_ms,
             intervals_path=None,
             vad_adapter_command=args.vad_adapter_command,
+            energy_kwargs=energy_kwargs,
+            energy_max_chunk_ms=energy_max_chunk_ms,
         )
         interval_source = case_interval_source
+        suite_source_settings = source_settings
         reference = load_transcript_document(reference_path, source_language=args.source_language)
         report = vad_coverage_report(
             reference=reference,
@@ -1055,6 +1113,8 @@ def vad_coverage_cases(args: argparse.Namespace) -> None:
         "summary": summary,
         "cases": case_reports,
     }
+    if suite_source_settings is not None:
+        suite_report["source_settings"] = suite_source_settings
     if args.output is not None:
         write_text(args.output, json.dumps(suite_report, ensure_ascii=False, indent=2) + "\n")
     emit(
@@ -1103,6 +1163,19 @@ def annotate_vad_coverage_gates(report: dict[str, Any], args: argparse.Namespace
             )
         item["gate_passed"] = not gate_failures
         item["gate_failures"] = gate_failures
+
+
+def add_vad_energy_coverage_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--energy-threshold-dbfs", type=float)
+    parser.add_argument("--energy-window-ms", type=int)
+    parser.add_argument("--energy-min-silence-ms", type=int)
+    parser.add_argument("--energy-min-speech-ms", type=int)
+    parser.add_argument("--energy-pad-ms", type=int)
+    parser.add_argument(
+        "--energy-max-chunk-ms",
+        type=int,
+        help="Split built-in energy intervals into chunks no longer than this value.",
+    )
 
 
 def project_transcribe(args: argparse.Namespace) -> None:
@@ -1560,6 +1633,7 @@ def build_parser() -> argparse.ArgumentParser:
     vad_coverage_parser.add_argument("audio", type=Path)
     vad_coverage_parser.add_argument("reference", type=Path)
     vad_coverage_parser.add_argument("--source-language", default="ja")
+    add_vad_energy_coverage_args(vad_coverage_parser)
     vad_coverage_source = vad_coverage_parser.add_mutually_exclusive_group()
     vad_coverage_source.add_argument("--intervals", type=Path, help="JSON file with {intervals:[{start_ms,end_ms}]}.")
     vad_coverage_source.add_argument(
@@ -1576,6 +1650,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vad_coverage_cases_parser.add_argument("case_index", type=Path)
     vad_coverage_cases_parser.add_argument("--source-language", default="ja")
+    add_vad_energy_coverage_args(vad_coverage_cases_parser)
     vad_coverage_cases_parser.add_argument(
         "--vad-command",
         dest="vad_adapter_command",

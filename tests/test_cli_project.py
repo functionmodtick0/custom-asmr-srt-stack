@@ -400,6 +400,52 @@ class ProjectCliTests(unittest.TestCase):
             )
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["case_count"], 1)
 
+    def test_vad_coverage_cases_records_energy_option_settings(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "front.wav"
+            reference = root / "reference.srt"
+            case_index = root / "case-index.json"
+            write_mono_wav(audio)
+            reference.write_text("1\n00:00:00,000 --> 00:00:00,002\nねえ\n", encoding="utf-8")
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [{"id": "front", "audio": "front.wav", "reference": "reference.srt"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "vad",
+                    "coverage-cases",
+                    "--json",
+                    "--energy-threshold-dbfs",
+                    "-80",
+                    "--energy-min-speech-ms",
+                    "0",
+                    "--energy-pad-ms",
+                    "0",
+                    "--energy-max-chunk-ms",
+                    "1",
+                    str(case_index),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["source"], "energy")
+            self.assertEqual(report["source_settings"]["threshold_dbfs"], -80.0)
+            self.assertEqual(report["source_settings"]["min_speech_ms"], 0)
+            self.assertEqual(report["source_settings"]["pad_ms"], 0)
+            self.assertEqual(report["source_settings"]["max_chunk_ms"], 1)
+            self.assertEqual(report["summary"]["detected_interval_count"], 2)
+            self.assertEqual(report["summary"]["detected_max_interval_ms"], 1)
+            self.assertEqual(report["summary"]["reference_recall"], 1.0)
+
     def test_vad_compare_coverage_ranks_reports_by_missed_speech(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
