@@ -1261,20 +1261,82 @@ def vad_compare_coverage(args: argparse.Namespace) -> None:
 
 def annotate_vad_coverage_gates(report: dict[str, Any], args: argparse.Namespace) -> None:
     max_detected_interval_ms = getattr(args, "max_detected_interval_ms", None)
-    if max_detected_interval_ms is None:
+    max_missed_reference_ms = getattr(args, "max_missed_reference_ms", None)
+    min_reference_recall = ratio_arg(
+        getattr(args, "min_reference_recall", None),
+        "--min-reference-recall",
+    )
+    min_detected_precision = ratio_arg(
+        getattr(args, "min_detected_precision", None),
+        "--min-detected-precision",
+    )
+    if (
+        max_detected_interval_ms is None
+        and max_missed_reference_ms is None
+        and min_reference_recall is None
+        and min_detected_precision is None
+    ):
         return
-    if max_detected_interval_ms <= 0:
+    if max_detected_interval_ms is not None and max_detected_interval_ms <= 0:
         raise ValueError("--max-detected-interval-ms must be positive")
-    report["quality_gate"] = {"max_detected_interval_ms": max_detected_interval_ms}
+    if max_missed_reference_ms is not None and max_missed_reference_ms < 0:
+        raise ValueError("--max-missed-reference-ms must be non-negative")
+    quality_gate = {}
+    if max_detected_interval_ms is not None:
+        quality_gate["max_detected_interval_ms"] = max_detected_interval_ms
+    if max_missed_reference_ms is not None:
+        quality_gate["max_missed_reference_ms"] = max_missed_reference_ms
+    if min_reference_recall is not None:
+        quality_gate["min_reference_recall"] = min_reference_recall
+    if min_detected_precision is not None:
+        quality_gate["min_detected_precision"] = min_detected_precision
+    report["quality_gate"] = quality_gate
     for item in report["items"]:
         gate_failures = []
-        detected_max_interval_ms = item.get("detected_max_interval_ms")
-        if detected_max_interval_ms is not None and detected_max_interval_ms > max_detected_interval_ms:
+        detected_max_interval_ms = vad_optional_number(item, "detected_max_interval_ms")
+        if (
+            max_detected_interval_ms is not None
+            and detected_max_interval_ms is not None
+            and detected_max_interval_ms > max_detected_interval_ms
+        ):
             gate_failures.append(
                 f"detected max interval {detected_max_interval_ms:g}ms > {max_detected_interval_ms:g}ms"
             )
+        missed_reference_duration_ms = vad_required_number(item, "missed_reference_duration_ms")
+        if max_missed_reference_ms is not None and missed_reference_duration_ms > max_missed_reference_ms:
+            gate_failures.append(
+                f"missed reference duration {missed_reference_duration_ms:g}ms > {max_missed_reference_ms:g}ms"
+            )
+        reference_recall = vad_optional_number(item, "reference_recall")
+        if min_reference_recall is not None:
+            if reference_recall is None:
+                gate_failures.append("reference recall is unavailable")
+            elif reference_recall < min_reference_recall:
+                gate_failures.append(f"reference recall {reference_recall:.4f} < {min_reference_recall:.4f}")
+        detected_precision = vad_optional_number(item, "detected_precision")
+        if min_detected_precision is not None:
+            if detected_precision is None:
+                gate_failures.append("detected precision is unavailable")
+            elif detected_precision < min_detected_precision:
+                gate_failures.append(f"detected precision {detected_precision:.4f} < {min_detected_precision:.4f}")
         item["gate_passed"] = not gate_failures
         item["gate_failures"] = gate_failures
+
+
+def vad_required_number(item: dict[str, Any], key: str) -> float:
+    value = item.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"VAD coverage item {key} must be a number")
+    return float(value)
+
+
+def vad_optional_number(item: dict[str, Any], key: str) -> float | None:
+    value = item.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"VAD coverage item {key} must be a number or null")
+    return float(value)
 
 
 def enforce_vad_coverage_gate(report: dict[str, Any], args: argparse.Namespace) -> None:
@@ -1869,6 +1931,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-detected-interval-ms",
         type=int,
         help="Mark candidates with a detected chunk longer than this as gate failures.",
+    )
+    vad_compare_coverage_parser.add_argument(
+        "--max-missed-reference-ms",
+        type=int,
+        help="Mark candidates with more missed reference speech than this as gate failures.",
+    )
+    vad_compare_coverage_parser.add_argument(
+        "--min-reference-recall",
+        type=float,
+        help="Mark candidates below this 0..1 reference recall ratio as gate failures.",
+    )
+    vad_compare_coverage_parser.add_argument(
+        "--min-detected-precision",
+        type=float,
+        help="Mark candidates below this 0..1 detected precision ratio as gate failures.",
     )
     vad_compare_coverage_parser.add_argument(
         "--fail-on-gate",

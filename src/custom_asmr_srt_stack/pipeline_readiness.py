@@ -126,6 +126,10 @@ def vad_stage(path: Path | None) -> dict[str, Any]:
         raise ValueError(f"{path}: VAD report format must be {VAD_COVERAGE_COMPARISON_FORMAT}")
     items = require_non_empty_mapping_list(report.get("items"), f"{path}: VAD comparison items")
     gated = "quality_gate" in report
+    if gated:
+        for index, item in enumerate(items):
+            if not isinstance(item.get("gate_passed"), bool):
+                raise ValueError(f"{path}: gated VAD comparison item {index} gate_passed must be a boolean")
     passing_items = [item for item in items if bool(item.get("gate_passed", True))]
     chosen = passing_items[0] if passing_items else items[0]
 
@@ -136,7 +140,7 @@ def vad_stage(path: Path | None) -> dict[str, Any]:
         chosen.get("missed_reference_duration_ms"),
         f"{path}: VAD chosen missed_reference_duration_ms",
     )
-    if missed_reference_duration_ms > 0:
+    if not gated and missed_reference_duration_ms > 0:
         reasons.append(f"chosen VAD candidate misses reference speech: {missed_reference_duration_ms}ms")
     if chosen.get("gate_passed") is False:
         for failure in require_string_list(chosen.get("gate_failures"), f"{path}: VAD gate_failures"):

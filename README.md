@@ -140,9 +140,16 @@ uv run casrt vad coverage-cases cases/case-index.json --energy-threshold-dbfs -5
 uv run casrt vad coverage-cases cases/case-index.json --vad-command "$CASRT_VAD_COMMAND" --json
 uv run casrt vad compare-coverage energy-vad-coverage.json onnx-vad-coverage.json --json -o vad-coverage-comparison.json
 uv run casrt vad compare-coverage energy-vad-coverage.json full-audio-vad-coverage.json --max-detected-interval-ms 60000 --fail-on-gate --json
+uv run casrt vad compare-coverage energy-a.json energy-b.json \
+  --max-detected-interval-ms 30000 \
+  --max-missed-reference-ms 5000 \
+  --min-reference-recall 0.995 \
+  --min-detected-precision 0.99 \
+  --fail-on-gate \
+  --json
 ```
 
-Report는 reference recall, detected precision, missed reference duration, extra detected duration, missed/extra interval 목록, detected chunk 최대/평균 길이를 포함합니다. `coverage-cases`는 prepared review case set 전체를 같은 VAD source로 집계해 case별 report와 duration-weighted summary를 함께 저장합니다. Built-in energy 옵션을 CLI에서 주면 `source_settings`에 기록됩니다. `compare-coverage`는 여러 coverage report를 missed reference duration, extra detected duration 순으로 정렬하고, `--max-detected-interval-ms`를 주면 너무 긴 chunk 후보를 gate failure로 표시합니다. `--fail-on-gate`를 함께 주면 비교 JSON을 출력/저장한 뒤 gate 실패 후보가 있을 때 exit 1로 끝납니다. 이 값은 ASR text 품질이 아니라 VAD/chunking 경계 후보 비교용입니다. 현재 파이프라인은 VAD/chunk/channel/alignment 품질 검증이 끝난 상태가 아니며, ASR 모델 교체와 분리해 이 batch coverage를 먼저 확인합니다.
+Report는 reference recall, detected precision, missed reference duration, extra detected duration, missed/extra interval 목록, detected chunk 최대/평균 길이를 포함합니다. `coverage-cases`는 prepared review case set 전체를 같은 VAD source로 집계해 case별 report와 duration-weighted summary를 함께 저장합니다. Built-in energy 옵션을 CLI에서 주면 `source_settings`에 기록됩니다. `compare-coverage`는 여러 coverage report를 missed reference duration, extra detected duration 순으로 정렬하고, `--max-detected-interval-ms`, `--max-missed-reference-ms`, `--min-reference-recall`, `--min-detected-precision`을 gate failure로 표시합니다. `--fail-on-gate`를 함께 주면 비교 JSON을 출력/저장한 뒤 gate 실패 후보가 있을 때 exit 1로 끝납니다. 이 값은 ASR text 품질이 아니라 VAD/chunking 경계 후보 비교용입니다. 현재 파이프라인은 VAD/chunk/channel/alignment 품질 검증이 끝난 상태가 아니며, ASR 모델 교체와 분리해 이 batch coverage를 먼저 확인합니다.
 
 Qwen3-ForcedAligner는 `CASRT_QWEN_ASR_ALIGNER_MODEL_ID`로 내부 실험할 수 있습니다. `CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS`보다 짧은 timestamp span은 clip bounds로 되돌리며, 이 값도 WebUI 옵션으로 노출하지 않습니다. Generic Qwen aligner worker는 `CASRT_QWEN_ALIGNER_MIN_ALIGNED_DURATION_MS=80`과 `CASRT_QWEN_ALIGNER_MIN_COVERAGE_RATIO=0.5` 기본 guard로 비현실적으로 짧거나 원 segment 절반 미만으로 잘린 span을 원래 timing으로 유지합니다.
 
@@ -602,7 +609,7 @@ uv run casrt pipeline-readiness \
   -o cases/pipeline-readiness.json
 ```
 
-`pipeline-readiness`는 reference audit, VAD coverage comparison, eval comparison을 읽어 `custom-asmr-pipeline-readiness-v1`을 만듭니다. `asr_only_ready`는 reference, VAD/chunking, alignment, channel attribution stage가 모두 pass일 때만 true입니다. Text ASR은 별도 `text_asr` stage라서, “텍스트 모델만 남았는지”와 “제품 품질이 끝났는지”를 분리해 봅니다. `--fail-unless-asr-only-ready`는 report를 출력/저장한 뒤 아직 ASR-only 단계가 아니면 실패합니다.
+`pipeline-readiness`는 reference audit, VAD coverage comparison, eval comparison을 읽어 `custom-asmr-pipeline-readiness-v1`을 만듭니다. `asr_only_ready`는 reference, VAD/chunking, alignment, channel attribution stage가 모두 pass일 때만 true입니다. VAD comparison에 `quality_gate`가 있으면 통과 후보를 VAD stage pass로 보고, gate가 없으면 missed reference speech가 남은 후보를 fail로 봅니다. Text ASR은 별도 `text_asr` stage라서, “텍스트 모델만 남았는지”와 “제품 품질이 끝났는지”를 분리해 봅니다. `--fail-unless-asr-only-ready`는 report를 출력/저장한 뒤 아직 ASR-only 단계가 아니면 실패합니다.
 
 평가 report에서 사람이 바로 볼 수정 큐 JSON도 만들 수 있습니다.
 

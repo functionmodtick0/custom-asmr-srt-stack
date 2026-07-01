@@ -637,6 +637,103 @@ class ProjectCliTests(unittest.TestCase):
                 "full-audio",
             )
 
+    def test_vad_compare_coverage_marks_recall_miss_and_precision_gates(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            low_precision = root / "low-precision.json"
+            low_recall = root / "low-recall.json"
+            comparison_path = root / "comparison.json"
+            low_precision.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-vad-coverage-v1",
+                        "source": "low-precision",
+                        "audio_duration_ms": 1000,
+                        "reference_segment_count": 1,
+                        "reference_interval_count": 1,
+                        "detected_interval_count": 2,
+                        "detected_max_interval_ms": 700,
+                        "detected_mean_interval_ms": 550,
+                        "reference_speech_duration_ms": 1000,
+                        "detected_speech_duration_ms": 1100,
+                        "overlap_duration_ms": 1000,
+                        "missed_reference_duration_ms": 0,
+                        "extra_detected_duration_ms": 100,
+                        "missed_reference_intervals": [],
+                        "extra_detected_intervals": [{"start_ms": 1000, "end_ms": 1100}],
+                        "reference_recall": 1.0,
+                        "detected_precision": 1000 / 1100,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            low_recall.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-vad-coverage-v1",
+                        "source": "low-recall",
+                        "audio_duration_ms": 1000,
+                        "reference_segment_count": 1,
+                        "reference_interval_count": 1,
+                        "detected_interval_count": 1,
+                        "detected_max_interval_ms": 900,
+                        "detected_mean_interval_ms": 900,
+                        "reference_speech_duration_ms": 1000,
+                        "detected_speech_duration_ms": 900,
+                        "overlap_duration_ms": 900,
+                        "missed_reference_duration_ms": 100,
+                        "extra_detected_duration_ms": 0,
+                        "missed_reference_intervals": [{"start_ms": 900, "end_ms": 1000}],
+                        "extra_detected_intervals": [],
+                        "reference_recall": 0.9,
+                        "detected_precision": 1.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "vad",
+                    "compare-coverage",
+                    "--json",
+                    "-o",
+                    str(comparison_path),
+                    "--max-missed-reference-ms",
+                    "50",
+                    "--min-reference-recall",
+                    "0.95",
+                    "--min-detected-precision",
+                    "0.95",
+                    "--fail-on-gate",
+                    str(low_recall),
+                    str(low_precision),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            comparison = json.loads(output)
+            self.assertEqual(
+                comparison["quality_gate"],
+                {
+                    "max_missed_reference_ms": 50,
+                    "min_reference_recall": 0.95,
+                    "min_detected_precision": 0.95,
+                },
+            )
+            self.assertEqual([item["label"] for item in comparison["items"]], ["low-precision", "low-recall"])
+            self.assertFalse(comparison["items"][0]["gate_passed"])
+            self.assertIn("detected precision", comparison["items"][0]["gate_failures"][0])
+            self.assertFalse(comparison["items"][1]["gate_passed"])
+            self.assertEqual(len(comparison["items"][1]["gate_failures"]), 2)
+            self.assertIn("missed reference duration", comparison["items"][1]["gate_failures"][0])
+            self.assertIn("reference recall", comparison["items"][1]["gate_failures"][1])
+            self.assertIn("VAD coverage gate failed for 2 report", error)
+            self.assertEqual(
+                json.loads(comparison_path.read_text(encoding="utf-8"))["quality_gate"]["min_reference_recall"],
+                0.95,
+            )
+
     def test_vad_compare_coverage_fail_on_gate_requires_gate_option(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -3402,8 +3499,8 @@ class ProjectCliTests(unittest.TestCase):
                         "items": [
                             {
                                 "label": "energy",
-                                "gate_passed": True,
-                                "gate_failures": [],
+                                "gate_passed": False,
+                                "gate_failures": ["missed reference duration 25ms > 0ms"],
                                 "missed_reference_duration_ms": 25,
                                 "extra_detected_duration_ms": 0,
                                 "reference_recall": 0.95,
@@ -3498,14 +3595,15 @@ class ProjectCliTests(unittest.TestCase):
                 json.dumps(
                     {
                         "format": "custom-asmr-vad-coverage-comparison-v1",
+                        "quality_gate": {"max_missed_reference_ms": 50, "min_reference_recall": 0.95},
                         "items": [
                             {
                                 "label": "chunked",
                                 "gate_passed": True,
                                 "gate_failures": [],
-                                "missed_reference_duration_ms": 0,
+                                "missed_reference_duration_ms": 25,
                                 "extra_detected_duration_ms": 10,
-                                "reference_recall": 1.0,
+                                "reference_recall": 0.975,
                                 "detected_precision": 0.95,
                                 "detected_max_interval_ms": 30000,
                             }
@@ -3559,6 +3657,38 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["summary"]["asr_only_blocking_stages"], [])
             self.assertEqual(report["summary"]["quality_blocking_stages"], ["text_asr"])
             self.assertEqual(report["summary"]["next_stage"], "text_asr")
+
+    def test_pipeline_readiness_rejects_gated_vad_without_gate_status(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            vad_comparison = root / "vad-comparison.json"
+            vad_comparison.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-vad-coverage-comparison-v1",
+                        "quality_gate": {"max_missed_reference_ms": 50},
+                        "items": [
+                            {
+                                "label": "candidate",
+                                "missed_reference_duration_ms": 25,
+                                "extra_detected_duration_ms": 0,
+                                "reference_recall": 0.975,
+                                "detected_precision": 0.95,
+                                "detected_max_interval_ms": 30000,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                ["pipeline-readiness", "--json", "--vad-comparison", str(vad_comparison)]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(output, "")
+            self.assertIn("gate_passed must be a boolean", error)
 
     def test_review_effort_outputs_items_from_eval_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
