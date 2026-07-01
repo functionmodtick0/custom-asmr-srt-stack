@@ -231,6 +231,36 @@ def eval_comparison_item(path: Path, report: dict[str, Any]) -> dict[str, Any]:
         "candidate_review_ratio": None if review is None else require_report_number(review, "candidate_review_ratio", path),
         "segments_needing_edit": require_report_number(review_effort, "segments_needing_edit", path),
         "segments_needing_edit_ratio": require_report_number(review_effort, "segments_needing_edit_ratio", path),
+        "text_edit_segment_ratio": review_effort_report_ratio(
+            review_effort,
+            "text_edit_segment_ratio",
+            "text_edit_segments",
+            path,
+        ),
+        "channel_edit_segment_ratio": review_effort_report_ratio(
+            review_effort,
+            "channel_edit_segment_ratio",
+            "channel_edit_segments",
+            path,
+        ),
+        "timing_edit_segment_ratio": review_effort_report_ratio(
+            review_effort,
+            "timing_edit_segment_ratio",
+            "timing_edit_segments",
+            path,
+        ),
+        "missing_reference_segment_ratio": review_effort_report_ratio(
+            review_effort,
+            "missing_reference_segment_ratio",
+            "missing_reference_segments",
+            path,
+        ),
+        "extra_candidate_segment_ratio": review_effort_report_ratio(
+            review_effort,
+            "extra_candidate_segment_ratio",
+            "extra_candidate_segments",
+            path,
+        ),
     }
     if reference_type is not None:
         item["reference_type"] = reference_type
@@ -267,6 +297,24 @@ def optional_report_number(metrics: dict[str, Any], key: str, path: Path) -> flo
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{path}: eval report {key} must be a number or null")
     return float(value)
+
+
+def review_effort_report_ratio(
+    review_effort: dict[str, Any],
+    ratio_key: str,
+    count_key: str,
+    path: Path,
+) -> float:
+    value = review_effort.get(ratio_key)
+    if value is not None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{path}: eval report {ratio_key} must be a number")
+        return float(value)
+
+    count = require_report_number(review_effort, count_key, path)
+    reference_segments = require_report_number(review_effort, "reference_segments", path)
+    extra_candidate_segments = require_report_number(review_effort, "extra_candidate_segments", path)
+    return count / review_effort_ratio_denominator(int(reference_segments), int(extra_candidate_segments))
 
 
 def extract_report_review_effort_items(report: dict[str, Any]) -> list[dict[str, Any]]:
@@ -606,6 +654,7 @@ def aggregate_review_effort_reports(reports: list[dict[str, Any]]) -> dict[str, 
     missing_reference_segments = sum(report["review_effort"]["missing_reference_segments"] for report in reports)
     extra_candidate_segments = sum(report["review_effort"]["extra_candidate_segments"] for report in reports)
     segments_needing_edit = sum(report["review_effort"]["segments_needing_edit"] for report in reports)
+    denominator = review_effort_ratio_denominator(reference_segments, extra_candidate_segments)
     return {
         "timing_threshold_ms": threshold,
         "reference_segments": reference_segments,
@@ -617,7 +666,12 @@ def aggregate_review_effort_reports(reports: list[dict[str, Any]]) -> dict[str, 
         "missing_reference_segments": missing_reference_segments,
         "extra_candidate_segments": extra_candidate_segments,
         "segments_needing_edit": segments_needing_edit,
-        "segments_needing_edit_ratio": segments_needing_edit / max(1, reference_segments + extra_candidate_segments),
+        "segments_needing_edit_ratio": segments_needing_edit / denominator,
+        "text_edit_segment_ratio": text_edit_segments / denominator,
+        "channel_edit_segment_ratio": channel_edit_segments / denominator,
+        "timing_edit_segment_ratio": timing_edit_segments / denominator,
+        "missing_reference_segment_ratio": missing_reference_segments / denominator,
+        "extra_candidate_segment_ratio": extra_candidate_segments / denominator,
     }
 
 
@@ -749,6 +803,7 @@ def review_effort_summary(
     segments_needing_edit = (
         len(reference_segments_needing_edit) + missing_reference_segments + extra_candidate_segments
     )
+    denominator = review_effort_ratio_denominator(len(reference_segments), extra_candidate_segments)
     return {
         "timing_threshold_ms": REVIEW_EFFORT_TIMING_THRESHOLD_MS,
         "reference_segments": len(reference_segments),
@@ -760,9 +815,18 @@ def review_effort_summary(
         "missing_reference_segments": missing_reference_segments,
         "extra_candidate_segments": extra_candidate_segments,
         "segments_needing_edit": segments_needing_edit,
-        "segments_needing_edit_ratio": segments_needing_edit / max(1, len(reference_segments) + extra_candidate_segments),
+        "segments_needing_edit_ratio": segments_needing_edit / denominator,
+        "text_edit_segment_ratio": text_edit_segments / denominator,
+        "channel_edit_segment_ratio": channel_edit_segments / denominator,
+        "timing_edit_segment_ratio": timing_edit_segments / denominator,
+        "missing_reference_segment_ratio": missing_reference_segments / denominator,
+        "extra_candidate_segment_ratio": extra_candidate_segments / denominator,
         "items": items,
     }
+
+
+def review_effort_ratio_denominator(reference_segments: int, extra_candidate_segments: int) -> int:
+    return max(1, reference_segments + extra_candidate_segments)
 
 
 def review_effort_pair_item(reference: Segment, candidate: Segment, *, reasons: list[str]) -> dict[str, Any]:

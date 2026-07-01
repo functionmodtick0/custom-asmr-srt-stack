@@ -522,7 +522,7 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 uv run casrt eval-manifest gold.json --product-gate
 ```
 
-현재 평가는 strict CER, practical CER, Japanese relaxed CER, segment index 기준 timing 오차, time-overlap 기준 timing ratio, L/R/MIX channel confusion, L/R channel accuracy, candidate `needs_review` 비율, segment 단위 `review_effort`를 계산합니다. Japanese relaxed CER는 practical CER에서 장음류 문자 `ー〜～`를 추가로 제거한 보조 metric이며 품질 gate에는 사용하지 않습니다. 모델 승격 gate에서는 candidate `needs_review`가 남아 있지 않아야 합니다.
+현재 평가는 strict CER, practical CER, Japanese relaxed CER, segment index 기준 timing 오차, time-overlap 기준 timing ratio, L/R/MIX channel confusion, L/R channel accuracy, candidate `needs_review` 비율, segment 단위 `review_effort`와 text/channel/timing/missing/extra breakdown ratio를 계산합니다. Japanese relaxed CER는 practical CER에서 장음류 문자 `ー〜～`를 추가로 제거한 보조 metric이며 품질 gate에는 사용하지 않습니다. 모델 승격 gate에서는 candidate `needs_review`가 남아 있지 않아야 합니다.
 
 여러 평가 report를 한 번에 비교:
 
@@ -530,7 +530,7 @@ uv run casrt eval-manifest gold.json --product-gate
 uv run casrt compare-evals qwen-report.json stable-report.json quiet8-report.json --json -o comparison.json
 ```
 
-`compare-evals`는 `review_effort` 수정 비율, practical CER, timing/channel 지표를 후보별로 뽑고 사람이 다음 실험 후보를 고르기 쉽도록 정렬합니다.
+`compare-evals`는 `review_effort` 수정 비율, practical CER, timing/channel 지표와 breakdown ratio를 후보별로 뽑고 사람이 다음 실험 후보를 고르기 쉽도록 정렬합니다.
 품질 gate 인자를 함께 넣으면 실패 exit code 대신 후보별 `gate_passed`와 `gate_failures`를 표시합니다. `--product-gate`는 practical CER, timing, channel, MIX ratio, review effort, candidate `needs_review`, human-reviewed reference 조건을 한 번에 표시합니다.
 
 평가 report에서 사람이 바로 볼 수정 큐 JSON도 만들 수 있습니다.

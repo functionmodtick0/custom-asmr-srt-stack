@@ -7,6 +7,7 @@ from custom_asmr_srt_stack.evaluation import (
     EVAL_FORMAT,
     EVAL_SUITE_FORMAT,
     REVIEW_EFFORT_FORMAT,
+    compare_eval_reports,
     evaluate_manifest,
     evaluate_transcripts,
     levenshtein_distance,
@@ -71,6 +72,11 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["review_effort"]["timing_edit_segments"], 0)
         self.assertEqual(report["review_effort"]["segments_needing_edit"], 1)
         self.assertEqual(report["review_effort"]["segments_needing_edit_ratio"], 0.5)
+        self.assertEqual(report["review_effort"]["text_edit_segment_ratio"], 0.5)
+        self.assertEqual(report["review_effort"]["channel_edit_segment_ratio"], 0.5)
+        self.assertEqual(report["review_effort"]["timing_edit_segment_ratio"], 0.0)
+        self.assertEqual(report["review_effort"]["missing_reference_segment_ratio"], 0.0)
+        self.assertEqual(report["review_effort"]["extra_candidate_segment_ratio"], 0.0)
         self.assertEqual(report["review_effort"]["items"][0]["reference_id"], "seg_000002")
         self.assertEqual(report["review_effort"]["items"][0]["candidate_id"], "seg_000002")
         self.assertEqual(report["review_effort"]["items"][0]["reasons"], ["text", "channel"])
@@ -102,6 +108,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["review_effort"]["extra_candidate_segments"], 1)
         self.assertEqual(report["review_effort"]["segments_needing_edit"], 1)
         self.assertEqual(report["review_effort"]["segments_needing_edit_ratio"], 1 / 3)
+        self.assertEqual(report["review_effort"]["extra_candidate_segment_ratio"], 1 / 3)
         self.assertEqual(report["review_effort"]["items"], [
             {
                 "reference_id": None,
@@ -203,6 +210,11 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["summary"]["review_effort"]["text_edit_segments"], 1)
         self.assertEqual(report["summary"]["review_effort"]["segments_needing_edit"], 1)
         self.assertEqual(report["summary"]["review_effort"]["segments_needing_edit_ratio"], 0.5)
+        self.assertEqual(report["summary"]["review_effort"]["text_edit_segment_ratio"], 0.5)
+        self.assertEqual(report["summary"]["review_effort"]["channel_edit_segment_ratio"], 0.0)
+        self.assertEqual(report["summary"]["review_effort"]["timing_edit_segment_ratio"], 0.0)
+        self.assertEqual(report["summary"]["review_effort"]["missing_reference_segment_ratio"], 0.0)
+        self.assertEqual(report["summary"]["review_effort"]["extra_candidate_segment_ratio"], 0.0)
         self.assertNotIn("items", report["summary"]["review_effort"])
         self.assertEqual(report["summary"]["channel"]["paired_segments"], 2)
         self.assertEqual(report["summary"]["channel"]["confusion"]["MIX"]["MIX"], 2)
@@ -319,6 +331,40 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual([item["priority_rank"] for item in items], [1, 2, 3])
         self.assertGreater(items[0]["priority_score"], items[1]["priority_score"])
         self.assertGreater(items[1]["priority_score"], items[2]["priority_score"])
+
+    def test_compare_eval_reports_computes_breakdown_ratios_for_legacy_reports(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = Path(tmpdir) / "legacy-report.json"
+            report_path.write_text(
+                json.dumps(
+                    {
+                        "format": EVAL_FORMAT,
+                        "text_practical": {"cer": 0.2},
+                        "timing_time_aligned": {"within_500ms_ratio": 0.5},
+                        "channel_time_aligned": {"accuracy": 0.25, "candidate_mix_ratio": 0.75},
+                        "review_effort": {
+                            "reference_segments": 4,
+                            "extra_candidate_segments": 1,
+                            "text_edit_segments": 2,
+                            "channel_edit_segments": 1,
+                            "timing_edit_segments": 3,
+                            "missing_reference_segments": 1,
+                            "segments_needing_edit": 4,
+                            "segments_needing_edit_ratio": 0.8,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            comparison = compare_eval_reports([report_path])
+
+        item = comparison["items"][0]
+        self.assertEqual(item["text_edit_segment_ratio"], 2 / 5)
+        self.assertEqual(item["channel_edit_segment_ratio"], 1 / 5)
+        self.assertEqual(item["timing_edit_segment_ratio"], 3 / 5)
+        self.assertEqual(item["missing_reference_segment_ratio"], 1 / 5)
+        self.assertEqual(item["extra_candidate_segment_ratio"], 1 / 5)
 
     def test_evaluate_manifest_aggregates_channel_reports_when_one_case_has_no_comparable_segments(self):
         with tempfile.TemporaryDirectory() as tmpdir:

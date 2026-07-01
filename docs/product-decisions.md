@@ -155,7 +155,7 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 - channel attribution accuracy
 - L/R/MIX channel confusion과 candidate MIX 유지 비율
 - candidate `needs_review` segment 비율. 모델 승격 gate에서는 unresolved candidate review flag가 0이어야 한다.
-- `review_effort`: practical text mismatch, channel mismatch, 500ms 초과 timing mismatch, missing reference, extra candidate를 합친 사람이 실제로 고쳐야 하는 구간 수
+- `review_effort`: practical text mismatch, channel mismatch, 500ms 초과 timing mismatch, missing reference, extra candidate를 합친 사람이 실제로 고쳐야 하는 구간 수와 같은 denominator 기준 breakdown ratio
 - `review_effort.items` export: 평가 report에서 `custom-asmr-review-effort-v1` 수정 큐 JSON을 생성해 사람이 볼 다음 검수/개선 후보를 보존한다. Export queue는 `priority_score` 내림차순으로 정렬해 missing/extra/text/timing/channel 실패를 큰 것부터 듣게 한다.
 - `compare-evals`: 여러 eval report를 `custom-asmr-eval-comparison-v1` 비교표로 정렬해 다음 후보 선택을 돕는다. 이 명령은 모델/heuristic 자동 승격을 하지 않는다.
 - `review-pack`: 수정 큐와 원본 audio를 결합해 `custom-asmr-review-pack-v1` index와 WAV clips를 만들고, priority queue 순서와 score/rank를 보존해 human-reviewed gold 제작을 빠르게 한다.
