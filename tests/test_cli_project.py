@@ -1019,6 +1019,31 @@ class ProjectCliTests(unittest.TestCase):
             )
             self.assertEqual(json.loads(status_path.read_text(encoding="utf-8"))["case_count"], 1)
 
+            missing_candidate_status_path = root / "status.missing-candidates.json"
+            fail_result, fail_output, fail_error = run_cli_with_stderr(
+                [
+                    "review-case-status",
+                    "--json",
+                    "-o",
+                    str(missing_candidate_status_path),
+                    "--fail-on-missing-candidates",
+                    str(output_dir / "case-index.json"),
+                ]
+            )
+
+            self.assertEqual(fail_result, 1)
+            fail_report = json.loads(fail_output)
+            self.assertTrue(fail_report["ok"])
+            self.assertEqual(fail_report["missing_candidate_case_count"], 1)
+            self.assertEqual(fail_report["cases_missing_candidate"], ["front-a"])
+            self.assertEqual(
+                json.loads(missing_candidate_status_path.read_text(encoding="utf-8"))[
+                    "missing_candidate_case_count"
+                ],
+                1,
+            )
+            self.assertIn("missing_candidate_count=1", fail_error)
+
     def test_review_case_status_can_fail_after_reporting_missing_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1269,6 +1294,7 @@ class ProjectCliTests(unittest.TestCase):
                 [
                     "review-case-status",
                     "--json",
+                    "--fail-on-missing-candidates",
                     str(output_dir / "case-index.json"),
                 ]
             )

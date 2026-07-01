@@ -361,7 +361,7 @@ uv run casrt prepare-review-cases plan.json -o cases --json
 
 ```bash
 uv run casrt review-case-status cases/case-index.json --json -o cases/status.json
-uv run casrt review-case-status cases/case-index.json --fail-on-issues --fail-on-review
+uv run casrt review-case-status cases/case-index.json --fail-on-issues --fail-on-review --fail-on-missing-candidates
 ```
 
 동작:
@@ -376,6 +376,7 @@ uv run casrt review-case-status cases/case-index.json --fail-on-issues --fail-on
 - 각 item의 `first_review_segment`는 reference에서 첫 `needs_review=true` segment의 `id`, `start_ms`, `end_ms`, `channel`, `kind`, `text`, `needs_review`를 담는다. 남은 review flag가 없거나 reference를 읽을 수 없으면 `null`이다.
 - 기본 exit code는 report 생성을 우선해 성공이다. `--fail-on-issues`는 missing file, parse failure, stale count가 있을 때 report 출력/저장 후 실패한다.
 - `--fail-on-review`는 reference에 `needs_review=true`가 남아 있으면 report 출력/저장 후 실패한다.
+- `--fail-on-missing-candidates`는 candidate path가 없는 case가 있으면 report 출력/저장 후 실패한다. Candidate path가 있는데 파일이 없거나 읽을 수 없는 경우는 `--fail-on-issues`가 담당한다.
 - 이 명령도 human-reviewed 여부를 추정하지 않는다. `reference_type`은 index에 기록된 값을 집계할 뿐이며, 모델 승격 평가는 여전히 `eval-manifest --require-reference-type human-reviewed`가 담당한다.
 
 준비된 case set의 남은 reference 검수 구간은 `review-case-pack`으로 clip queue를 만든다.
