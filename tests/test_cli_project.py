@@ -4981,6 +4981,22 @@ class ProjectCliTests(unittest.TestCase):
                                 "right_dbfs": -30.0,
                                 "delta_db": -15.0,
                                 "priority_score": 3502.0,
+                            },
+                            {
+                                "case_id": "front-b",
+                                "reference_id": "seg_000002",
+                                "candidate_id": None,
+                                "start_ms": 500,
+                                "end_ms": 1500,
+                                "reasons": ["reference-channel-energy-uncertain"],
+                                "reference_text": "",
+                                "candidate_text": "",
+                                "reference_channel": "R",
+                                "candidate_channel": None,
+                                "left_dbfs": -31.0,
+                                "right_dbfs": -30.0,
+                                "delta_db": -1.0,
+                                "priority_score": 2501.0,
                             }
                         ],
                     }
@@ -5006,11 +5022,45 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["format"], "custom-asmr-review-effort-v1")
             self.assertEqual(report["source_case_index"], "cases/case-index.json")
             self.assertEqual(report["input_report_count"], 2)
-            self.assertEqual(report["input_item_count"], 2)
-            self.assertEqual(report["item_count"], 1)
+            self.assertEqual(report["input_item_count"], 3)
+            self.assertEqual(report["item_count"], 2)
             self.assertEqual(
                 report["reason_counts"],
-                {"reference-channel-energy-mismatch": 1, "reference-needs-review": 1},
+                {
+                    "reference-channel-energy-mismatch": 1,
+                    "reference-channel-energy-uncertain": 1,
+                    "reference-needs-review": 1,
+                },
+            )
+            self.assertEqual(report["case_count"], 2)
+            self.assertEqual(report["next_case_id"], "front-a")
+            self.assertEqual(
+                report["case_summaries"],
+                [
+                    {
+                        "case_id": "front-a",
+                        "item_count": 1,
+                        "reason_counts": {
+                            "reference-channel-energy-mismatch": 1,
+                            "reference-needs-review": 1,
+                        },
+                        "review_duration_ms": 2000,
+                        "first_start_ms": 1000,
+                        "last_end_ms": 3000,
+                        "top_priority_score": 5002.0,
+                        "top_priority_rank": 1,
+                    },
+                    {
+                        "case_id": "front-b",
+                        "item_count": 1,
+                        "reason_counts": {"reference-channel-energy-uncertain": 1},
+                        "review_duration_ms": 1000,
+                        "first_start_ms": 500,
+                        "last_end_ms": 1500,
+                        "top_priority_score": 2501.0,
+                        "top_priority_rank": 2,
+                    },
+                ],
             )
             item = report["items"][0]
             self.assertEqual(
@@ -5089,6 +5139,20 @@ class ProjectCliTests(unittest.TestCase):
                         "source_report": "eval-suite.json",
                         "item_count": 2,
                         "reason_counts": {"text": 2},
+                        "case_count": 1,
+                        "next_case_id": "front-a",
+                        "case_summaries": [
+                            {
+                                "case_id": "front-a",
+                                "item_count": 2,
+                                "reason_counts": {"text": 2},
+                                "review_duration_ms": 2,
+                                "first_start_ms": 0,
+                                "last_end_ms": 2,
+                                "top_priority_score": 9000.0,
+                                "top_priority_rank": 1,
+                            }
+                        ],
                         "items": [
                             {
                                 "case_id": "front-a",
@@ -5148,6 +5212,9 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["format"], "custom-asmr-review-pack-v1")
             self.assertEqual(report["clip_count"], 2)
             self.assertEqual(report["source_case_index"], str(case_index))
+            self.assertEqual(report["case_count"], 1)
+            self.assertEqual(report["next_case_id"], "front-a")
+            self.assertEqual(report["case_summaries"][0]["item_count"], 2)
             self.assertEqual([item["priority_rank"] for item in report["items"]], [1, 2])
             self.assertEqual([item["reference_id"] for item in report["items"]], ["seg_000010", "seg_000001"])
             self.assertEqual(report["items"][0]["source_case_index"], str(case_index))
@@ -5160,6 +5227,7 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(index["items"][0]["priority_score"], 9000.0)
             self.assertEqual(index["items"][0]["reference_text"], "優先")
             self.assertEqual(index["source_case_index"], str(case_index))
+            self.assertEqual(index["next_case_id"], "front-a")
 
     def test_review_pack_infers_audio_from_source_case_index(self):
         with tempfile.TemporaryDirectory() as tmpdir:

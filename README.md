@@ -633,7 +633,7 @@ uv run casrt merge-review-effort reference-audit-review-effort.json reference-ch
   -o combined-review-effort.json
 ```
 
-`merge-review-effort`는 `custom-asmr-review-effort-v1` queue를 입력 순서대로 검증하고, 같은 case/reference/candidate/time range issue는 reason과 evidence를 합쳐 하나의 item으로 만듭니다. 같은 `source_case_index`를 가진 입력은 값을 보존하므로, 병합 결과를 바로 `review-pack`에 넣어도 case별 audio를 다시 지정할 필요가 없습니다. 서로 다른 `source_case_index`가 섞이면 출력 파일을 쓰기 전에 실패합니다. 이 명령은 reference/candidate transcript를 수정하지 않습니다.
+`merge-review-effort`는 `custom-asmr-review-effort-v1` queue를 입력 순서대로 검증하고, 같은 case/reference/candidate/time range issue는 reason과 evidence를 합쳐 하나의 item으로 만듭니다. Output에는 `case_summaries`, `case_count`, `next_case_id`도 들어가므로 WebUI/CLI가 어떤 case부터 검수할지 바로 표시할 수 있습니다. 같은 `source_case_index`를 가진 입력은 값을 보존하므로, 병합 결과를 바로 `review-pack`에 넣어도 case별 audio를 다시 지정할 필요가 없습니다. 서로 다른 `source_case_index`가 섞이면 출력 파일을 쓰기 전에 실패합니다. 이 명령은 reference/candidate transcript를 수정하지 않습니다.
 
 현재 파이프라인이 ASR text 모델만 남은 단계인지 확인:
 
@@ -671,7 +671,7 @@ uv run casrt review-pack review-effort.json \
   --json
 ```
 
-`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다. `review-effort`의 priority 순서와 score/rank는 pack index에도 보존됩니다. `--source-case-index`를 주면 case-index의 `items[].audio`에서 case별 audio path를 자동으로 가져오고, WebUI에서 후보 실패 clip을 보다가 `case 열기`로 원 reference segment 편집 화면에 바로 들어갈 수 있습니다. `review-effort` 안에 `source_case_index`가 이미 들어 있으면 이 옵션도 생략할 수 있습니다.
+`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다. `review-effort`의 priority 순서와 score/rank, root `case_summaries`/`case_count`/`next_case_id`는 pack index에도 보존됩니다. `--source-case-index`를 주면 case-index의 `items[].audio`에서 case별 audio path를 자동으로 가져오고, WebUI에서 후보 실패 clip을 보다가 `case 열기`로 원 reference segment 편집 화면에 바로 들어갈 수 있습니다. `review-effort` 안에 `source_case_index`가 이미 들어 있으면 이 옵션도 생략할 수 있습니다.
 
 생성된 pack은 WebUI에서도 열 수 있습니다.
 

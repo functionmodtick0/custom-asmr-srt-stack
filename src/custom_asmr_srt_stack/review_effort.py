@@ -33,6 +33,7 @@ def merge_review_effort_reports(paths: list[Path]) -> dict[str, Any]:
     merged_items = sorted(items_by_key.values(), key=review_item_sort_key)
     for rank, item in enumerate(merged_items, start=1):
         item["priority_rank"] = rank
+    case_summaries = review_case_summaries(merged_items)
 
     result: dict[str, Any] = {
         "format": REVIEW_EFFORT_FORMAT,
@@ -42,6 +43,9 @@ def merge_review_effort_reports(paths: list[Path]) -> dict[str, Any]:
         "input_item_count": sum(len(require_review_effort_items(path, report)) for path, report in zip(paths, reports)),
         "item_count": len(merged_items),
         "reason_counts": review_reason_counts(merged_items),
+        "case_count": len(case_summaries),
+        "next_case_id": case_summaries[0]["case_id"] if case_summaries else None,
+        "case_summaries": case_summaries,
         "items": merged_items,
     }
     if source_case_index is not None:
@@ -141,3 +145,62 @@ def review_reason_counts(items: list[dict[str, Any]]) -> dict[str, int]:
         for reason in item["reasons"]:
             counts[reason] = counts.get(reason, 0) + 1
     return dict(sorted(counts.items()))
+
+
+def review_case_summaries(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    summaries: dict[str, dict[str, Any]] = {}
+    for item in items:
+        case_id = item.get("case_id")
+        if not isinstance(case_id, str) or not case_id:
+            continue
+        summary = summaries.setdefault(
+            case_id,
+            {
+                "case_id": case_id,
+                "item_count": 0,
+                "reason_counts": {},
+                "review_duration_ms": 0,
+                "first_start_ms": None,
+                "last_end_ms": None,
+                "top_priority_score": None,
+                "top_priority_rank": None,
+            },
+        )
+        summary["item_count"] += 1
+        reasons = item.get("reasons")
+        if isinstance(reasons, list):
+            for reason in reasons:
+                if isinstance(reason, str):
+                    reason_counts = summary["reason_counts"]
+                    reason_counts[reason] = reason_counts.get(reason, 0) + 1
+        start_ms = item.get("start_ms")
+        end_ms = item.get("end_ms")
+        if isinstance(start_ms, int):
+            current_first = summary["first_start_ms"]
+            summary["first_start_ms"] = start_ms if current_first is None else min(current_first, start_ms)
+        if isinstance(end_ms, int):
+            current_last = summary["last_end_ms"]
+            summary["last_end_ms"] = end_ms if current_last is None else max(current_last, end_ms)
+        if isinstance(start_ms, int) and isinstance(end_ms, int) and end_ms > start_ms:
+            summary["review_duration_ms"] += end_ms - start_ms
+        priority_score = item.get("priority_score")
+        if isinstance(priority_score, (int, float)) and not isinstance(priority_score, bool):
+            current_score = summary["top_priority_score"]
+            if current_score is None or float(priority_score) > current_score:
+                summary["top_priority_score"] = float(priority_score)
+        priority_rank = item.get("priority_rank")
+        if isinstance(priority_rank, int) and not isinstance(priority_rank, bool):
+            current_rank = summary["top_priority_rank"]
+            summary["top_priority_rank"] = priority_rank if current_rank is None else min(current_rank, priority_rank)
+
+    result = []
+    for summary in summaries.values():
+        summary["reason_counts"] = dict(sorted(summary["reason_counts"].items()))
+        result.append(summary)
+    return sorted(
+        result,
+        key=lambda summary: (
+            summary["top_priority_rank"] if summary["top_priority_rank"] is not None else 10**9,
+            summary["case_id"],
+        ),
+    )

@@ -337,7 +337,16 @@ function render() {
 function renderReviewPack() {
   const items = state.reviewPack.items || [];
   const selectedItem = items[state.reviewPackSelectedIndex];
-  els.segmentCount.textContent = `${items.length} review clips`;
+  const caseCount = state.reviewPack.case_count;
+  const nextCaseId = state.reviewPack.next_case_id;
+  const summaryParts = [`${items.length} review clips`];
+  if (Number.isInteger(caseCount)) {
+    summaryParts.push(`${caseCount} cases`);
+  }
+  if (nextCaseId) {
+    summaryParts.push(`next ${nextCaseId}`);
+  }
+  els.segmentCount.textContent = summaryParts.join(" · ");
   els.selectedLabel.textContent =
     state.reviewPackSelectedIndex === null ? "선택 없음" : reviewPackSelectedLabel(selectedItem);
   els.retranscribeButton.disabled = true;

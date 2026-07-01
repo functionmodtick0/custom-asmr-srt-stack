@@ -74,10 +74,23 @@ def build_review_pack(
         "clip_count": len(packed_items),
         "items": packed_items,
     }
+    preserve_review_effort_summary(review_effort_report, result)
     if source_case_index_value is not None:
         result["source_case_index"] = source_case_index_value
     (output_dir / "index.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return result
+
+
+def preserve_review_effort_summary(source: dict[str, Any], target: dict[str, Any]) -> None:
+    case_summaries = source.get("case_summaries")
+    if isinstance(case_summaries, list):
+        target["case_summaries"] = case_summaries
+    case_count = source.get("case_count")
+    if isinstance(case_count, int) and not isinstance(case_count, bool):
+        target["case_count"] = case_count
+    next_case_id = source.get("next_case_id")
+    if next_case_id is None or isinstance(next_case_id, str):
+        target["next_case_id"] = next_case_id
 
 
 def prepare_output_dir(output_dir: Path) -> None:
