@@ -15,6 +15,7 @@ from custom_asmr_srt_stack.alignment import alignment_diagnostics, run_alignment
 from custom_asmr_srt_stack.audio import normalize_audio_to_wav, slice_wav, split_wav_channels
 from custom_asmr_srt_stack.case_batch import (
     EVAL_MANIFEST_BUILD_FORMAT,
+    align_review_case_candidates,
     attach_review_case_candidates,
     build_case_candidate_attach_plan,
     build_review_case_pack,
@@ -387,6 +388,24 @@ def transcribe_review_case_candidates_command(args: argparse.Namespace) -> None:
         args,
         report,
         f"review case candidates transcribed: {args.output} candidates={report['candidate_count']}",
+    )
+
+
+def align_review_case_candidates_command(args: argparse.Namespace) -> None:
+    command = os.environ.get("CASRT_ALIGNER_COMMAND")
+    if not command:
+        raise ValueError("CASRT_ALIGNER_COMMAND is required")
+    report = align_review_case_candidates(
+        args.case_index,
+        output_dir=args.output,
+        command=shlex.split(command),
+        candidate_id=args.candidate_id,
+        source_language=args.source_language,
+    )
+    emit(
+        args,
+        report,
+        f"review case candidates aligned: {args.output} candidates={report['candidate_count']}",
     )
 
 
@@ -1177,6 +1196,20 @@ def build_parser() -> argparse.ArgumentParser:
     transcribe_review_case_candidates_parser.add_argument("-o", "--output", type=Path, required=True)
     transcribe_review_case_candidates_parser.add_argument("--source-language", default="ja")
     transcribe_review_case_candidates_parser.set_defaults(func=transcribe_review_case_candidates_command)
+
+    align_review_case_candidates_parser = subcommands.add_parser(
+        "align-review-case-candidates",
+        parents=[output_parent],
+        help="Align every prepared review case candidate with CASRT_ALIGNER_COMMAND.",
+    )
+    align_review_case_candidates_parser.add_argument("case_index", type=Path)
+    align_review_case_candidates_parser.add_argument("-o", "--output", type=Path, required=True)
+    align_review_case_candidates_parser.add_argument("--source-language", default="ja")
+    align_review_case_candidates_parser.add_argument(
+        "--candidate-id",
+        help="Candidate id to store in the generated attach plan and eval manifest.",
+    )
+    align_review_case_candidates_parser.set_defaults(func=align_review_case_candidates_command)
 
     freeze_case_references_parser = subcommands.add_parser(
         "freeze-case-references",

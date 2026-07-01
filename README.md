@@ -446,6 +446,18 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
 
 튜닝/검수용으로는 `--diagnostics-output alignment-diagnostics.json`을 추가해 segment별 original/aligned timing delta를 저장할 수 있습니다.
 
+prepared case set의 모든 candidate를 같은 aligner로 일괄 재정렬:
+
+```bash
+CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.qwen_aligner_worker --model-id /path/to/Qwen3-ForcedAligner-0.6B/snapshot' \
+  uv run casrt align-review-case-candidates cases/case-index.json \
+  -o aligned-candidates \
+  --json
+uv run casrt eval-manifest aligned-candidates/eval-manifest.json --product-gate
+```
+
+`align-review-case-candidates`는 원본 case set과 candidate를 수정하지 않고 `candidates/*.master.json`, `diagnostics/*.alignment-diagnostics.json`, `attach-plan.json`, `eval-manifest.json`을 새 output directory에 씁니다. 이 명령도 새 WebUI 옵션을 만들지 않는 CLI-only benchmark 경로입니다.
+
 기존 SRT 또는 master JSON에 L/R energy channel attribution 적용:
 
 ```bash

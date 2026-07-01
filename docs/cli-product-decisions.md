@@ -521,6 +521,24 @@ CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.
 - `--diagnostics-output`은 `custom-asmr-alignment-diagnostics-v1` JSON을 쓴다. 각 segment의 original/aligned start/end, start/end/duration delta, review flag 변화를 담으며 WebUI 옵션으로 노출하지 않는다.
 - 이 명령은 기존 후보를 평가 harness에 넣기 위한 도구이며 WebUI 옵션을 늘리지 않는다.
 
+prepared case set의 모든 candidate를 같은 aligner로 재정렬할 때는 `align-review-case-candidates`를 사용한다.
+
+```bash
+CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.qwen_aligner_worker --model-id /path/to/Qwen3-ForcedAligner-0.6B/snapshot' \
+  uv run casrt align-review-case-candidates cases/case-index.json -o aligned-candidates --json
+```
+
+동작:
+
+- 입력은 candidate가 모두 붙은 `custom-asmr-review-case-set-v1` `case-index.json`이다.
+- `CASRT_ALIGNER_COMMAND`가 없으면 실패한다.
+- 각 case의 audio와 candidate master를 aligner에 넘겨 segment timing만 갱신한다.
+- output directory는 비어 있어야 하며, `candidates/*.master.json`, `diagnostics/*.alignment-diagnostics.json`, `attach-plan.json`, `eval-manifest.json`, `index.json`을 쓴다.
+- 원본 case set과 원본 candidate 파일은 수정하지 않는다.
+- `--candidate-id`가 없으면 기존 `candidate_id` 또는 candidate filename에 `-aligned`를 붙인다.
+- 생성된 `eval-manifest.json`은 바로 `eval-manifest --product-gate`에 넣어 base candidate와 비교한다. 생성된 `attach-plan.json`은 필요하면 별도 copied case set에 `attach-review-case-candidates --replace`로 붙일 수 있다.
+- 이 명령도 WebUI 옵션을 늘리지 않는 CLI-only benchmark 도구다.
+
 ### 기존 Transcript Channel Attribution
 
 ```bash

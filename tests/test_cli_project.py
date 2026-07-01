@@ -1418,6 +1418,132 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(manifest["cases"][0]["candidate"], "candidates/front-a.master.json")
             self.assertEqual(manifest["cases"][0]["candidate_id"], "local-candidate")
 
+    def test_align_review_case_candidates_writes_aligned_candidates_and_eval_manifest(self):
+        script = (
+            "import json,sys;"
+            "request=json.load(sys.stdin);"
+            "print(json.dumps({'segments':["
+            "{'id':segment['id'],'start_ms':segment['start_ms']+10,'end_ms':segment['end_ms']+20}"
+            " for segment in request['master']['segments']]}))"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_dir = root / "cases"
+            audio_dir = case_dir / "audio"
+            reference_dir = case_dir / "references"
+            candidate_dir = case_dir / "candidates"
+            output_dir = root / "aligned"
+            audio_dir.mkdir(parents=True)
+            reference_dir.mkdir()
+            candidate_dir.mkdir()
+            write_stereo_samples(audio_dir / "front-a.wav", [(100, 200), (300, 400)])
+            reference = {
+                "format": "custom-asmr-master-v1",
+                "source_language": "ja",
+                "audio": {"source_file": "front-a.wav", "duration_ms": 200},
+                "segments": [
+                    {
+                        "id": "seg_000001",
+                        "start_ms": 0,
+                        "end_ms": 100,
+                        "channel": "L",
+                        "kind": "speech",
+                        "text": "参照",
+                        "needs_review": False,
+                    }
+                ],
+            }
+            candidate = {
+                "format": "custom-asmr-master-v1",
+                "source_language": "ja",
+                "audio": {"source_file": "front-a.wav", "duration_ms": 200},
+                "segments": [
+                    {
+                        "id": "seg_000001",
+                        "start_ms": 0,
+                        "end_ms": 100,
+                        "channel": "MIX",
+                        "kind": "speech",
+                        "text": "候補",
+                        "needs_review": False,
+                    }
+                ],
+            }
+            (reference_dir / "front-a.master.json").write_text(json.dumps(reference), encoding="utf-8")
+            (candidate_dir / "front-a.master.json").write_text(json.dumps(candidate), encoding="utf-8")
+            case_index = case_dir / "case-index.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "reference_type": "pseudo-gold",
+                        "items": [
+                            {
+                                "id": "front-a",
+                                "audio": "audio/front-a.wav",
+                                "reference": "references/front-a.master.json",
+                                "candidate": "candidates/front-a.master.json",
+                                "candidate_id": "base-candidate",
+                                "segments": 1,
+                                "review_count": 0,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.dict("os.environ", {"CASRT_ALIGNER_COMMAND": f"{sys.executable} -c {json.dumps(script)}"}):
+                result, output = run_cli(
+                    [
+                        "align-review-case-candidates",
+                        "--json",
+                        str(case_index),
+                        "-o",
+                        str(output_dir),
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["format"], "custom-asmr-review-case-candidate-align-v1")
+            self.assertEqual(report["candidate_count"], 1)
+            self.assertEqual(report["items"][0]["candidate_id"], "base-candidate-aligned")
+            self.assertEqual(report["items"][0]["changed_segments"], 1)
+            aligned = json.loads((output_dir / "candidates" / "front-a.master.json").read_text(encoding="utf-8"))
+            self.assertEqual(aligned["segments"][0]["start_ms"], 10)
+            self.assertEqual(aligned["segments"][0]["end_ms"], 120)
+            diagnostics = json.loads(
+                (output_dir / "diagnostics" / "front-a.alignment-diagnostics.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(diagnostics["changed_segments"], 1)
+            attach_plan = json.loads((output_dir / "attach-plan.json").read_text(encoding="utf-8"))
+            self.assertEqual(attach_plan["candidates"][0]["candidate"], "candidates/front-a.master.json")
+            self.assertEqual(attach_plan["candidates"][0]["candidate_id"], "base-candidate-aligned")
+            manifest = json.loads((output_dir / "eval-manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["cases"][0]["candidate"], "candidates/front-a.master.json")
+            self.assertEqual(manifest["cases"][0]["candidate_id"], "base-candidate-aligned")
+            self.assertEqual(manifest["cases"][0]["reference"], "../cases/references/front-a.master.json")
+
+    def test_align_review_case_candidates_requires_configured_aligner_command(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_index = root / "case-index.json"
+            output_dir = root / "aligned"
+            case_index.write_text(
+                json.dumps({"format": "custom-asmr-review-case-set-v1", "items": []}),
+                encoding="utf-8",
+            )
+
+            with mock.patch.dict("os.environ", {}, clear=True):
+                result, _, error = run_cli_with_stderr(
+                    ["align-review-case-candidates", str(case_index), "-o", str(output_dir)]
+                )
+
+            self.assertEqual(result, 1)
+            self.assertIn("CASRT_ALIGNER_COMMAND is required", error)
+            self.assertFalse(output_dir.exists())
+
     def test_build_candidate_attach_plan_matches_case_files_and_feeds_attach(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

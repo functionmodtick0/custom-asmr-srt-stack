@@ -7,6 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from custom_asmr_srt_stack.alignment import alignment_diagnostics, run_alignment_command
 from custom_asmr_srt_stack.audio import analyze_wav, normalize_audio_to_wav, slice_wav
 from custom_asmr_srt_stack.case_slicing import slice_master_document
 from custom_asmr_srt_stack.evaluation import EVAL_MANIFEST_FORMAT, load_transcript_document
@@ -25,6 +26,7 @@ REVIEW_CASE_SET_FORMAT = "custom-asmr-review-case-set-v1"
 REVIEW_CASE_STATUS_FORMAT = "custom-asmr-review-case-status-v1"
 REVIEW_CASE_REFERENCE_SAVE_FORMAT = "custom-asmr-review-case-reference-save-v1"
 REVIEW_CASE_CANDIDATE_ATTACH_FORMAT = "custom-asmr-review-case-candidate-attach-v1"
+REVIEW_CASE_CANDIDATE_ALIGN_FORMAT = "custom-asmr-review-case-candidate-align-v1"
 EVAL_MANIFEST_BUILD_FORMAT = "custom-asmr-eval-manifest-build-v1"
 CASE_REFERENCE_FREEZE_FORMAT = "custom-asmr-case-reference-freeze-v1"
 
@@ -579,6 +581,159 @@ def build_case_candidate_attach_plan(
     }
     if candidate_id is not None:
         report["candidate_id"] = candidate_id
+    return report
+
+
+def align_review_case_candidates(
+    case_index_file: Path,
+    *,
+    output_dir: Path,
+    command: list[str],
+    candidate_id: str | None = None,
+    source_language: str = "ja",
+) -> dict[str, Any]:
+    if not command:
+        raise ValueError("alignment command must not be empty")
+    if candidate_id is not None and not candidate_id:
+        raise ValueError("candidate_id must be a non-empty string")
+
+    case_index = load_review_case_index(case_index_file)
+    raw_items = case_index.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ValueError("review case index items must be a non-empty array")
+
+    base_dir = case_index_file.parent
+    prepared: list[dict[str, Any]] = []
+    seen_case_ids: set[str] = set()
+    for index, raw_item in enumerate(raw_items):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"review case index item {index} must be an object")
+        case_id = require_index_string(raw_item, "id", index)
+        if case_id in seen_case_ids:
+            raise ValueError(f"review case index item id is duplicated: {case_id}")
+        seen_case_ids.add(case_id)
+
+        audio_value = require_index_string(raw_item, "audio", index)
+        reference_value = require_index_string(raw_item, "reference", index)
+        candidate_value = require_index_string(raw_item, "candidate", index)
+        audio_path = resolve_plan_path(base_dir, audio_value)
+        reference_path = resolve_plan_path(base_dir, reference_value)
+        candidate_path = resolve_plan_path(base_dir, candidate_value)
+        for label, path in (("audio", audio_path), ("reference", reference_path), ("candidate", candidate_path)):
+            if not path.is_file():
+                raise ValueError(f"review case {label} file does not exist for {case_id}: {path}")
+        source_candidate_id = raw_item.get("candidate_id")
+        if source_candidate_id is not None and (not isinstance(source_candidate_id, str) or not source_candidate_id):
+            raise ValueError(f"review case index item {index} candidate_id must be a non-empty string")
+        candidate_master = load_transcript_document(candidate_path, source_language=source_language)
+        aligned_master = run_alignment_command(candidate_master, audio_file=audio_path, command=command)
+        selected_candidate_id = candidate_id or f"{source_candidate_id or candidate_path.stem}-aligned"
+        candidate_relative = Path("candidates") / f"{case_file_stem(case_id)}.master.json"
+        diagnostics_relative = Path("diagnostics") / f"{case_file_stem(case_id)}.alignment-diagnostics.json"
+        prepared.append(
+            {
+                "case_id": case_id,
+                "audio": audio_value,
+                "reference": reference_value,
+                "source_candidate": candidate_value,
+                "source_candidate_id": source_candidate_id or candidate_path.stem,
+                "candidate_id": selected_candidate_id,
+                "candidate_master": candidate_master,
+                "aligned_master": aligned_master,
+                "candidate_relative": candidate_relative,
+                "diagnostics_relative": diagnostics_relative,
+                "diagnostics": alignment_diagnostics(
+                    candidate_master,
+                    aligned_master,
+                    audio_file=audio_path,
+                    input_file=candidate_path,
+                    output_file=output_dir / candidate_relative,
+                ),
+            }
+        )
+
+    prepare_output_dir(output_dir)
+    candidates_dir = output_dir / "candidates"
+    diagnostics_dir = output_dir / "diagnostics"
+    candidates_dir.mkdir()
+    diagnostics_dir.mkdir()
+
+    attach_candidates: list[dict[str, str]] = []
+    eval_cases: list[dict[str, str]] = []
+    report_items: list[dict[str, Any]] = []
+    for item in prepared:
+        candidate_output = output_dir / item["candidate_relative"]
+        diagnostics_output = output_dir / item["diagnostics_relative"]
+        candidate_output.write_text(
+            json.dumps(item["aligned_master"].to_json(), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        diagnostics_output.write_text(
+            json.dumps(item["diagnostics"], ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        attach_candidate = {
+            "case_id": item["case_id"],
+            "candidate": str(item["candidate_relative"]),
+            "candidate_id": item["candidate_id"],
+        }
+        attach_candidates.append(attach_candidate)
+        eval_cases.append(
+            {
+                "id": item["case_id"],
+                "reference": relative_path_value(resolve_plan_path(base_dir, item["reference"]), base_dir=output_dir),
+                "candidate": str(item["candidate_relative"]),
+                "candidate_id": item["candidate_id"],
+            }
+        )
+        report_items.append(
+            {
+                "case_id": item["case_id"],
+                "audio": item["audio"],
+                "reference": item["reference"],
+                "source_candidate": item["source_candidate"],
+                "source_candidate_id": item["source_candidate_id"],
+                "candidate": str(item["candidate_relative"]),
+                "candidate_id": item["candidate_id"],
+                "diagnostics": str(item["diagnostics_relative"]),
+                "segments": len(item["aligned_master"].segments),
+                "changed_segments": item["diagnostics"]["changed_segments"],
+                "review_count": sum(1 for segment in item["aligned_master"].segments if segment.needs_review),
+                "max_boundary_delta_ms": item["diagnostics"]["max_boundary_delta_ms"],
+            }
+        )
+
+    attach_plan = {
+        "format": CASE_CANDIDATE_ATTACH_PLAN_FORMAT,
+        "candidates": attach_candidates,
+    }
+    if candidate_id is not None:
+        attach_plan["candidate_id"] = candidate_id
+    attach_plan_file = output_dir / "attach-plan.json"
+    attach_plan_file.write_text(json.dumps(attach_plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    manifest: dict[str, Any] = {
+        "format": EVAL_MANIFEST_FORMAT,
+        "reference_type": optional_index_string(case_index, "reference_type") or "unspecified",
+        "cases": eval_cases,
+    }
+    reference_notes = optional_index_string(case_index, "reference_notes")
+    if reference_notes is not None:
+        manifest["reference_notes"] = reference_notes
+    eval_manifest_file = output_dir / "eval-manifest.json"
+    eval_manifest_file.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    report = {
+        "format": REVIEW_CASE_CANDIDATE_ALIGN_FORMAT,
+        "case_index": str(case_index_file),
+        "output": str(output_dir),
+        "candidate_count": len(report_items),
+        "attach_plan": str(attach_plan_file),
+        "eval_manifest": str(eval_manifest_file),
+        "items": report_items,
+    }
+    report_file = output_dir / "index.json"
+    report_file.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return report
 
 
