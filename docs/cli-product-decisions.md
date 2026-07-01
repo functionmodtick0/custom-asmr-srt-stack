@@ -640,6 +640,7 @@ uv run casrt eval-manifest gold.json --json -o eval-suite.json
 - root 또는 case의 `reference_type`과 `reference_notes`를 report에 보존한다.
 - 제품 의사결정에서는 `reference_type=human-reviewed`만 모델 승격 근거로 쓰고, `pseudo-gold`는 regression/상대 비교로만 사용한다.
 - `eval-manifest`의 품질 gate는 summary metric 기준으로 판단한다.
+- `eval-transcript`/`eval-manifest` report는 `asr_artifacts` summary를 포함한다. 이 summary는 candidate speech segment의 non-Japanese text, 15 chars/sec 초과 high text density, 12자 이상 repeated text pattern count/ratio를 세는 보조 진단 지표이며 `--product-gate` threshold에는 포함하지 않는다.
 - `--require-reference-type human-reviewed`를 지정하면 모든 case의 effective `reference_type`이 일치해야 하며, 실패해도 report는 stdout/file에 먼저 남긴다.
 
 ### Review Effort Export
@@ -668,7 +669,8 @@ uv run casrt compare-evals qwen-report.json stable-report.json quiet8-report.jso
 
 - 입력은 `eval-transcript` 단일 report 또는 `eval-manifest` suite report JSON이다.
 - output format은 `custom-asmr-eval-comparison-v1`이다.
-- 각 report의 practical CER, optional Japanese relaxed CER, time-aligned 500ms ratio, channel time-aligned accuracy, candidate MIX ratio, candidate `needs_review` 비율, `review_effort` 수정 비율과 text/channel/timing/missing/extra breakdown ratio를 한 줄 summary로 뽑는다.
+- 각 report의 practical CER, optional Japanese relaxed CER, time-aligned 500ms ratio, channel time-aligned accuracy, candidate MIX ratio, candidate `needs_review` 비율, `review_effort` 수정 비율과 text/channel/timing/missing/extra breakdown ratio, optional `asr_artifacts` ratio를 한 줄 summary로 뽑는다.
+- `compare-evals` item은 새 report에서 `asr_artifact_segment_ratio`, `asr_repeated_text_segment_ratio`, `asr_high_text_density_segment_ratio`, `asr_non_japanese_text_segment_ratio`를 표시하고, legacy report에는 `null`로 둔다.
 - ranking은 `segments_needing_edit_ratio`, practical CER, time-aligned 500ms ratio desc, channel time-aligned accuracy desc 순서다.
 - `--product-gate` 또는 개별 gate 인자를 지정하면 각 item에 `gate_passed`와 `gate_failures`를 표시한다. `compare-evals` 자체는 gate 실패 때문에 실패 exit code를 반환하지 않는다.
 - 이 명령은 모델/heuristic 승격을 자동 결정하지 않는다. 사람이 다음 실험 후보를 고르는 비교표만 만든다.

@@ -24,6 +24,11 @@ REVIEW_EFFORT_REASON_PRIORITY = {
     "channel": 1000.0,
 }
 JAPANESE_RELAXED_REMOVED_CHARS = "ー〜～"
+JAPANESE_EVAL_TEXT_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff々〆〤ヶー]")
+ASR_ARTIFACT_HIGH_DENSITY_CHARS_PER_SECOND = 15.0
+ASR_ARTIFACT_HIGH_DENSITY_MIN_CHARS = 8
+ASR_ARTIFACT_REPEATED_MIN_TOTAL_CHARS = 12
+ASR_ARTIFACT_REPEATED_MAX_UNIT_CHARS = 8
 
 
 def load_transcript_document(path: Path, *, source_language: str = "ja") -> MasterDocument:
@@ -53,6 +58,7 @@ def evaluate_transcripts(reference: MasterDocument, candidate: MasterDocument) -
     time_aligned_channel_summary = channel_accuracy_summary(time_aligned_paired)
     review_count = sum(1 for segment in candidate.segments if segment.needs_review)
     review_effort = review_effort_summary(reference_speech, candidate_speech, time_aligned_paired)
+    asr_artifacts = asr_artifact_summary(candidate_speech)
 
     return {
         "format": EVAL_FORMAT,
@@ -70,6 +76,7 @@ def evaluate_transcripts(reference: MasterDocument, candidate: MasterDocument) -
             "candidate_review_ratio": review_count / max(1, len(candidate.segments)),
         },
         "review_effort": review_effort,
+        "asr_artifacts": asr_artifacts,
     }
 
 
@@ -262,6 +269,25 @@ def eval_comparison_item(path: Path, report: dict[str, Any]) -> dict[str, Any]:
             path,
         ),
     }
+    asr_artifacts = optional_report_mapping(metrics, "asr_artifacts", path)
+    item["asr_artifact_segment_ratio"] = (
+        None if asr_artifacts is None else require_report_number(asr_artifacts, "artifact_segment_ratio", path)
+    )
+    item["asr_repeated_text_segment_ratio"] = (
+        None
+        if asr_artifacts is None
+        else require_report_number(asr_artifacts, "repeated_text_segment_ratio", path)
+    )
+    item["asr_high_text_density_segment_ratio"] = (
+        None
+        if asr_artifacts is None
+        else require_report_number(asr_artifacts, "high_text_density_segment_ratio", path)
+    )
+    item["asr_non_japanese_text_segment_ratio"] = (
+        None
+        if asr_artifacts is None
+        else require_report_number(asr_artifacts, "non_japanese_text_segment_ratio", path)
+    )
     if reference_type is not None:
         item["reference_type"] = reference_type
     return item
@@ -516,6 +542,7 @@ def aggregate_eval_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
         "channel_time_aligned": aggregate_channel_reports(reports, "channel_time_aligned"),
         "review": aggregate_review_reports(reports),
         "review_effort": aggregate_review_effort_reports(reports),
+        "asr_artifacts": aggregate_asr_artifact_reports(reports),
     }
 
 
@@ -672,6 +699,28 @@ def aggregate_review_effort_reports(reports: list[dict[str, Any]]) -> dict[str, 
         "timing_edit_segment_ratio": timing_edit_segments / denominator,
         "missing_reference_segment_ratio": missing_reference_segments / denominator,
         "extra_candidate_segment_ratio": extra_candidate_segments / denominator,
+    }
+
+
+def aggregate_asr_artifact_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
+    candidate_segments = sum(report["asr_artifacts"]["candidate_segments"] for report in reports)
+    artifact_segments = sum(report["asr_artifacts"]["artifact_segments"] for report in reports)
+    non_japanese_text_segments = sum(report["asr_artifacts"]["non_japanese_text_segments"] for report in reports)
+    high_text_density_segments = sum(report["asr_artifacts"]["high_text_density_segments"] for report in reports)
+    repeated_text_segments = sum(report["asr_artifacts"]["repeated_text_segments"] for report in reports)
+    return {
+        "candidate_segments": candidate_segments,
+        "artifact_segments": artifact_segments,
+        "artifact_segment_ratio": artifact_segments / max(1, candidate_segments),
+        "non_japanese_text_segments": non_japanese_text_segments,
+        "non_japanese_text_segment_ratio": non_japanese_text_segments / max(1, candidate_segments),
+        "high_text_density_segments": high_text_density_segments,
+        "high_text_density_segment_ratio": high_text_density_segments / max(1, candidate_segments),
+        "repeated_text_segments": repeated_text_segments,
+        "repeated_text_segment_ratio": repeated_text_segments / max(1, candidate_segments),
+        "high_text_density_chars_per_second": reports[0]["asr_artifacts"]["high_text_density_chars_per_second"],
+        "high_text_density_min_chars": reports[0]["asr_artifacts"]["high_text_density_min_chars"],
+        "repeated_text_min_total_chars": reports[0]["asr_artifacts"]["repeated_text_min_total_chars"],
     }
 
 
@@ -845,6 +894,90 @@ def review_effort_pair_item(reference: Segment, candidate: Segment, *, reasons: 
         "candidate_start_ms": candidate.start_ms,
         "candidate_end_ms": candidate.end_ms,
     }
+
+
+def asr_artifact_summary(candidate_segments: tuple[Segment, ...]) -> dict[str, Any]:
+    items: list[dict[str, Any]] = []
+    non_japanese_text_segments = 0
+    high_text_density_segments = 0
+    repeated_text_segments = 0
+
+    for segment in candidate_segments:
+        normalized_text = normalize_for_cer(segment.text, mode="practical")
+        duration_ms = max(0, segment.end_ms - segment.start_ms)
+        character_count = len(normalized_text)
+        chars_per_second = character_count / max(0.001, duration_ms / 1000)
+        reasons = []
+
+        if normalized_text and not JAPANESE_EVAL_TEXT_RE.search(normalized_text):
+            non_japanese_text_segments += 1
+            reasons.append("non_japanese_text")
+        if is_high_text_density_artifact(character_count, chars_per_second):
+            high_text_density_segments += 1
+            reasons.append("high_text_density")
+        if has_repeated_text_artifact(normalized_text):
+            repeated_text_segments += 1
+            reasons.append("repeated_text")
+        if reasons:
+            items.append(
+                {
+                    "segment_id": segment.id,
+                    "start_ms": segment.start_ms,
+                    "end_ms": segment.end_ms,
+                    "duration_ms": duration_ms,
+                    "channel": segment.channel,
+                    "reasons": reasons,
+                    "practical_character_count": character_count,
+                    "chars_per_second": chars_per_second,
+                }
+            )
+
+    artifact_segments = len(items)
+    candidate_segment_count = len(candidate_segments)
+    return {
+        "candidate_segments": candidate_segment_count,
+        "artifact_segments": artifact_segments,
+        "artifact_segment_ratio": artifact_segments / max(1, candidate_segment_count),
+        "non_japanese_text_segments": non_japanese_text_segments,
+        "non_japanese_text_segment_ratio": non_japanese_text_segments / max(1, candidate_segment_count),
+        "high_text_density_segments": high_text_density_segments,
+        "high_text_density_segment_ratio": high_text_density_segments / max(1, candidate_segment_count),
+        "repeated_text_segments": repeated_text_segments,
+        "repeated_text_segment_ratio": repeated_text_segments / max(1, candidate_segment_count),
+        "high_text_density_chars_per_second": ASR_ARTIFACT_HIGH_DENSITY_CHARS_PER_SECOND,
+        "high_text_density_min_chars": ASR_ARTIFACT_HIGH_DENSITY_MIN_CHARS,
+        "repeated_text_min_total_chars": ASR_ARTIFACT_REPEATED_MIN_TOTAL_CHARS,
+        "items": items,
+    }
+
+
+def is_high_text_density_artifact(character_count: int, chars_per_second: float) -> bool:
+    return (
+        character_count >= ASR_ARTIFACT_HIGH_DENSITY_MIN_CHARS
+        and chars_per_second > ASR_ARTIFACT_HIGH_DENSITY_CHARS_PER_SECOND
+    )
+
+
+def has_repeated_text_artifact(text: str) -> bool:
+    if len(text) < ASR_ARTIFACT_REPEATED_MIN_TOTAL_CHARS:
+        return False
+
+    max_unit_chars = min(ASR_ARTIFACT_REPEATED_MAX_UNIT_CHARS, len(text) // 3)
+    for unit_chars in range(1, max_unit_chars + 1):
+        min_repetitions = 4 if unit_chars == 1 else 3
+        for start in range(0, len(text) - (unit_chars * min_repetitions) + 1):
+            unit = text[start : start + unit_chars]
+            repetitions = 1
+            cursor = start + unit_chars
+            while cursor + unit_chars <= len(text) and text[cursor : cursor + unit_chars] == unit:
+                repetitions += 1
+                cursor += unit_chars
+            if (
+                repetitions >= min_repetitions
+                and repetitions * unit_chars >= ASR_ARTIFACT_REPEATED_MIN_TOTAL_CHARS
+            ):
+                return True
+    return False
 
 
 def normalize_for_cer(text: str, *, mode: str = "strict") -> str:

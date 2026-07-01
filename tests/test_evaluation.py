@@ -82,6 +82,44 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["review_effort"]["items"][0]["reasons"], ["text", "channel"])
         self.assertEqual(report["review_effort"]["items"][0]["reference_text"], "見つかった")
         self.assertEqual(report["review_effort"]["items"][0]["candidate_text"], "見つた")
+        self.assertEqual(report["asr_artifacts"]["artifact_segments"], 0)
+        self.assertEqual(report["asr_artifacts"]["artifact_segment_ratio"], 0.0)
+
+    def test_evaluate_transcripts_reports_asr_artifact_diagnostics(self):
+        reference = master_with_segments(
+            [
+                Segment("seg_000001", 0, 1000, "MIX", "speech", "ねえ"),
+                Segment("seg_000002", 1000, 2000, "MIX", "speech", "そこ"),
+                Segment("seg_000003", 2000, 3000, "MIX", "speech", "聞こえる"),
+                Segment("seg_000004", 3000, 4000, "MIX", "speech", "はい"),
+            ]
+        )
+        candidate = master_with_segments(
+            [
+                Segment("seg_000001", 0, 1000, "MIX", "speech", "noise"),
+                Segment("seg_000002", 1000, 1400, "MIX", "speech", "あいうえおかきくけこ"),
+                Segment("seg_000003", 2000, 4500, "MIX", "speech", "おにいちゃんおにいちゃんおにいちゃん"),
+                Segment("seg_000004", 3000, 4000, "MIX", "speech", "はい"),
+            ]
+        )
+
+        report = evaluate_transcripts(reference, candidate)
+
+        artifacts = report["asr_artifacts"]
+        self.assertEqual(artifacts["candidate_segments"], 4)
+        self.assertEqual(artifacts["artifact_segments"], 3)
+        self.assertEqual(artifacts["non_japanese_text_segments"], 1)
+        self.assertEqual(artifacts["high_text_density_segments"], 1)
+        self.assertEqual(artifacts["repeated_text_segments"], 1)
+        self.assertEqual(artifacts["artifact_segment_ratio"], 0.75)
+        self.assertEqual([item["segment_id"] for item in artifacts["items"]], [
+            "seg_000001",
+            "seg_000002",
+            "seg_000003",
+        ])
+        self.assertEqual(artifacts["items"][0]["reasons"], ["non_japanese_text"])
+        self.assertEqual(artifacts["items"][1]["reasons"], ["high_text_density"])
+        self.assertEqual(artifacts["items"][2]["reasons"], ["repeated_text"])
 
     def test_time_aligned_timing_ignores_non_overlapping_extra_candidate_segments(self):
         reference = master_with_segments(
@@ -216,6 +254,9 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["summary"]["review_effort"]["missing_reference_segment_ratio"], 0.0)
         self.assertEqual(report["summary"]["review_effort"]["extra_candidate_segment_ratio"], 0.0)
         self.assertNotIn("items", report["summary"]["review_effort"])
+        self.assertEqual(report["summary"]["asr_artifacts"]["candidate_segments"], 2)
+        self.assertEqual(report["summary"]["asr_artifacts"]["artifact_segments"], 0)
+        self.assertEqual(report["summary"]["asr_artifacts"]["artifact_segment_ratio"], 0.0)
         self.assertEqual(report["summary"]["channel"]["paired_segments"], 2)
         self.assertEqual(report["summary"]["channel"]["confusion"]["MIX"]["MIX"], 2)
         self.assertEqual(report["summary"]["channel"]["candidate_mix_ratio"], 1.0)
@@ -365,6 +406,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(item["timing_edit_segment_ratio"], 3 / 5)
         self.assertEqual(item["missing_reference_segment_ratio"], 1 / 5)
         self.assertEqual(item["extra_candidate_segment_ratio"], 1 / 5)
+        self.assertIsNone(item["asr_artifact_segment_ratio"])
 
     def test_evaluate_manifest_aggregates_channel_reports_when_one_case_has_no_comparable_segments(self):
         with tempfile.TemporaryDirectory() as tmpdir:
