@@ -24,6 +24,12 @@ Primary documentation targets:
 
 If a decision is made during implementation, document it before considering the task complete. If the decision is only tentative, record it as an open decision or next-step plan rather than leaving it implicit.
 
+## Artifact Storage
+
+Do not use `/tmp` as the sole source of truth for model snapshots, reusable benchmark inputs, or experiment results that future work depends on. `/tmp` is acceptable only for staging, disposable scratch output, or isolated external-runtime sandboxes that can be recreated.
+
+Persist reusable local model snapshots in gitignored `.casrt/models/` or a persistent Hugging Face snapshot cache, and persist digest reports in `.casrt/model-digests/`. Persist reproducible local experiment artifacts under `.casrt/experiments/` when they are needed for follow-up evaluation. If a historical document mentions `/tmp/casrt-quality...`, treat that path as run provenance rather than durable state.
+
 ## Security Review Scope
 
 Use subagent security review only before executing or adopting external code/runtime surfaces, such as third-party repository code, `trust_remote_code`, new external runtime packages, unsafe model formats, or unreviewed downloaded tooling.

@@ -132,7 +132,7 @@ Qwen3-ForcedAligner는 `CASRT_QWEN_ASR_ALIGNER_MODEL_ID`로 내부 실험할 수
 
 `local-cohere-asr`는 Cohere Transcribe 03-2026을 위한 로컬 후보입니다. repo id가 아니라 exact revision의 local snapshot directory를 `--model-id`로 받아야 하며, worker는 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로만 로드합니다. 실제 모델 다운로드/평가는 revision pin과 `casrt model digest` report 기록 전까지 실행하지 않습니다.
 
-`local-granite-asr`는 `ibm-granite/granite-speech-4.1-2b`를 위한 로컬 후보입니다. 현재 Transformers 5.12.1이 `granite_speech`를 native 지원하므로 remote model code 없이 실행할 수 있습니다. repo id가 아니라 exact revision의 local snapshot directory를 `--model-id`로 받아야 하며, worker는 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로만 로드합니다. 2026-07-01 01/04/07 front120 pseudo-gold 평가에서는 practical CER 23.6%, time-aligned 500ms 21.8%, review effort 100%라 기본 승격하지 않습니다.
+`local-granite-asr`는 `ibm-granite/granite-speech-4.1-2b`를 위한 로컬 후보입니다. 현재 Transformers 5.12.1이 `granite_speech`를 native 지원하므로 remote model code 없이 실행할 수 있습니다. repo id가 아니라 exact revision의 local snapshot directory를 `--model-id`로 받아야 하며, worker는 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로만 로드합니다. 2026-07-01 01/04/07 front120 pseudo-gold 평가에서는 practical CER 23.6%, time-aligned 500ms 21.8%, review effort 100%라 기본 승격하지 않습니다. 같은 후보에 Qwen3-ForcedAligner를 붙이면 time-aligned 500ms는 32.7%로 개선되지만 text/review gate는 그대로 실패합니다.
 
 로컬 일본어 ASR worker는 정리 후 일본어 문자가 하나도 없는 segment를 hallucination으로 보고 버립니다. 예를 들어 `!`나 영어-only fragment는 `master.json`에 넣지 않습니다.
 
@@ -142,13 +142,14 @@ uv run casrt model digest /path/to/model/snapshots/<commit> \
   --json
 ```
 
-큰 local snapshot은 `/tmp`가 아니라 gitignored `.casrt/models/`에 보관합니다. digest report는 `.casrt/model-digests/`에 둡니다. 현재 재사용 가능한 로컬 캐시는 다음과 같습니다.
+큰 local snapshot은 `/tmp`가 아니라 gitignored `.casrt/models/`에 보관합니다. digest report는 `.casrt/model-digests/`에 둡니다. `/tmp`는 재부팅이나 정리 작업으로 사라질 수 있으므로 다운로드 staging이나 삭제되어도 되는 실험 출력에만 사용합니다. 현재 재사용 가능한 로컬 캐시는 다음과 같습니다.
 
 ```text
 .casrt/models/qwen3-asr-1.7b-hf-057a3b044fcd31c433e7971ab40d68d20e7eae6d
 .casrt/model-digests/qwen3-asr-1.7b-hf-057a3b044fcd31c433e7971ab40d68d20e7eae6d-digest.json
 .casrt/models/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546
 .casrt/model-digests/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546-digest.json
+.casrt/model-digests/qwen3-forced-aligner-0.6b-c7cbfc2048c462b0d63a45797104fc9db3ad62b7-digest.json
 ```
 
 외부 런타임/다운로드 도구 실행처럼 보안 검토가 필요한 로컬 Qwen benchmark는 repo id 대신 Hugging Face cache의 고정 snapshot directory를 `--model-id`에 넣고 다음 env를 켭니다.
