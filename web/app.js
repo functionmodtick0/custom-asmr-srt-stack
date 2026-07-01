@@ -411,7 +411,13 @@ function renderReviewPackItem(item, index) {
   texts.className = "review-pack-texts";
   texts.append(reviewTextLine("REF", item.reference_channel, item.reference_text));
   if (reviewPackHasCandidate(item)) {
-    texts.append(reviewTextLine("CAND", item.candidate_channel, item.candidate_text));
+    texts.append(
+      reviewTextLine(
+        reviewPackSecondaryLabel(item),
+        item.candidate_channel,
+        reviewPackSecondaryText(item),
+      ),
+    );
   }
 
   row.addEventListener("click", () => selectReviewPackItem(index, true));
@@ -467,6 +473,22 @@ function reviewSegmentPreview(segment) {
 
 function reviewPackHasCandidate(item) {
   return Boolean(item?.candidate_id || item?.candidate_channel || item?.candidate_text);
+}
+
+function reviewPackIsReferenceAuditItem(item) {
+  return Array.isArray(item?.reasons)
+    && item.reasons.some((reason) => typeof reason === "string" && reason.startsWith("reference-"));
+}
+
+function reviewPackSecondaryLabel(item) {
+  return reviewPackIsReferenceAuditItem(item) ? "REF2" : "CAND";
+}
+
+function reviewPackSecondaryText(item) {
+  if (reviewPackIsReferenceAuditItem(item) && !item?.candidate_text) {
+    return item?.candidate_id;
+  }
+  return item?.candidate_text;
 }
 
 function reviewPackSourceTarget(item) {

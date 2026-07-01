@@ -238,21 +238,36 @@ class WebAppBehaviorTests(unittest.TestCase):
               candidate_id: "seg_000002",
               candidate_channel: "R",
               candidate_text: "候補",
+              reasons: ["text"],
+            };
+            const auditOverlapItem = {
+              ...referenceOnly,
+              reference_id: "seg_000001",
+              candidate_id: "seg_000002",
+              candidate_channel: "L",
+              candidate_text: "",
+              reasons: ["reference-same-channel-overlap"],
             };
 
             const referenceRow = context.renderReviewPackItem(referenceOnly, 0);
             const candidateRow = context.renderReviewPackItem(candidateItem, 1);
+            const auditOverlapRow = context.renderReviewPackItem(auditOverlapItem, 2);
             const referenceMeta = referenceRow.children[0];
             const referenceTexts = referenceRow.children[2];
             const candidateTexts = candidateRow.children[2];
+            const auditOverlapTexts = auditOverlapRow.children[2];
 
             assert.strictEqual(referenceMeta.children[3].textContent, "seg_000002");
             assert.strictEqual(context.reviewPackHasCandidate(referenceOnly), false);
             assert.strictEqual(context.reviewPackHasCandidate(candidateItem), true);
+            assert.strictEqual(context.reviewPackHasCandidate(auditOverlapItem), true);
             assert.strictEqual(referenceTexts.children.length, 1);
             assert.strictEqual(referenceTexts.children[0].children[0].textContent, "REF L");
             assert.strictEqual(candidateTexts.children.length, 2);
             assert.strictEqual(candidateTexts.children[1].children[0].textContent, "CAND R");
+            assert.strictEqual(auditOverlapTexts.children.length, 2);
+            assert.strictEqual(auditOverlapTexts.children[1].children[0].textContent, "REF2 L");
+            assert.strictEqual(auditOverlapTexts.children[1].children[1].textContent, "seg_000002");
         """,
         )
 
