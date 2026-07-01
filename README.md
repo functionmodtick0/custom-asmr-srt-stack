@@ -557,10 +557,14 @@ uv run casrt review-effort eval-suite.json --json -o review-effort.json
 수정 큐에서 검수용 audio clip pack도 만들 수 있습니다.
 
 ```bash
-uv run casrt review-pack review-effort.json --audio-map audio-map.json -o review-pack --json
+uv run casrt review-pack review-effort.json \
+  --audio-map audio-map.json \
+  --source-case-index cases/case-index.json \
+  -o review-pack \
+  --json
 ```
 
-`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다. `review-effort`의 priority 순서와 score/rank는 pack index에도 보존됩니다.
+`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다. `review-effort`의 priority 순서와 score/rank는 pack index에도 보존됩니다. `--source-case-index`를 같이 주면 WebUI에서 후보 실패 clip을 보다가 `case 열기`로 원 reference segment 편집 화면에 바로 들어갈 수 있습니다.
 
 생성된 pack은 WebUI에서도 열 수 있습니다.
 
@@ -569,7 +573,7 @@ Review path: /path/to/review-pack
 Review path: /path/to/review-cases
 ```
 
-WebUI는 review pack을 새 project로 저장하지 않고, priority item을 클릭할 때 해당 clip만 재생하는 검수 큐 보기 모드로 다룹니다. `review-effort`에서 만든 후보 수정 pack과 `review-case-pack`에서 만든 reference 검수 pack은 같은 loader를 사용합니다. Candidate가 없는 reference-only pack은 segment id를 표시하고 빈 `CAND` 줄은 숨깁니다. `review-case-pack` item은 source case 정보가 있으면 `case 열기`로 해당 case editor와 reference segment를 바로 엽니다. Review case set은 사람이 reference를 고치는 편집 모드로 열며, 목록에서 전체 `needs_review` flag 수, flag가 남은 case, 각 case의 첫 미검수 segment 시간/텍스트를 표시합니다. `검수 완료`로 현재 `needs_review` segment를 처리하고 다음 검수 segment로 이동할 수 있습니다. `case 목록`과 `다음 case`로 검수 case 사이를 이동할 수 있습니다. 모델/VAD/threshold 옵션은 추가하지 않습니다.
+WebUI는 review pack을 새 project로 저장하지 않고, priority item을 클릭할 때 해당 clip만 재생하는 검수 큐 보기 모드로 다룹니다. `review-effort`에서 만든 후보 수정 pack과 `review-case-pack`에서 만든 reference 검수 pack은 같은 loader를 사용합니다. Candidate가 없는 reference-only pack은 segment id를 표시하고 빈 `CAND` 줄은 숨깁니다. Pack item 또는 pack root에 source case 정보가 있으면 `case 열기`로 해당 case editor와 reference segment를 바로 엽니다. Review case set은 사람이 reference를 고치는 편집 모드로 열며, 목록에서 전체 `needs_review` flag 수, flag가 남은 case, 각 case의 첫 미검수 segment 시간/텍스트를 표시합니다. `검수 완료`로 현재 `needs_review` segment를 처리하고 다음 검수 segment로 이동할 수 있습니다. `case 목록`과 `다음 case`로 검수 case 사이를 이동할 수 있습니다. 모델/VAD/threshold 옵션은 추가하지 않습니다.
 
 ## 테스트
 

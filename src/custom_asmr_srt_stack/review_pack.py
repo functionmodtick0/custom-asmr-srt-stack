@@ -18,6 +18,7 @@ def build_review_pack(
     output_dir: Path,
     audio_file: Path | None = None,
     audio_map_file: Path | None = None,
+    source_case_index: Path | None = None,
     context_ms: int = DEFAULT_REVIEW_CONTEXT_MS,
 ) -> dict[str, Any]:
     if context_ms < 0:
@@ -30,6 +31,7 @@ def build_review_pack(
     items = review_effort_items(review_effort_report)
     if audio_file is not None:
         validate_single_audio_scope(items)
+    source_case_index_value = review_pack_source_case_index(review_effort_report, source_case_index)
     audio_by_case = load_audio_by_case(audio_file=audio_file, audio_map_file=audio_map_file)
     prepare_output_dir(output_dir)
     clips_dir = output_dir / "clips"
@@ -62,6 +64,8 @@ def build_review_pack(
                 "clip_context_ms": context_ms,
             }
         )
+        if source_case_index_value is not None and item.get("case_id") and item.get("reference_id"):
+            packed_item["source_case_index"] = source_case_index_value
         packed_items.append(packed_item)
 
     result = {
@@ -70,6 +74,8 @@ def build_review_pack(
         "clip_count": len(packed_items),
         "items": packed_items,
     }
+    if source_case_index_value is not None:
+        result["source_case_index"] = source_case_index_value
     (output_dir / "index.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return result
 
@@ -90,6 +96,19 @@ def review_effort_items(report: dict[str, Any]) -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             raise ValueError("review pack input items must be objects")
     return items
+
+
+def review_pack_source_case_index(report: dict[str, Any], source_case_index: Path | None) -> str | None:
+    if source_case_index is not None:
+        if not source_case_index.exists():
+            raise ValueError(f"source case index is missing: {source_case_index}")
+        return str(source_case_index)
+    value = report.get("source_case_index")
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ValueError("review pack source_case_index must be a non-empty string")
+    return value
 
 
 def validate_single_audio_scope(items: list[dict[str, Any]]) -> None:

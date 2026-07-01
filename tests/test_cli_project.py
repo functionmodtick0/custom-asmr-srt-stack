@@ -2769,8 +2769,13 @@ class ProjectCliTests(unittest.TestCase):
             audio_path = audio_dir / "front-a.wav"
             review_path = root / "review-effort.json"
             audio_map = root / "audio-map.json"
+            case_index = root / "case-index.json"
             pack_dir = root / "review-pack"
             write_mono_wav(audio_path)
+            case_index.write_text(
+                json.dumps({"format": "custom-asmr-review-case-set-v1", "items": []}),
+                encoding="utf-8",
+            )
             review_path.write_text(
                 json.dumps(
                     {
@@ -2824,6 +2829,8 @@ class ProjectCliTests(unittest.TestCase):
                     "--json",
                     "--audio-map",
                     str(audio_map),
+                    "--source-case-index",
+                    str(case_index),
                     "-o",
                     str(pack_dir),
                     str(review_path),
@@ -2834,8 +2841,10 @@ class ProjectCliTests(unittest.TestCase):
             report = json.loads(output)
             self.assertEqual(report["format"], "custom-asmr-review-pack-v1")
             self.assertEqual(report["clip_count"], 2)
+            self.assertEqual(report["source_case_index"], str(case_index))
             self.assertEqual([item["priority_rank"] for item in report["items"]], [1, 2])
             self.assertEqual([item["reference_id"] for item in report["items"]], ["seg_000010", "seg_000001"])
+            self.assertEqual(report["items"][0]["source_case_index"], str(case_index))
             self.assertEqual(report["items"][0]["clip_start_ms"], 0)
             self.assertEqual(report["items"][0]["clip_end_ms"], 2)
             clip_path = pack_dir / report["items"][0]["clip_file"]
@@ -2844,6 +2853,49 @@ class ProjectCliTests(unittest.TestCase):
             index = json.loads((pack_dir / "index.json").read_text(encoding="utf-8"))
             self.assertEqual(index["items"][0]["priority_score"], 9000.0)
             self.assertEqual(index["items"][0]["reference_text"], "優先")
+            self.assertEqual(index["source_case_index"], str(case_index))
+
+    def test_review_pack_rejects_missing_source_case_index_before_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "front-a.wav"
+            review_path = root / "review-effort.json"
+            pack_dir = root / "review-pack"
+            write_mono_wav(audio_path)
+            review_path.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-effort-v1",
+                        "items": [
+                            {
+                                "case_id": "front-a",
+                                "reference_id": "seg_000001",
+                                "start_ms": 0,
+                                "end_ms": 2,
+                                "reasons": ["text"],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, _, error = run_cli_with_stderr(
+                [
+                    "review-pack",
+                    "--audio",
+                    str(audio_path),
+                    "--source-case-index",
+                    str(root / "missing-case-index.json"),
+                    "-o",
+                    str(pack_dir),
+                    str(review_path),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertIn("source case index is missing", error)
+            self.assertFalse(pack_dir.exists())
 
     def test_review_pack_rejects_single_audio_for_multiple_cases(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -613,6 +613,7 @@ def review_pack(args: argparse.Namespace) -> None:
         output_dir=args.output,
         audio_file=args.audio,
         audio_map_file=args.audio_map,
+        source_case_index=args.source_case_index,
     )
     emit(
         args,
@@ -1306,6 +1307,11 @@ def build_parser() -> argparse.ArgumentParser:
     review_pack_parser.add_argument("-o", "--output", type=Path, required=True)
     review_pack_parser.add_argument("--audio", type=Path, help="Single WAV file for reports without case audio mapping.")
     review_pack_parser.add_argument("--audio-map", type=Path, help="JSON map from case_id to WAV file.")
+    review_pack_parser.add_argument(
+        "--source-case-index",
+        type=Path,
+        help="Prepared review case-index.json to attach so WebUI can open the source case from pack items.",
+    )
     review_pack_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
     review_pack_parser.set_defaults(func=review_pack)
 
