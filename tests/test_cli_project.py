@@ -396,6 +396,103 @@ class ProjectCliTests(unittest.TestCase):
             )
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["case_count"], 1)
 
+    def test_vad_compare_coverage_ranks_reports_by_missed_speech(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            low_miss = root / "low-miss.json"
+            high_miss = root / "high-miss.json"
+            comparison_path = root / "vad-comparison.json"
+            low_miss.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-vad-coverage-suite-v1",
+                        "source": "low-miss",
+                        "case_count": 1,
+                        "summary": {
+                            "case_count": 1,
+                            "audio_duration_ms": 100,
+                            "reference_segment_count": 1,
+                            "reference_interval_count": 1,
+                            "detected_interval_count": 1,
+                            "reference_speech_duration_ms": 100,
+                            "detected_speech_duration_ms": 110,
+                            "overlap_duration_ms": 100,
+                            "missed_reference_duration_ms": 0,
+                            "extra_detected_duration_ms": 10,
+                            "reference_recall": 1.0,
+                            "detected_precision": 100 / 110,
+                        },
+                        "cases": [
+                            {
+                                "id": "case",
+                                "report": {
+                                    "missed_reference_intervals": [],
+                                    "extra_detected_intervals": [{"start_ms": 100, "end_ms": 110}],
+                                },
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            high_miss.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-vad-coverage-suite-v1",
+                        "source": "high-miss",
+                        "case_count": 1,
+                        "summary": {
+                            "case_count": 1,
+                            "audio_duration_ms": 100,
+                            "reference_segment_count": 1,
+                            "reference_interval_count": 1,
+                            "detected_interval_count": 1,
+                            "reference_speech_duration_ms": 100,
+                            "detected_speech_duration_ms": 50,
+                            "overlap_duration_ms": 50,
+                            "missed_reference_duration_ms": 50,
+                            "extra_detected_duration_ms": 0,
+                            "reference_recall": 0.5,
+                            "detected_precision": 1.0,
+                        },
+                        "cases": [
+                            {
+                                "id": "case",
+                                "report": {
+                                    "missed_reference_intervals": [{"start_ms": 50, "end_ms": 100}],
+                                    "extra_detected_intervals": [],
+                                },
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "vad",
+                    "compare-coverage",
+                    "--json",
+                    "-o",
+                    str(comparison_path),
+                    str(high_miss),
+                    str(low_miss),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            comparison = json.loads(output)
+            self.assertEqual(comparison["format"], "custom-asmr-vad-coverage-comparison-v1")
+            self.assertEqual([item["label"] for item in comparison["items"]], ["low-miss", "high-miss"])
+            self.assertEqual(comparison["items"][0]["missed_reference_duration_ms"], 0)
+            self.assertEqual(comparison["items"][0]["extra_detected_interval_count"], 1)
+            self.assertEqual(comparison["items"][1]["missed_reference_interval_count"], 1)
+            self.assertEqual(
+                json.loads(comparison_path.read_text(encoding="utf-8"))["items"][0]["label"],
+                "low-miss",
+            )
+
     def test_eval_transcript_outputs_json_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

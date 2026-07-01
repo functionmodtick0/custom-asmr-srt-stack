@@ -1067,6 +1067,25 @@ def vad_coverage_cases(args: argparse.Namespace) -> None:
     )
 
 
+def vad_compare_coverage(args: argparse.Namespace) -> None:
+    from custom_asmr_srt_stack.vad import compare_vad_coverage_reports
+
+    report = compare_vad_coverage_reports(args.reports)
+    if args.output is not None:
+        write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    best = report["items"][0]
+    emit(
+        args,
+        report,
+        (
+            f"best={best['label']} "
+            f"recall={best['reference_recall']} "
+            f"precision={best['detected_precision']} "
+            f"missed_ms={best['missed_reference_duration_ms']}"
+        ),
+    )
+
+
 def project_transcribe(args: argparse.Namespace) -> None:
     store = store_from_args(args)
     project = store.load_project(args.project_id)
@@ -1545,6 +1564,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vad_coverage_cases_parser.add_argument("-o", "--output", type=Path)
     vad_coverage_cases_parser.set_defaults(func=vad_coverage_cases)
+    vad_compare_coverage_parser = vad_subcommands.add_parser(
+        "compare-coverage",
+        parents=[output_parent],
+        help="Compare VAD coverage reports and rank candidates by missed speech, then extra detection.",
+    )
+    vad_compare_coverage_parser.add_argument("reports", type=Path, nargs="+")
+    vad_compare_coverage_parser.add_argument("-o", "--output", type=Path)
+    vad_compare_coverage_parser.set_defaults(func=vad_compare_coverage)
 
     project = subcommands.add_parser("project", help="Manage transcript projects.")
     project_subcommands = project.add_subparsers(dest="project_command", required=True)

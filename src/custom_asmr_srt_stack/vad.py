@@ -13,6 +13,7 @@ from custom_asmr_srt_stack.models import MasterDocument, require_int, require_ma
 DEFAULT_VAD_TIMEOUT_SECONDS = 300.0
 VAD_COVERAGE_FORMAT = "custom-asmr-vad-coverage-v1"
 VAD_COVERAGE_SUITE_FORMAT = "custom-asmr-vad-coverage-suite-v1"
+VAD_COVERAGE_COMPARISON_FORMAT = "custom-asmr-vad-coverage-comparison-v1"
 
 
 def run_vad_command(audio_bytes: bytes, *, command: list[str]) -> tuple[dict[str, int], ...]:
@@ -189,6 +190,123 @@ def aggregate_vad_coverage_reports(reports: list[dict[str, Any]] | tuple[dict[st
         "reference_recall": None if reference_duration_ms == 0 else overlap_duration_ms / reference_duration_ms,
         "detected_precision": None if detected_duration_ms == 0 else overlap_duration_ms / detected_duration_ms,
     }
+
+
+def compare_vad_coverage_reports(report_files: list[Path]) -> dict[str, Any]:
+    if not report_files:
+        raise ValueError("VAD coverage comparison requires at least one report")
+    items = [vad_coverage_comparison_item(path, json.loads(path.read_text(encoding="utf-8"))) for path in report_files]
+    ranked_items = sorted(
+        items,
+        key=lambda item: (
+            item["missed_reference_duration_ms"],
+            item["extra_detected_duration_ms"],
+            -(item["reference_recall"] if item["reference_recall"] is not None else -1.0),
+            -(item["detected_precision"] if item["detected_precision"] is not None else -1.0),
+            item["label"],
+        ),
+    )
+    return {
+        "format": VAD_COVERAGE_COMPARISON_FORMAT,
+        "report_count": len(ranked_items),
+        "ranked_by": [
+            "missed_reference_duration_ms",
+            "extra_detected_duration_ms",
+            "reference_recall desc",
+            "detected_precision desc",
+        ],
+        "items": ranked_items,
+    }
+
+
+def vad_coverage_comparison_item(path: Path, report: dict[str, Any]) -> dict[str, Any]:
+    report_format = report.get("format")
+    if report_format == VAD_COVERAGE_FORMAT:
+        metrics = report
+        case_count = 1
+    elif report_format == VAD_COVERAGE_SUITE_FORMAT:
+        metrics = require_mapping(report.get("summary"), "VAD coverage suite summary")
+        case_count = require_int(report.get("case_count"), "VAD coverage suite case_count")
+    else:
+        raise ValueError(f"{path}: unsupported VAD coverage report format {report_format!r}")
+    source = report.get("source")
+    if not isinstance(source, str) or not source:
+        source = "unspecified"
+    return {
+        "label": path.stem,
+        "report": str(path),
+        "report_format": report_format,
+        "source": source,
+        "case_count": case_count,
+        "audio_duration_ms": require_int(metrics.get("audio_duration_ms"), "VAD coverage audio_duration_ms"),
+        "reference_segment_count": require_int(
+            metrics.get("reference_segment_count"),
+            "VAD coverage reference_segment_count",
+        ),
+        "reference_interval_count": require_int(
+            metrics.get("reference_interval_count"),
+            "VAD coverage reference_interval_count",
+        ),
+        "detected_interval_count": require_int(
+            metrics.get("detected_interval_count"),
+            "VAD coverage detected_interval_count",
+        ),
+        "reference_speech_duration_ms": require_int(
+            metrics.get("reference_speech_duration_ms"),
+            "VAD coverage reference_speech_duration_ms",
+        ),
+        "detected_speech_duration_ms": require_int(
+            metrics.get("detected_speech_duration_ms"),
+            "VAD coverage detected_speech_duration_ms",
+        ),
+        "overlap_duration_ms": require_int(metrics.get("overlap_duration_ms"), "VAD coverage overlap_duration_ms"),
+        "missed_reference_duration_ms": require_int(
+            metrics.get("missed_reference_duration_ms"),
+            "VAD coverage missed_reference_duration_ms",
+        ),
+        "extra_detected_duration_ms": require_int(
+            metrics.get("extra_detected_duration_ms"),
+            "VAD coverage extra_detected_duration_ms",
+        ),
+        "reference_recall": optional_number(metrics.get("reference_recall"), "VAD coverage reference_recall"),
+        "detected_precision": optional_number(metrics.get("detected_precision"), "VAD coverage detected_precision"),
+        "missed_reference_interval_count": vad_coverage_interval_count(report, "missed_reference_intervals"),
+        "extra_detected_interval_count": vad_coverage_interval_count(report, "extra_detected_intervals"),
+    }
+
+
+def optional_number(value: Any, label: str) -> float | int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (float, int)):
+        raise ValueError(f"{label} must be a number or null")
+    return value
+
+
+def vad_coverage_interval_count(report: dict[str, Any], key: str) -> int | None:
+    if report.get("format") == VAD_COVERAGE_FORMAT:
+        intervals = report.get(key)
+        if intervals is None:
+            return None
+        if not isinstance(intervals, list):
+            raise ValueError(f"VAD coverage {key} must be an array")
+        return len(intervals)
+    raw_cases = report.get("cases")
+    if raw_cases is None:
+        return None
+    if not isinstance(raw_cases, list):
+        raise ValueError("VAD coverage suite cases must be an array")
+    total = 0
+    for index, raw_case in enumerate(raw_cases):
+        case = require_mapping(raw_case, "VAD coverage suite case")
+        case_report = require_mapping(case.get("report"), "VAD coverage suite case report")
+        intervals = case_report.get(key)
+        if intervals is None:
+            return None
+        if not isinstance(intervals, list):
+            raise ValueError(f"VAD coverage suite case {index} {key} must be an array")
+        total += len(intervals)
+    return total
 
 
 def merged_intervals(intervals: list[dict[str, int]] | tuple[dict[str, int], ...], *, duration_ms: int) -> tuple[dict[str, int], ...]:
