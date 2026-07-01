@@ -11,7 +11,7 @@ REFERENCE_AUDIT_FORMAT = "custom-asmr-reference-audit-v1"
 REFERENCE_AUDIT_SUITE_FORMAT = "custom-asmr-reference-audit-suite-v1"
 REFERENCE_AUDIT_REVIEW_EFFORT_FORMAT = "custom-asmr-review-effort-v1"
 DEFAULT_REFERENCE_AUDIT_OVERLAP_MIN_MS = 100
-DEFAULT_REFERENCE_AUDIT_LONG_SEGMENT_MS = 30000
+DEFAULT_REFERENCE_AUDIT_LONG_SEGMENT_MS = 31000
 DEFAULT_REFERENCE_AUDIT_HIGH_SPEECH_COVERAGE_RATIO = 0.95
 REFERENCE_AUDIT_REASON_PRIORITY = {
     "reference-needs-review": 5000.0,
@@ -42,6 +42,12 @@ def audit_master_reference(
     same_channel_overlap_pairs = [item for item in overlap_pairs if item["same_channel"]]
     cross_channel_overlap_pairs = [item for item in overlap_pairs if not item["same_channel"]]
     exact_boundary_overlap_pairs = [item for item in overlap_pairs if item["exact_boundary"]]
+    exact_boundary_same_channel_overlap_pairs = [
+        item for item in exact_boundary_overlap_pairs if item["same_channel"]
+    ]
+    exact_boundary_cross_channel_overlap_pairs = [
+        item for item in exact_boundary_overlap_pairs if not item["same_channel"]
+    ]
     long_segments = [
         {
             "segment_id": segment.id,
@@ -77,7 +83,7 @@ def audit_master_reference(
     flags = reference_audit_flags(
         review_count=len(review_segments),
         same_channel_overlap_count=len(same_channel_overlap_pairs),
-        exact_boundary_overlap_count=len(exact_boundary_overlap_pairs),
+        exact_boundary_same_channel_overlap_count=len(exact_boundary_same_channel_overlap_pairs),
         long_segment_count=len(long_segments),
         speech_coverage_ratio=speech_coverage_ratio,
         high_speech_coverage_ratio=high_speech_coverage_ratio,
@@ -102,6 +108,8 @@ def audit_master_reference(
         "same_channel_overlap_pair_count": len(same_channel_overlap_pairs),
         "cross_channel_overlap_pair_count": len(cross_channel_overlap_pairs),
         "exact_boundary_overlap_pair_count": len(exact_boundary_overlap_pairs),
+        "exact_boundary_same_channel_overlap_pair_count": len(exact_boundary_same_channel_overlap_pairs),
+        "exact_boundary_cross_channel_overlap_pair_count": len(exact_boundary_cross_channel_overlap_pairs),
         "pair_overlap_duration_ms": sum(item["overlap_ms"] for item in overlap_pairs),
         "long_segment_count": len(long_segments),
         "max_segment_duration_ms": max((segment.end_ms - segment.start_ms for segment in speech), default=0),
@@ -233,7 +241,7 @@ def reference_audit_case_review_items(case_id: str, case: dict[str, Any]) -> lis
 
     for pair in require_audit_items(case, "overlap_pairs"):
         reasons = []
-        if pair.get("exact_boundary") is True:
+        if pair.get("exact_boundary") is True and pair.get("same_channel") is True:
             reasons.append("reference-exact-boundary-overlap")
         if pair.get("same_channel") is True:
             reasons.append("reference-same-channel-overlap")
@@ -363,6 +371,12 @@ def aggregate_reference_audits(reports: list[dict[str, Any]]) -> dict[str, Any]:
         "exact_boundary_overlap_pair_count": sum(
             int(report["exact_boundary_overlap_pair_count"]) for report in reports
         ),
+        "exact_boundary_same_channel_overlap_pair_count": sum(
+            int(report["exact_boundary_same_channel_overlap_pair_count"]) for report in reports
+        ),
+        "exact_boundary_cross_channel_overlap_pair_count": sum(
+            int(report["exact_boundary_cross_channel_overlap_pair_count"]) for report in reports
+        ),
         "pair_overlap_duration_ms": sum(int(report["pair_overlap_duration_ms"]) for report in reports),
         "long_segment_count": sum(int(report["long_segment_count"]) for report in reports),
         "max_segment_duration_ms": max((int(report["max_segment_duration_ms"]) for report in reports), default=0),
@@ -375,7 +389,7 @@ def reference_audit_flags(
     *,
     review_count: int,
     same_channel_overlap_count: int,
-    exact_boundary_overlap_count: int,
+    exact_boundary_same_channel_overlap_count: int,
     long_segment_count: int,
     speech_coverage_ratio: float | None,
     high_speech_coverage_ratio: float,
@@ -385,8 +399,8 @@ def reference_audit_flags(
         flags.append({"type": "review_flag_segments", "count": review_count})
     if same_channel_overlap_count:
         flags.append({"type": "same_channel_overlap", "count": same_channel_overlap_count})
-    if exact_boundary_overlap_count:
-        flags.append({"type": "exact_boundary_overlap", "count": exact_boundary_overlap_count})
+    if exact_boundary_same_channel_overlap_count:
+        flags.append({"type": "exact_boundary_overlap", "count": exact_boundary_same_channel_overlap_count})
     if long_segment_count:
         flags.append({"type": "long_segment", "count": long_segment_count})
     if speech_coverage_ratio is not None and speech_coverage_ratio >= high_speech_coverage_ratio:

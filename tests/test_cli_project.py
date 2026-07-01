@@ -4430,6 +4430,48 @@ class ProjectCliTests(unittest.TestCase):
             self.assertIn("reference channel labels conflict", report["stages"]["reference"]["reasons"][0])
             self.assertIn("reference", error)
 
+    def test_pipeline_readiness_does_not_block_on_cross_channel_exact_boundary_reference_overlap(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference_audit = root / "reference-audit.json"
+            reference_audit.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-reference-audit-suite-v1",
+                        "case_count": 1,
+                        "summary": {
+                            "segment_count": 2,
+                            "review_count": 0,
+                            "same_channel_overlap_pair_count": 0,
+                            "exact_boundary_overlap_pair_count": 2,
+                            "exact_boundary_same_channel_overlap_pair_count": 0,
+                            "exact_boundary_cross_channel_overlap_pair_count": 2,
+                            "long_segment_count": 0,
+                            "speech_coverage_ratio": 0.5,
+                            "flag_type_counts": {},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                ["pipeline-readiness", "--json", "--reference-audit", str(reference_audit)]
+            )
+
+            self.assertEqual(result, 0, error)
+            report = json.loads(output)
+            reference_stage = report["stages"]["reference"]
+            self.assertEqual(reference_stage["status"], "pass")
+            self.assertEqual(reference_stage["reasons"], [])
+            self.assertEqual(reference_stage["metrics"]["exact_boundary_overlap_pair_count"], 2)
+            self.assertEqual(reference_stage["metrics"]["exact_boundary_same_channel_overlap_pair_count"], 0)
+            self.assertEqual(reference_stage["metrics"]["exact_boundary_cross_channel_overlap_pair_count"], 2)
+            self.assertEqual(
+                report["summary"]["asr_only_unknown_stages"],
+                ["vad_chunking", "alignment", "channel_attribution"],
+            )
+
     def test_pipeline_readiness_rejects_gated_vad_without_gate_status(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

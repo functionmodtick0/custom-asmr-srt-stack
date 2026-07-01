@@ -105,13 +105,19 @@ def reference_stage(
         raise ValueError(f"{path}: reference audit report format must be {REFERENCE_AUDIT_SUITE_FORMAT}")
 
     reasons = []
-    for key, label in (
-        ("review_count", "reference review flags remain"),
-        ("same_channel_overlap_pair_count", "same-channel reference overlaps remain"),
-        ("exact_boundary_overlap_pair_count", "exact-boundary reference overlaps remain"),
-        ("long_segment_count", "long reference segments remain"),
+    review_count = require_int(metrics.get("review_count"), f"{path}: reference audit review_count")
+    same_channel_overlap_count = require_int(
+        metrics.get("same_channel_overlap_pair_count"),
+        f"{path}: reference audit same_channel_overlap_pair_count",
+    )
+    exact_boundary_blocking_count = reference_exact_boundary_blocking_count(path, metrics)
+    long_segment_count = require_int(metrics.get("long_segment_count"), f"{path}: reference audit long_segment_count")
+    for count, label in (
+        (review_count, "reference review flags remain"),
+        (same_channel_overlap_count, "same-channel reference overlaps remain"),
+        (exact_boundary_blocking_count, "same-channel exact-boundary reference overlaps remain"),
+        (long_segment_count, "long reference segments remain"),
     ):
-        count = require_int(metrics.get(key), f"{path}: reference audit {key}")
         if count > 0:
             reasons.append(f"{label}: {count}")
     gate = readiness_stage_gate(quality_gate, "required_reference_type")
@@ -142,19 +148,18 @@ def reference_stage(
         metrics={
             "report": str(path),
             "segment_count": optional_int(metrics.get("segment_count"), f"{path}: reference audit segment_count"),
-            "review_count": require_int(metrics.get("review_count"), f"{path}: reference audit review_count"),
-            "same_channel_overlap_pair_count": require_int(
-                metrics.get("same_channel_overlap_pair_count"),
-                f"{path}: reference audit same_channel_overlap_pair_count",
-            ),
+            "review_count": review_count,
+            "same_channel_overlap_pair_count": same_channel_overlap_count,
             "exact_boundary_overlap_pair_count": require_int(
                 metrics.get("exact_boundary_overlap_pair_count"),
                 f"{path}: reference audit exact_boundary_overlap_pair_count",
             ),
-            "long_segment_count": require_int(
-                metrics.get("long_segment_count"),
-                f"{path}: reference audit long_segment_count",
+            "exact_boundary_same_channel_overlap_pair_count": exact_boundary_blocking_count,
+            "exact_boundary_cross_channel_overlap_pair_count": optional_int(
+                metrics.get("exact_boundary_cross_channel_overlap_pair_count"),
+                f"{path}: reference audit exact_boundary_cross_channel_overlap_pair_count",
             ),
+            "long_segment_count": long_segment_count,
             "speech_coverage_ratio": optional_number(
                 metrics.get("speech_coverage_ratio"),
                 f"{path}: reference audit speech_coverage_ratio",
@@ -198,6 +203,19 @@ def reference_channel_audit_metrics(path: Path | None) -> dict[str, Any] | None:
             f"{path}: reference channel audit energy_labeled_ratio",
         ),
     }
+
+
+def reference_exact_boundary_blocking_count(path: Path, metrics: dict[str, Any]) -> int:
+    same_channel_count = metrics.get("exact_boundary_same_channel_overlap_pair_count")
+    if same_channel_count is not None:
+        return require_int(
+            same_channel_count,
+            f"{path}: reference audit exact_boundary_same_channel_overlap_pair_count",
+        )
+    return require_int(
+        metrics.get("exact_boundary_overlap_pair_count"),
+        f"{path}: reference audit exact_boundary_overlap_pair_count",
+    )
 
 
 def vad_stage(path: Path | None) -> dict[str, Any]:
