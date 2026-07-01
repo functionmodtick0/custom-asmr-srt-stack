@@ -130,6 +130,8 @@ def vad_coverage_report(
     overlap_duration_ms = interval_overlap_duration_ms(reference_intervals, detected_intervals)
     missed_reference_duration_ms = max(0, reference_duration_ms - overlap_duration_ms)
     extra_detected_duration_ms = max(0, detected_duration_ms - overlap_duration_ms)
+    missed_reference_intervals = interval_difference(reference_intervals, detected_intervals)
+    extra_detected_intervals = interval_difference(detected_intervals, reference_intervals)
     return {
         "format": VAD_COVERAGE_FORMAT,
         "source": source,
@@ -142,6 +144,8 @@ def vad_coverage_report(
         "overlap_duration_ms": overlap_duration_ms,
         "missed_reference_duration_ms": missed_reference_duration_ms,
         "extra_detected_duration_ms": extra_detected_duration_ms,
+        "missed_reference_intervals": missed_reference_intervals,
+        "extra_detected_intervals": extra_detected_intervals,
         "reference_recall": None if reference_duration_ms == 0 else overlap_duration_ms / reference_duration_ms,
         "detected_precision": None if detected_duration_ms == 0 else overlap_duration_ms / detected_duration_ms,
     }
@@ -216,6 +220,46 @@ def merged_intervals(intervals: list[dict[str, int]] | tuple[dict[str, int], ...
 
 def interval_duration_ms(intervals: tuple[dict[str, int], ...]) -> int:
     return sum(interval["end_ms"] - interval["start_ms"] for interval in intervals)
+
+
+def interval_difference(
+    primary_intervals: tuple[dict[str, int], ...],
+    subtract_intervals: tuple[dict[str, int], ...],
+) -> tuple[dict[str, int], ...]:
+    fragments = []
+    subtract_index = 0
+    for primary in primary_intervals:
+        primary_start_ms = primary["start_ms"]
+        primary_end_ms = primary["end_ms"]
+        cursor_ms = primary_start_ms
+        while subtract_index < len(subtract_intervals) and subtract_intervals[subtract_index]["end_ms"] <= cursor_ms:
+            subtract_index += 1
+        blocker_index = subtract_index
+        while blocker_index < len(subtract_intervals) and subtract_intervals[blocker_index]["start_ms"] < primary_end_ms:
+            blocker = subtract_intervals[blocker_index]
+            if blocker["start_ms"] > cursor_ms:
+                fragments.append(
+                    {
+                        "start_ms": cursor_ms,
+                        "end_ms": min(blocker["start_ms"], primary_end_ms),
+                    }
+                )
+            cursor_ms = max(cursor_ms, blocker["end_ms"])
+            if cursor_ms >= primary_end_ms:
+                break
+            blocker_index += 1
+        if cursor_ms < primary_end_ms:
+            fragments.append({"start_ms": cursor_ms, "end_ms": primary_end_ms})
+    return tuple(
+        {
+            "index": index,
+            "start_ms": fragment["start_ms"],
+            "end_ms": fragment["end_ms"],
+            "duration_ms": fragment["end_ms"] - fragment["start_ms"],
+        }
+        for index, fragment in enumerate(fragments)
+        if fragment["end_ms"] > fragment["start_ms"]
+    )
 
 
 def interval_overlap_duration_ms(

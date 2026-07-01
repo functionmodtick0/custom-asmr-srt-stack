@@ -327,6 +327,11 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["overlap_duration_ms"], 1)
             self.assertEqual(report["reference_recall"], 0.5)
             self.assertEqual(report["detected_precision"], 1.0)
+            self.assertEqual(
+                report["missed_reference_intervals"],
+                [{"index": 0, "start_ms": 1, "end_ms": 2, "duration_ms": 1}],
+            )
+            self.assertEqual(report["extra_detected_intervals"], [])
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["reference_recall"], 0.5)
 
     def test_vad_coverage_cases_outputs_aggregate_report(self):
@@ -385,6 +390,10 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["summary"]["reference_recall"], 0.5)
             self.assertEqual(report["summary"]["detected_precision"], 1.0)
             self.assertEqual(report["cases"][0]["id"], "front")
+            self.assertEqual(
+                report["cases"][0]["report"]["missed_reference_intervals"],
+                [{"index": 0, "start_ms": 1, "end_ms": 2, "duration_ms": 1}],
+            )
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["case_count"], 1)
 
     def test_eval_transcript_outputs_json_report(self):

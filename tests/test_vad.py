@@ -86,6 +86,17 @@ class VadTests(unittest.TestCase):
         self.assertEqual(report["overlap_duration_ms"], 400)
         self.assertEqual(report["missed_reference_duration_ms"], 200)
         self.assertEqual(report["extra_detected_duration_ms"], 300)
+        self.assertEqual(
+            report["missed_reference_intervals"],
+            ({"index": 0, "start_ms": 400, "end_ms": 600, "duration_ms": 200},),
+        )
+        self.assertEqual(
+            report["extra_detected_intervals"],
+            (
+                {"index": 0, "start_ms": 0, "end_ms": 100, "duration_ms": 100},
+                {"index": 1, "start_ms": 700, "end_ms": 900, "duration_ms": 200},
+            ),
+        )
         self.assertAlmostEqual(report["reference_recall"], 400 / 600)
         self.assertAlmostEqual(report["detected_precision"], 400 / 700)
 

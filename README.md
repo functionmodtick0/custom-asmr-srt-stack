@@ -139,7 +139,7 @@ uv run casrt vad coverage-cases cases/case-index.json --json -o vad-coverage-sui
 uv run casrt vad coverage-cases cases/case-index.json --vad-command "$CASRT_VAD_COMMAND" --json
 ```
 
-Report는 reference recall, detected precision, missed reference duration, extra detected duration을 포함합니다. `coverage-cases`는 prepared review case set 전체를 같은 VAD source로 집계해 case별 report와 duration-weighted summary를 함께 저장합니다. 이 값은 ASR text 품질이 아니라 VAD/chunking 경계 후보 비교용입니다. 현재 파이프라인은 VAD/chunk/channel/alignment 품질 검증이 끝난 상태가 아니며, ASR 모델 교체와 분리해 이 batch coverage를 먼저 확인합니다.
+Report는 reference recall, detected precision, missed reference duration, extra detected duration, missed/extra interval 목록을 포함합니다. `coverage-cases`는 prepared review case set 전체를 같은 VAD source로 집계해 case별 report와 duration-weighted summary를 함께 저장합니다. 이 값은 ASR text 품질이 아니라 VAD/chunking 경계 후보 비교용입니다. 현재 파이프라인은 VAD/chunk/channel/alignment 품질 검증이 끝난 상태가 아니며, ASR 모델 교체와 분리해 이 batch coverage를 먼저 확인합니다.
 
 Qwen3-ForcedAligner는 `CASRT_QWEN_ASR_ALIGNER_MODEL_ID`로 내부 실험할 수 있습니다. `CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS`보다 짧은 timestamp span은 clip bounds로 되돌리며, 이 값도 WebUI 옵션으로 노출하지 않습니다. Generic Qwen aligner worker는 `CASRT_QWEN_ALIGNER_MIN_ALIGNED_DURATION_MS=80`과 `CASRT_QWEN_ALIGNER_MIN_COVERAGE_RATIO=0.5` 기본 guard로 비현실적으로 짧거나 원 segment 절반 미만으로 잘린 span을 원래 timing으로 유지합니다.
 
