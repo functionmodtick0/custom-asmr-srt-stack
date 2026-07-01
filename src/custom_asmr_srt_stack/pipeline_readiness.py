@@ -31,10 +31,11 @@ def build_pipeline_readiness(
     reference_channel_audit_file: Path | None = None,
     vad_comparison_file: Path | None = None,
     eval_comparison_file: Path | None = None,
+    alignment_comparison_file: Path | None = None,
     channel_comparison_file: Path | None = None,
     quality_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    reference_type = readiness_reference_type(eval_comparison_file, channel_comparison_file)
+    reference_type = readiness_reference_type(eval_comparison_file, alignment_comparison_file, channel_comparison_file)
     stages = {
         "reference": reference_stage(
             reference_audit_file,
@@ -45,6 +46,14 @@ def build_pipeline_readiness(
         "vad_chunking": vad_stage(vad_comparison_file),
     }
     stages.update(eval_stages(eval_comparison_file, quality_gate=quality_gate))
+    if alignment_comparison_file is not None:
+        label, best = best_eval_comparison_item(alignment_comparison_file)
+        stages["alignment"] = alignment_stage_from_item(
+            alignment_comparison_file,
+            label,
+            best,
+            quality_gate=quality_gate,
+        )
     if channel_comparison_file is not None:
         stages["channel_attribution"] = channel_stage(channel_comparison_file, quality_gate=quality_gate)
     asr_only_blocking_stages = [

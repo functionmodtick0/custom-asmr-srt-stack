@@ -672,6 +672,7 @@ def pipeline_readiness_command(args: argparse.Namespace) -> None:
         reference_channel_audit_file=args.reference_channel_audit,
         vad_comparison_file=args.vad_comparison,
         eval_comparison_file=args.eval_comparison,
+        alignment_comparison_file=args.alignment_comparison,
         channel_comparison_file=args.channel_comparison,
         quality_gate=pipeline_readiness_quality_gate(args),
     )
@@ -1907,6 +1908,11 @@ def build_parser() -> argparse.ArgumentParser:
     pipeline_readiness_parser.add_argument("--reference-channel-audit", type=Path)
     pipeline_readiness_parser.add_argument("--vad-comparison", type=Path)
     pipeline_readiness_parser.add_argument("--eval-comparison", type=Path)
+    pipeline_readiness_parser.add_argument(
+        "--alignment-comparison",
+        type=Path,
+        help="Optional eval comparison report to use only for the alignment readiness stage.",
+    )
     pipeline_readiness_parser.add_argument(
         "--channel-comparison",
         type=Path,
