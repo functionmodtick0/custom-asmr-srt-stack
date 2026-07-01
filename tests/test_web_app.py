@@ -193,6 +193,91 @@ class WebAppBehaviorTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_review_pack_source_case_button_opens_referenced_case_segment(self):
+        result = self.run_app_assertions(
+            r"""
+            (async () => {
+              const sourceButton = elements.get("sourceCaseButton");
+              const pathInput = elements.get("reviewPackPathInput");
+              pathInput.value = "/packs/review-case-pack";
+              context.fetch = async (path, options) => {
+                assert.strictEqual(path, "/api/review/load");
+                assert.deepStrictEqual(JSON.parse(options.body), { path: "/packs/review-case-pack" });
+                return {
+                  ok: true,
+                  async json() {
+                    return {
+                      kind: "review-pack",
+                      source_case_index: "/cases/case-index.json",
+                      items: [
+                        {
+                          priority_rank: 1,
+                          case_id: "front-a",
+                          reference_id: "seg_000002",
+                          start_ms: 1000,
+                          end_ms: 2000,
+                          reasons: ["reference-needs-review"],
+                          reference_channel: "L",
+                          reference_text: "確認",
+                          clip_url: "/api/review-pack/clip?x=1",
+                        },
+                      ],
+                    };
+                  },
+                };
+              };
+
+              await context.loadReviewPath();
+              assert.strictEqual(sourceButton.hidden, false);
+              assert.strictEqual(sourceButton.disabled, true);
+
+              context.selectReviewPackItem(0, false);
+              assert.strictEqual(sourceButton.disabled, false);
+
+              context.fetch = async (path, options) => {
+                assert.strictEqual(path, "/api/review-case/load");
+                assert.deepStrictEqual(JSON.parse(options.body), { path: "/cases/case-index.json" });
+                return {
+                  ok: true,
+                  async json() {
+                    return {
+                      kind: "review-case-set",
+                      case_index_path: "/cases/case-index.json",
+                      items: [
+                        {
+                          id: "front-a",
+                          audio_url: "/api/review-case/audio?x=1",
+                          reference_master: {
+                            format: "custom-asmr-master-v1",
+                            source_language: "ja",
+                            audio: { source_file: "front-a.wav", duration_ms: 3000 },
+                            segments: [
+                              { id: "seg_000001", start_ms: 0, end_ms: 1000, channel: "MIX", kind: "speech", text: "前", needs_review: false },
+                              { id: "seg_000002", start_ms: 1000, end_ms: 2000, channel: "L", kind: "speech", text: "確認", needs_review: true },
+                            ],
+                          },
+                        },
+                      ],
+                    };
+                  },
+                };
+              };
+
+              await context.openSelectedReviewPackSourceCase();
+              assert.strictEqual(elements.get("audioPlayer").src, "/api/review-case/audio?x=1");
+              assert.strictEqual(elements.get("segmentCount").textContent, "front-a · 2 segments");
+              assert.strictEqual(elements.get("selectedLabel").textContent, "seg_000002");
+              assert.strictEqual(elements.get("reviewDoneButton").hidden, false);
+              assert.strictEqual(elements.get("sourceCaseButton").hidden, true);
+            })().catch((error) => {
+              console.error(error);
+              process.exit(1);
+            });
+        """,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_model_adapter_select_exposes_all_local_adapters(self):
         parser = AdapterSelectParser()
         with open("web/index.html", encoding="utf-8") as html_file:

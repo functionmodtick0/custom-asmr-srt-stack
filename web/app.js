@@ -30,6 +30,7 @@ const els = {
   modelButton: document.getElementById("modelButton"),
   startButton: document.getElementById("startButton"),
   retranscribeButton: document.getElementById("retranscribeButton"),
+  sourceCaseButton: document.getElementById("sourceCaseButton"),
   reviewDoneButton: document.getElementById("reviewDoneButton"),
   caseListButton: document.getElementById("caseListButton"),
   nextCaseButton: document.getElementById("nextCaseButton"),
@@ -314,6 +315,8 @@ function render() {
     : `${segments.length} segments`;
   els.selectedLabel.textContent = state.selectedId ? state.selectedId : "선택 없음";
   els.retranscribeButton.hidden = Boolean(state.reviewCaseReference);
+  els.sourceCaseButton.hidden = true;
+  els.sourceCaseButton.disabled = true;
   els.reviewDoneButton.hidden = !state.reviewCaseReference;
   els.caseListButton.hidden = !state.reviewCaseReference;
   els.nextCaseButton.hidden = !state.reviewCaseReference;
@@ -333,11 +336,14 @@ function render() {
 
 function renderReviewPack() {
   const items = state.reviewPack.items || [];
+  const selectedItem = items[state.reviewPackSelectedIndex];
   els.segmentCount.textContent = `${items.length} review clips`;
   els.selectedLabel.textContent =
-    state.reviewPackSelectedIndex === null ? "선택 없음" : reviewPackSelectedLabel(items[state.reviewPackSelectedIndex]);
+    state.reviewPackSelectedIndex === null ? "선택 없음" : reviewPackSelectedLabel(selectedItem);
   els.retranscribeButton.disabled = true;
   els.retranscribeButton.hidden = false;
+  els.sourceCaseButton.hidden = !items.some((item) => reviewPackSourceTarget(item));
+  els.sourceCaseButton.disabled = !reviewPackSourceTarget(selectedItem);
   els.reviewDoneButton.hidden = true;
   els.reviewDoneButton.disabled = true;
   els.caseListButton.hidden = true;
@@ -361,6 +367,8 @@ function renderReviewCaseSet() {
   els.selectedLabel.textContent = "case 선택";
   els.retranscribeButton.disabled = true;
   els.retranscribeButton.hidden = false;
+  els.sourceCaseButton.hidden = true;
+  els.sourceCaseButton.disabled = true;
   els.reviewDoneButton.hidden = true;
   els.reviewDoneButton.disabled = true;
   els.caseListButton.hidden = true;
@@ -457,6 +465,16 @@ function reviewSegmentPreview(segment) {
 
 function reviewPackHasCandidate(item) {
   return Boolean(item?.candidate_id || item?.candidate_channel || item?.candidate_text);
+}
+
+function reviewPackSourceTarget(item) {
+  const caseIndexPath = item?.source_case_index || state.reviewPack?.source_case_index;
+  if (!caseIndexPath || !item?.case_id || !item?.reference_id) return null;
+  return {
+    caseIndexPath,
+    caseId: item.case_id,
+    segmentId: item.reference_id,
+  };
 }
 
 function textBlock(className, value) {
@@ -630,6 +648,7 @@ function selectReviewPackItem(index, play) {
 function syncSelectedReviewPackItem() {
   const item = state.reviewPack?.items?.[state.reviewPackSelectedIndex];
   els.selectedLabel.textContent = reviewPackSelectedLabel(item);
+  els.sourceCaseButton.disabled = !reviewPackSourceTarget(item);
   for (const row of els.segmentList.querySelectorAll(".review-pack-row")) {
     row.classList.toggle("is-selected", Number(row.dataset.index) === state.reviewPackSelectedIndex);
   }
@@ -871,7 +890,7 @@ async function loadReviewPath() {
   throw new Error("지원하지 않는 review path입니다.");
 }
 
-function loadReviewCaseItem(index) {
+function loadReviewCaseItem(index, selectedSegmentId = null) {
   const caseSet = state.reviewCaseSet;
   const item = caseSet?.items?.[index];
   if (!caseSet || !item?.reference_master) return;
@@ -885,7 +904,7 @@ function loadReviewCaseItem(index) {
   state.hasAudio = true;
   state.master = item.reference_master;
   state.translated = null;
-  state.selectedId = firstReviewOrFirstSegmentId(state.master);
+  state.selectedId = segmentIdOrFirstReview(state.master, selectedSegmentId);
   state.audioBuffer = null;
   state.reviewPack = null;
   state.reviewPackSelectedIndex = null;
@@ -897,6 +916,19 @@ function loadReviewCaseItem(index) {
   render();
   drawWaveform();
   setStatus("Review case", `${item.id} reference를 열었습니다. 수정은 case reference에 자동 저장됩니다.`);
+}
+
+async function openSelectedReviewPackSourceCase() {
+  const item = state.reviewPack?.items?.[state.reviewPackSelectedIndex];
+  const target = reviewPackSourceTarget(item);
+  if (!target) return;
+  const caseSet = await apiPost("/api/review-case/load", { path: target.caseIndexPath });
+  const caseIndex = (caseSet.items || []).findIndex((caseItem) => caseItem.id === target.caseId);
+  if (caseIndex < 0) {
+    throw new Error(`source case를 찾을 수 없습니다: ${target.caseId}`);
+  }
+  state.reviewCaseSet = caseSet;
+  loadReviewCaseItem(caseIndex, target.segmentId);
 }
 
 async function returnToReviewCases() {
@@ -931,6 +963,14 @@ function nextReviewCaseIndex() {
     if ((items[index].review_count || 0) > 0) return index;
   }
   return currentIndex + 1 < items.length ? currentIndex + 1 : null;
+}
+
+function segmentIdOrFirstReview(master, segmentId) {
+  const segments = master?.segments || [];
+  if (segmentId && segments.some((segment) => segment.id === segmentId)) {
+    return segmentId;
+  }
+  return firstReviewOrFirstSegmentId(master);
 }
 
 async function safeRun(task) {
@@ -978,6 +1018,7 @@ els.validateModelButton.addEventListener("click", () => safeRun(validateModelSet
 els.saveModelButton.addEventListener("click", saveModelSettings);
 els.importTranslatedButton.addEventListener("click", () => els.translatedInput.click());
 els.loadReviewPackButton.addEventListener("click", () => safeRun(loadReviewPath));
+els.sourceCaseButton.addEventListener("click", () => safeRun(openSelectedReviewPackSourceCase));
 els.reviewDoneButton.addEventListener("click", () => safeRun(markSelectedReviewDone));
 els.caseListButton.addEventListener("click", () => safeRun(returnToReviewCases));
 els.nextCaseButton.addEventListener("click", () => safeRun(openNextReviewCase));

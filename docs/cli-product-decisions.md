@@ -390,6 +390,7 @@ uv run casrt review-case-pack cases/case-index.json -o cases/review-case-pack --
 - 출력은 기존 WebUI loader가 읽는 `custom-asmr-review-pack-v1`이다. 새 WebUI 모드나 옵션을 추가하지 않는다.
 - 각 reference master에서 `needs_review=true` segment만 잘라 `reasons=["reference-needs-review"]` item으로 만든다.
 - item에는 `case_id`, `reference_id`, reference channel/text, original `start_ms`/`end_ms`, clip file과 context bounds가 포함된다.
+- item은 `source_case_index`, `case_id`, `reference_id`를 보존하므로 WebUI에서 clip을 들은 뒤 `case 열기`로 source case editor의 해당 segment를 바로 열 수 있다.
 - `--context-ms` 기본값은 review pack 기본 context 500ms이며, CLI-only 검수 보조값이다.
 - audio/reference 파일이나 master parse가 실패하면 output directory를 만들기 전에 실패한다.
 
