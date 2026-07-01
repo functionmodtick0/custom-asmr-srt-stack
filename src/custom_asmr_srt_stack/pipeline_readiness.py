@@ -30,14 +30,15 @@ def build_pipeline_readiness(
     vad_comparison_file: Path | None = None,
     eval_comparison_file: Path | None = None,
     channel_comparison_file: Path | None = None,
+    quality_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     stages = {
         "reference": reference_stage(reference_audit_file),
         "vad_chunking": vad_stage(vad_comparison_file),
     }
-    stages.update(eval_stages(eval_comparison_file))
+    stages.update(eval_stages(eval_comparison_file, quality_gate=quality_gate))
     if channel_comparison_file is not None:
-        stages["channel_attribution"] = channel_stage(channel_comparison_file)
+        stages["channel_attribution"] = channel_stage(channel_comparison_file, quality_gate=quality_gate)
     asr_only_blocking_stages = [
         stage for stage in ASR_ONLY_STAGE_ORDER if stages[stage]["status"] == "fail"
     ]
@@ -48,7 +49,7 @@ def build_pipeline_readiness(
     unknown_stages = [stage for stage in PIPELINE_STAGE_ORDER if stages[stage]["status"] == "unknown"]
     asr_only_ready = not asr_only_blocking_stages and not asr_only_unknown_stages
     production_ready = asr_only_ready and stages["text_asr"]["status"] == "pass"
-    return {
+    report = {
         "format": PIPELINE_READINESS_FORMAT,
         "summary": {
             "asr_only_ready": asr_only_ready,
@@ -63,6 +64,9 @@ def build_pipeline_readiness(
         "asr_only_stage_order": list(ASR_ONLY_STAGE_ORDER),
         "stages": {stage: stages[stage] for stage in PIPELINE_STAGE_ORDER},
     }
+    if quality_gate:
+        report["quality_gate"] = quality_gate
+    return report
 
 
 def reference_stage(path: Path | None) -> dict[str, Any]:
@@ -177,7 +181,7 @@ def vad_stage(path: Path | None) -> dict[str, Any]:
     )
 
 
-def eval_stages(path: Path | None) -> dict[str, dict[str, Any]]:
+def eval_stages(path: Path | None, *, quality_gate: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
     if path is None:
         return {
             "alignment": unknown_stage("alignment", "eval comparison report was not provided"),
@@ -189,58 +193,78 @@ def eval_stages(path: Path | None) -> dict[str, dict[str, Any]]:
         }
     label, best = best_eval_comparison_item(path)
 
-    timing_ratio = require_number(best.get("timing_edit_segment_ratio"), f"{path}: timing_edit_segment_ratio")
-    alignment_reasons = []
-    if timing_ratio > 0.0:
-        alignment_reasons.append(f"best candidate still needs timing edits: {timing_ratio:.4f}")
-
-    text_ratio = require_number(best.get("text_edit_segment_ratio"), f"{path}: text_edit_segment_ratio")
-    edit_ratio = require_number(best.get("segments_needing_edit_ratio"), f"{path}: segments_needing_edit_ratio")
-    text_reasons = []
-    if text_ratio > 0.0:
-        text_reasons.append(f"best candidate still needs text edits: {text_ratio:.4f}")
-    if edit_ratio > 0.0:
-        text_reasons.append(f"best candidate still has segments needing edit: {edit_ratio:.4f}")
-
     return {
-        "alignment": stage_report(
-            "alignment",
-            reasons=alignment_reasons,
-            metrics={
-                "report": str(path),
-                "best_label": label,
-                "timing_edit_segment_ratio": timing_ratio,
-                "time_aligned_500ms_ratio": optional_number(
-                    best.get("time_aligned_500ms_ratio"),
-                    f"{path}: time_aligned_500ms_ratio",
-                ),
-            },
-        ),
-        "channel_attribution": channel_stage(path),
-        "text_asr": stage_report(
-            "text_asr",
-            reasons=text_reasons,
-            metrics={
-                "report": str(path),
-                "best_label": label,
-                "text_edit_segment_ratio": text_ratio,
-                "segments_needing_edit_ratio": edit_ratio,
-                "practical_cer": require_number(best.get("practical_cer"), f"{path}: practical_cer"),
-                "dominant_review_effort_reason": optional_string(best.get("dominant_review_effort_reason")),
-                "dominant_review_effort_ratio": optional_number(
-                    best.get("dominant_review_effort_ratio"),
-                    f"{path}: dominant_review_effort_ratio",
-                ),
-            },
-        ),
+        "alignment": alignment_stage_from_item(path, label, best, quality_gate=quality_gate),
+        "channel_attribution": channel_stage(path, quality_gate=quality_gate),
+        "text_asr": text_stage_from_item(path, label, best, quality_gate=quality_gate),
     }
 
 
-def channel_stage(path: Path) -> dict[str, Any]:
+def alignment_stage_from_item(
+    path: Path,
+    label: str,
+    best: dict[str, Any],
+    *,
+    quality_gate: dict[str, Any] | None,
+) -> dict[str, Any]:
+    timing_ratio = require_number(best.get("timing_edit_segment_ratio"), f"{path}: timing_edit_segment_ratio")
+    time_aligned_500ms_ratio = optional_number(
+        best.get("time_aligned_500ms_ratio"),
+        f"{path}: time_aligned_500ms_ratio",
+    )
+    gate = readiness_stage_gate(quality_gate, "min_time_aligned_500ms_ratio")
+    reasons = []
+    if gate:
+        min_ratio = gate["min_time_aligned_500ms_ratio"]
+        if time_aligned_500ms_ratio is None:
+            reasons.append("time-aligned 500ms ratio is unavailable")
+        elif time_aligned_500ms_ratio < min_ratio:
+            reasons.append(f"time-aligned 500ms ratio {time_aligned_500ms_ratio:.4f} < {min_ratio:.4f}")
+    elif timing_ratio > 0.0:
+        reasons.append(f"best candidate still needs timing edits: {timing_ratio:.4f}")
+    return stage_report(
+        "alignment",
+        reasons=reasons,
+        metrics={
+            "report": str(path),
+            "best_label": label,
+            "timing_edit_segment_ratio": timing_ratio,
+            "time_aligned_500ms_ratio": time_aligned_500ms_ratio,
+        },
+        quality_gate=gate,
+    )
+
+
+def channel_stage(path: Path, *, quality_gate: dict[str, Any] | None = None) -> dict[str, Any]:
     label, best = best_eval_comparison_item(path)
     channel_ratio = require_number(best.get("channel_edit_segment_ratio"), f"{path}: channel_edit_segment_ratio")
+    channel_accuracy = optional_number(
+        best.get("channel_time_aligned_accuracy"),
+        f"{path}: channel_time_aligned_accuracy",
+    )
+    mix_ratio = require_number(
+        best.get("channel_time_aligned_mix_ratio"),
+        f"{path}: channel_time_aligned_mix_ratio",
+    )
+    gate = readiness_stage_gate(
+        quality_gate,
+        "min_channel_time_aligned_accuracy",
+        "max_channel_time_aligned_mix_ratio",
+    )
     channel_reasons = []
-    if channel_ratio > 0.0:
+    if gate:
+        min_accuracy = gate.get("min_channel_time_aligned_accuracy")
+        if min_accuracy is not None:
+            if channel_accuracy is None:
+                channel_reasons.append("channel time-aligned accuracy is unavailable")
+            elif channel_accuracy < min_accuracy:
+                channel_reasons.append(
+                    f"channel time-aligned accuracy {channel_accuracy:.4f} < {min_accuracy:.4f}"
+                )
+        max_mix_ratio = gate.get("max_channel_time_aligned_mix_ratio")
+        if max_mix_ratio is not None and mix_ratio > max_mix_ratio:
+            channel_reasons.append(f"channel time-aligned MIX ratio {mix_ratio:.4f} > {max_mix_ratio:.4f}")
+    elif channel_ratio > 0.0:
         channel_reasons.append(f"best candidate still needs channel edits: {channel_ratio:.4f}")
     return stage_report(
         "channel_attribution",
@@ -249,15 +273,77 @@ def channel_stage(path: Path) -> dict[str, Any]:
             "report": str(path),
             "best_label": label,
             "channel_edit_segment_ratio": channel_ratio,
-            "channel_time_aligned_accuracy": optional_number(
-                best.get("channel_time_aligned_accuracy"),
-                f"{path}: channel_time_aligned_accuracy",
-            ),
-            "channel_time_aligned_mix_ratio": require_number(
-                best.get("channel_time_aligned_mix_ratio"),
-                f"{path}: channel_time_aligned_mix_ratio",
-            ),
+            "channel_time_aligned_accuracy": channel_accuracy,
+            "channel_time_aligned_mix_ratio": mix_ratio,
         },
+        quality_gate=gate,
+    )
+
+
+def text_stage_from_item(
+    path: Path,
+    label: str,
+    best: dict[str, Any],
+    *,
+    quality_gate: dict[str, Any] | None,
+) -> dict[str, Any]:
+    text_ratio = require_number(best.get("text_edit_segment_ratio"), f"{path}: text_edit_segment_ratio")
+    edit_ratio = require_number(best.get("segments_needing_edit_ratio"), f"{path}: segments_needing_edit_ratio")
+    practical_cer = require_number(best.get("practical_cer"), f"{path}: practical_cer")
+    candidate_review_ratio = optional_number(best.get("candidate_review_ratio"), f"{path}: candidate_review_ratio")
+    gate = readiness_stage_gate(
+        quality_gate,
+        "max_practical_cer",
+        "max_segments_needing_edit_ratio",
+        "max_candidate_review_ratio",
+        "required_reference_type",
+    )
+    reasons = []
+    if gate:
+        max_practical_cer = gate.get("max_practical_cer")
+        if max_practical_cer is not None and practical_cer > max_practical_cer:
+            reasons.append(f"practical CER {practical_cer:.4f} > {max_practical_cer:.4f}")
+        max_edit_ratio = gate.get("max_segments_needing_edit_ratio")
+        if max_edit_ratio is not None and edit_ratio > max_edit_ratio:
+            reasons.append(f"segments needing edit ratio {edit_ratio:.4f} > {max_edit_ratio:.4f}")
+        max_candidate_review_ratio = gate.get("max_candidate_review_ratio")
+        if max_candidate_review_ratio is not None:
+            if candidate_review_ratio is None:
+                reasons.append("candidate review ratio is unavailable")
+            elif candidate_review_ratio > max_candidate_review_ratio:
+                reasons.append(
+                    f"candidate review ratio {candidate_review_ratio:.4f} > {max_candidate_review_ratio:.4f}"
+                )
+        required_reference_type = gate.get("required_reference_type")
+        if required_reference_type is not None:
+            reference_type = best.get("reference_type")
+            if reference_type is None:
+                reasons.append("reference_type is unavailable")
+            elif reference_type != required_reference_type:
+                reasons.append(f"reference_type {reference_type!r} != {required_reference_type!r}")
+    else:
+        if text_ratio > 0.0:
+            reasons.append(f"best candidate still needs text edits: {text_ratio:.4f}")
+        if edit_ratio > 0.0:
+            reasons.append(f"best candidate still has segments needing edit: {edit_ratio:.4f}")
+    return stage_report(
+        "text_asr",
+        reasons=reasons,
+        metrics={
+            "report": str(path),
+            "best_label": label,
+            "text_edit_segment_ratio": text_ratio,
+            "segments_needing_edit_ratio": edit_ratio,
+            "practical_cer": practical_cer,
+            "candidate_review_ratio": candidate_review_ratio,
+            "dominant_review_effort_reason": optional_string(best.get("dominant_review_effort_reason")),
+            "dominant_review_effort_ratio": optional_number(
+                best.get("dominant_review_effort_ratio"),
+                f"{path}: dominant_review_effort_ratio",
+            ),
+            "reference_type": optional_string(best.get("reference_type")),
+        },
+        quality_gate=gate,
     )
 
 
@@ -287,14 +373,25 @@ def stage_report(
     reasons: list[str],
     metrics: dict[str, Any],
     warnings: list[str] | None = None,
+    quality_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    report = {
         "stage": stage,
         "status": "fail" if reasons else "pass",
         "reasons": reasons,
         "warnings": [] if warnings is None else warnings,
         "metrics": metrics,
     }
+    if quality_gate:
+        report["quality_gate"] = quality_gate
+    return report
+
+
+def readiness_stage_gate(quality_gate: dict[str, Any] | None, *keys: str) -> dict[str, Any]:
+    if not quality_gate:
+        return {}
+    gate = {key: quality_gate[key] for key in keys if quality_gate.get(key) is not None}
+    return gate
 
 
 def unknown_stage(stage: str, reason: str) -> dict[str, Any]:

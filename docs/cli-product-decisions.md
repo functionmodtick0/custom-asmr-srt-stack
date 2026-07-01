@@ -744,6 +744,7 @@ uv run casrt pipeline-readiness \
   --vad-comparison cases/vad-coverage-comparison.json \
   --eval-comparison cases/eval-comparison.json \
   --channel-comparison cases/channel-sweep/comparison.json \
+  --product-gate \
   --fail-unless-asr-only-ready \
   --json \
   -o cases/pipeline-readiness.json
@@ -757,6 +758,7 @@ uv run casrt pipeline-readiness \
 - `asr_only_ready`는 `reference`, `vad_chunking`, `alignment`, `channel_attribution`이 모두 pass일 때만 true다. `text_asr` 실패는 제품 품질 blocker지만 ASR-only readiness blocker로 세지 않는다.
 - `vad_chunking`은 `quality_gate`가 있는 VAD comparison에서는 통과 후보가 있으면 pass로 보고, gate가 없는 comparison에서는 chosen candidate의 missed reference speech가 남으면 fail로 본다.
 - `--channel-comparison`을 지정하면 `channel_attribution` stage만 해당 eval comparison에서 읽고, `alignment`와 `text_asr`는 `--eval-comparison`에서 계속 읽는다. Reference-copy channel sweep처럼 channel만 따로 평가한 report를 readiness에 반영하기 위한 CLI-only override다.
+- 기본 eval-derived stage 판정은 남은 timing/channel/text/review edit ratio가 0보다 크면 fail인 엄격 모드다. `--product-gate` 또는 개별 gate 인자를 지정하면 `alignment`, `channel_attribution`, `text_asr` stage는 product threshold 기준으로 pass/fail을 계산하고 각 stage에 적용된 `quality_gate`를 저장한다.
 - `production_ready`는 ASR-only stage와 `text_asr`가 모두 pass일 때만 true다.
 - `--fail-unless-asr-only-ready`는 report 출력/저장 후 `asr_only_ready=false`이면 실패한다.
 - 이 명령은 기존 report를 읽기만 하며 transcript, candidate, reference, model 선택을 수정하지 않는다. WebUI 옵션을 늘리지 않고 CLI-only 상태 요약으로 둔다.

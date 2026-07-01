@@ -623,6 +623,7 @@ def pipeline_readiness_command(args: argparse.Namespace) -> None:
         vad_comparison_file=args.vad_comparison,
         eval_comparison_file=args.eval_comparison,
         channel_comparison_file=args.channel_comparison,
+        quality_gate=pipeline_readiness_quality_gate(args),
     )
     if args.output is not None:
         write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
@@ -639,6 +640,17 @@ def pipeline_readiness_command(args: argparse.Namespace) -> None:
     if args.fail_unless_asr_only_ready and not summary["asr_only_ready"]:
         blockers = ",".join(summary["asr_only_blocking_stages"] + summary["asr_only_unknown_stages"])
         raise ValueError(f"pipeline is not ASR-only ready: {blockers}")
+
+
+def pipeline_readiness_quality_gate(args: argparse.Namespace) -> dict[str, Any] | None:
+    thresholds = quality_gate_thresholds(args)
+    gate: dict[str, Any] = {key: value for key, value in thresholds.items() if value is not None}
+    required_reference_type = reference_type_requirement(args)
+    if required_reference_type is not None:
+        gate["required_reference_type"] = required_reference_type
+    if getattr(args, "product_gate", False):
+        gate["preset"] = "local-asmr-v1"
+    return gate or None
 
 
 def annotate_comparison_quality_gates(report: dict[str, Any], args: argparse.Namespace) -> None:
@@ -1824,6 +1836,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Return a failing exit code unless reference, VAD, alignment, and channel stages all pass.",
     )
+    add_quality_gate_args(pipeline_readiness_parser, action_verb="Use")
     pipeline_readiness_parser.set_defaults(func=pipeline_readiness_command)
 
     review_pack_parser = subcommands.add_parser(
