@@ -160,6 +160,7 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 - `asr_artifacts`: candidate speech segment에서 일본어 문자가 없는 출력, 15 chars/sec 초과 고밀도 text, 12자 이상 반복 패턴을 보조 진단 지표로 센다. 이 값은 ASMR식 hallucination/repetition/chunking 실패를 분리해 보기 위한 metric이며 product gate에는 쓰지 않는다.
 - `review_effort.items` export: 평가 report에서 `custom-asmr-review-effort-v1` 수정 큐 JSON을 생성해 사람이 볼 다음 검수/개선 후보를 보존한다. Export queue는 `priority_score` 내림차순으로 정렬해 missing/extra/text/timing/channel 실패를 큰 것부터 듣게 한다.
 - `compare-evals`: 여러 eval report를 `custom-asmr-eval-comparison-v1` 비교표로 정렬해 다음 후보 선택을 돕는다. 이 명령은 모델/heuristic 자동 승격을 하지 않는다.
+- `compare-review-effort`: 여러 eval report의 `review_effort.items`를 reference segment 기준으로 묶어 후보별 pass/fail과 text/channel/timing/missing/extra reason을 비교한다. Output은 `custom-asmr-review-effort-comparison-v1`이며, 후보 간 보완 가능성과 공통 실패 segment를 찾기 위한 CLI-only 진단 도구다. Transcript를 수정하거나 모델/heuristic을 자동 승격하지 않는다.
 - `review-pack`: 수정 큐와 원본 audio를 결합해 `custom-asmr-review-pack-v1` index와 WAV clips를 만들고, priority queue 순서와 score/rank를 보존해 human-reviewed gold 제작을 빠르게 한다. Prepared review case set에서 나온 후보 실패 pack은 CLI `--source-case-index`로 source `case-index.json`을 붙여 WebUI `case 열기`가 원 reference segment로 이동할 수 있게 한다.
 - `attribute-channels`: 기존 SRT/master transcript와 stereo audio를 받아 `MIX` speech segment에만 L/R energy channel attribution을 적용한다. 기존 text/timing은 변경하지 않는다.
 - `slice-case`: 긴 원본 audio와 SRT/master에서 matching WAV/master case를 만들고, 경계에 걸쳐 잘린 segment를 `needs_review=true`로 표시해 human-reviewed gold 제작을 돕는다.

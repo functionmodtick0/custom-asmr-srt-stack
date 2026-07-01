@@ -14,6 +14,7 @@ EVAL_MANIFEST_FORMAT = "custom-asmr-eval-manifest-v1"
 EVAL_SUITE_FORMAT = "custom-asmr-eval-suite-v1"
 REVIEW_EFFORT_FORMAT = "custom-asmr-review-effort-v1"
 EVAL_COMPARISON_FORMAT = "custom-asmr-eval-comparison-v1"
+REVIEW_EFFORT_COMPARISON_FORMAT = "custom-asmr-review-effort-comparison-v1"
 EVAL_CHANNELS = ("L", "R", "MIX")
 REVIEW_EFFORT_TIMING_THRESHOLD_MS = 500
 REVIEW_EFFORT_REASON_PRIORITY = {
@@ -196,6 +197,278 @@ def compare_eval_reports(report_files: list[Path]) -> dict[str, Any]:
         ],
         "items": ranked_items,
     }
+
+
+def compare_review_effort_reports(report_files: list[Path]) -> dict[str, Any]:
+    if not report_files:
+        raise ValueError("review effort comparison requires at least one report")
+
+    candidates = []
+    used_label_counts: dict[str, int] = {}
+    used_labels: set[str] = set()
+    expected_case_ids: set[str | None] | None = None
+    reference_items_by_key: dict[tuple[str | None, str], dict[str, Any]] = {}
+    extra_candidate_items = []
+
+    for path in report_files:
+        report = json.loads(path.read_text(encoding="utf-8"))
+        case_ids = review_effort_report_case_ids(path, report)
+        if expected_case_ids is None:
+            expected_case_ids = case_ids
+        elif case_ids != expected_case_ids:
+            raise ValueError(f"{path}: review effort comparison reports must cover the same case ids")
+        label = unique_review_effort_report_label(path, used_label_counts, used_labels)
+        candidate = review_effort_comparison_candidate(path, label, report)
+        candidates.append(candidate)
+        normalized_report = review_effort_items_report(report, source_report=str(path))
+        seen_reference_keys: set[tuple[str | None, str]] = set()
+        for item in normalized_report["items"]:
+            reference_id = item.get("reference_id")
+            if reference_id is None:
+                extra_candidate_items.append(review_effort_extra_candidate_item(item, candidate))
+                continue
+            if not isinstance(reference_id, str) or not reference_id:
+                raise ValueError(f"{path}: review effort item reference_id must be a non-empty string or null")
+            case_id = optional_review_item_string(item, "case_id")
+            key = (case_id, reference_id)
+            if key in seen_reference_keys:
+                raise ValueError(f"{path}: duplicate review effort item for reference segment {reference_id!r}")
+            seen_reference_keys.add(key)
+            stored_item = reference_items_by_key.setdefault(
+                key,
+                {
+                    "case_id": case_id,
+                    "reference_id": reference_id,
+                    "start_ms": optional_review_item_int(item, "reference_start_ms")
+                    if optional_review_item_int(item, "reference_start_ms") is not None
+                    else optional_review_item_int(item, "start_ms"),
+                    "end_ms": optional_review_item_int(item, "reference_end_ms")
+                    if optional_review_item_int(item, "reference_end_ms") is not None
+                    else optional_review_item_int(item, "end_ms"),
+                    "reference_channel": item.get("reference_channel"),
+                    "candidate_failures": {},
+                },
+            )
+            stored_item["candidate_failures"][label] = review_effort_candidate_failure(item, candidate)
+
+    items = []
+    candidate_failure_counts = {
+        candidate["label"]: {
+            "reference_failures": 0,
+            "text": 0,
+            "channel": 0,
+            "timing": 0,
+            "missing_reference": 0,
+            "extra_candidate": 0,
+        }
+        for candidate in candidates
+    }
+    for extra_item in extra_candidate_items:
+        candidate_failure_counts[extra_item["label"]]["extra_candidate"] += 1
+
+    for item in reference_items_by_key.values():
+        statuses = []
+        reason_counts: dict[str, int] = {}
+        for candidate in candidates:
+            failure = item["candidate_failures"].get(candidate["label"])
+            if failure is None:
+                statuses.append(
+                    {
+                        "label": candidate["label"],
+                        "candidate_id": candidate.get("candidate_id"),
+                        "passed": True,
+                        "reasons": [],
+                    }
+                )
+                continue
+            statuses.append(failure)
+            candidate_failure_counts[candidate["label"]]["reference_failures"] += 1
+            for reason in failure["reasons"]:
+                reason_counts[reason] = reason_counts.get(reason, 0) + 1
+                if reason in candidate_failure_counts[candidate["label"]]:
+                    candidate_failure_counts[candidate["label"]][reason] += 1
+
+        failed_candidate_count = sum(1 for status in statuses if not status["passed"])
+        passed_candidate_count = len(statuses) - failed_candidate_count
+        start_ms = item.get("start_ms")
+        end_ms = item.get("end_ms")
+        comparison_item = {
+            "case_id": item.get("case_id"),
+            "reference_id": item["reference_id"],
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+            "duration_ms": None
+            if not isinstance(start_ms, int) or not isinstance(end_ms, int)
+            else max(0, end_ms - start_ms),
+            "reference_channel": item.get("reference_channel"),
+            "failed_candidate_count": failed_candidate_count,
+            "passed_candidate_count": passed_candidate_count,
+            "reason_counts": dict(sorted(reason_counts.items())),
+            "candidates": statuses,
+        }
+        items.append(comparison_item)
+
+    ranked_items = sorted(items, key=review_effort_comparison_item_sort_key)
+    return {
+        "format": REVIEW_EFFORT_COMPARISON_FORMAT,
+        "report_count": len(candidates),
+        "ranked_by": [
+            "failed_candidate_count desc",
+            "reason_count desc",
+            "case_id",
+            "start_ms",
+            "reference_id",
+        ],
+        "reference_issue_count": len(ranked_items),
+        "extra_candidate_issue_count": len(extra_candidate_items),
+        "summary": {
+            "reference_segments_with_any_failure": len(ranked_items),
+            "reference_segments_failed_by_all": sum(
+                1 for item in ranked_items if item["failed_candidate_count"] == len(candidates)
+            ),
+            "reference_segments_with_any_pass": sum(1 for item in ranked_items if item["passed_candidate_count"] > 0),
+            "candidate_failure_counts": candidate_failure_counts,
+        },
+        "candidates": candidates,
+        "items": ranked_items,
+        "extra_candidate_items": sorted(extra_candidate_items, key=review_effort_extra_candidate_sort_key),
+    }
+
+
+def review_effort_comparison_candidate(path: Path, label: str, report: dict[str, Any]) -> dict[str, Any]:
+    candidate = {
+        "label": label,
+        "report": str(path),
+        "report_format": report.get("format"),
+    }
+    if report.get("format") == EVAL_SUITE_FORMAT:
+        candidate_id = suite_single_candidate_id(report)
+        if candidate_id is not None:
+            candidate["candidate_id"] = candidate_id
+        reference_type = report.get("reference_type")
+        if isinstance(reference_type, str):
+            candidate["reference_type"] = reference_type
+    return candidate
+
+
+def review_effort_report_case_ids(path: Path, report: dict[str, Any]) -> set[str | None]:
+    report_format = report.get("format")
+    if report_format == EVAL_FORMAT:
+        return {None}
+    if report_format != EVAL_SUITE_FORMAT:
+        raise ValueError(f"{path}: unsupported eval report format {report_format!r}")
+    cases = report.get("cases")
+    if not isinstance(cases, list) or not cases:
+        raise ValueError(f"{path}: eval suite cases must be a non-empty array")
+    case_ids: set[str | None] = set()
+    for index, case in enumerate(cases):
+        if not isinstance(case, dict):
+            raise ValueError(f"{path}: eval suite case {index} must be an object")
+        case_id = case.get("id")
+        if not isinstance(case_id, str) or not case_id:
+            raise ValueError(f"{path}: eval suite case {index} id must be a non-empty string")
+        case_ids.add(case_id)
+    return case_ids
+
+
+def unique_review_effort_report_label(path: Path, used_counts: dict[str, int], used_labels: set[str]) -> str:
+    base_label = path.stem
+    next_index = used_counts.get(base_label, 0) + 1
+    label = base_label if next_index == 1 else f"{base_label}#{next_index}"
+    while label in used_labels:
+        next_index += 1
+        label = f"{base_label}#{next_index}"
+    used_counts[base_label] = next_index
+    used_labels.add(label)
+    return label
+
+
+def suite_single_candidate_id(report: dict[str, Any]) -> str | None:
+    cases = report.get("cases")
+    if not isinstance(cases, list):
+        return None
+    candidate_ids = {
+        case.get("candidate_id")
+        for case in cases
+        if isinstance(case, dict) and isinstance(case.get("candidate_id"), str)
+    }
+    if len(candidate_ids) == 1:
+        return next(iter(candidate_ids))
+    return None
+
+
+def review_effort_candidate_failure(item: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+    reasons = item.get("reasons")
+    if not isinstance(reasons, list) or not all(isinstance(reason, str) for reason in reasons):
+        raise ValueError("review effort item reasons must be an array of strings")
+    result = {
+        "label": candidate["label"],
+        "candidate_id": candidate.get("candidate_id"),
+        "passed": False,
+        "reasons": reasons,
+        "candidate_segment_id": item.get("candidate_id"),
+        "candidate_channel": item.get("candidate_channel"),
+    }
+    for key in ("start_delta_ms", "end_delta_ms", "priority_score"):
+        value = item.get(key)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            result[key] = value
+    return result
+
+
+def review_effort_extra_candidate_item(item: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "label": candidate["label"],
+        "candidate_id": candidate.get("candidate_id"),
+        "case_id": optional_review_item_string(item, "case_id"),
+        "candidate_segment_id": item.get("candidate_id"),
+        "start_ms": optional_review_item_int(item, "start_ms"),
+        "end_ms": optional_review_item_int(item, "end_ms"),
+        "candidate_channel": item.get("candidate_channel"),
+        "reasons": item.get("reasons"),
+    }
+
+
+def optional_review_item_string(item: dict[str, Any], key: str) -> str | None:
+    value = item.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"review effort item {key} must be a string")
+    return value
+
+
+def optional_review_item_int(item: dict[str, Any], key: str) -> int | None:
+    value = item.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"review effort item {key} must be an integer")
+    return value
+
+
+def review_effort_comparison_item_sort_key(item: dict[str, Any]) -> tuple[int, int, str, int, str]:
+    reason_total = sum(item["reason_counts"].values())
+    start_ms = item.get("start_ms")
+    return (
+        -item["failed_candidate_count"],
+        -reason_total,
+        str(item.get("case_id") or ""),
+        start_ms if isinstance(start_ms, int) else 0,
+        item["reference_id"],
+    )
+
+
+def review_effort_extra_candidate_sort_key(item: dict[str, Any]) -> tuple[str, str, int, str]:
+    start_ms = item.get("start_ms")
+    return (
+        str(item.get("case_id") or ""),
+        item["label"],
+        start_ms if isinstance(start_ms, int) else 0,
+        str(item.get("candidate_segment_id") or ""),
+    )
 
 
 def eval_comparison_item(path: Path, report: dict[str, Any]) -> dict[str, Any]:

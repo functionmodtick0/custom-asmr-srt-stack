@@ -8,6 +8,7 @@ from custom_asmr_srt_stack.evaluation import (
     EVAL_SUITE_FORMAT,
     REVIEW_EFFORT_FORMAT,
     compare_eval_reports,
+    compare_review_effort_reports,
     evaluate_manifest,
     evaluate_transcripts,
     levenshtein_distance,
@@ -407,6 +408,213 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(item["missing_reference_segment_ratio"], 1 / 5)
         self.assertEqual(item["extra_candidate_segment_ratio"], 1 / 5)
         self.assertIsNone(item["asr_artifact_segment_ratio"])
+
+    def test_compare_review_effort_reports_groups_candidate_failures_by_reference_segment(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = root / "reference.srt"
+            candidate_a = root / "candidate-a.srt"
+            candidate_b = root / "candidate-b.srt"
+            manifest_a = root / "manifest-a.json"
+            manifest_b = root / "manifest-b.json"
+            report_a = root / "qwen-report.json"
+            report_b = root / "neosophie-report.json"
+            reference.write_text(
+                "\n".join(
+                    [
+                        "1",
+                        "00:00:01,000 --> 00:00:02,000",
+                        "[L] ねえ",
+                        "",
+                        "2",
+                        "00:00:03,000 --> 00:00:04,000",
+                        "[R] 見つかった",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            candidate_a.write_text(
+                "\n".join(
+                    [
+                        "1",
+                        "00:00:01,000 --> 00:00:02,000",
+                        "[L] ねえ",
+                        "",
+                        "2",
+                        "00:00:03,000 --> 00:00:04,000",
+                        "[R] 見つた",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            candidate_b.write_text(
+                "\n".join(
+                    [
+                        "1",
+                        "00:00:01,900 --> 00:00:03,000",
+                        "[R] ねえ",
+                        "",
+                        "2",
+                        "00:00:03,000 --> 00:00:04,000",
+                        "[R] 見つかった",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            for manifest, candidate, candidate_id in (
+                (manifest_a, candidate_a, "qwen"),
+                (manifest_b, candidate_b, "neosophie"),
+            ):
+                manifest.write_text(
+                    json.dumps(
+                        {
+                            "format": "custom-asmr-eval-manifest-v1",
+                            "reference_type": "pseudo-gold",
+                            "cases": [
+                                {
+                                    "id": "front-a",
+                                    "reference": reference.name,
+                                    "candidate": candidate.name,
+                                    "candidate_id": candidate_id,
+                                }
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            report_a.write_text(json.dumps(evaluate_manifest(manifest_a)), encoding="utf-8")
+            report_b.write_text(json.dumps(evaluate_manifest(manifest_b)), encoding="utf-8")
+
+            comparison = compare_review_effort_reports([report_a, report_b])
+
+        self.assertEqual(comparison["format"], "custom-asmr-review-effort-comparison-v1")
+        self.assertEqual(comparison["report_count"], 2)
+        self.assertEqual(comparison["reference_issue_count"], 2)
+        self.assertEqual(comparison["summary"]["reference_segments_with_any_pass"], 2)
+        self.assertEqual(comparison["summary"]["reference_segments_failed_by_all"], 0)
+        by_reference = {item["reference_id"]: item for item in comparison["items"]}
+        first = by_reference["seg_000001"]
+        self.assertEqual(first["case_id"], "front-a")
+        self.assertEqual(first["failed_candidate_count"], 1)
+        self.assertEqual(first["passed_candidate_count"], 1)
+        self.assertEqual(first["reason_counts"], {"channel": 1, "timing": 1})
+        self.assertEqual(
+            [(candidate["label"], candidate["passed"], candidate["reasons"]) for candidate in first["candidates"]],
+            [
+                ("qwen-report", True, []),
+                ("neosophie-report", False, ["channel", "timing"]),
+            ],
+        )
+        second = by_reference["seg_000002"]
+        self.assertEqual(second["reason_counts"], {"text": 1})
+        self.assertEqual(
+            [(candidate["label"], candidate["passed"], candidate["reasons"]) for candidate in second["candidates"]],
+            [
+                ("qwen-report", False, ["text"]),
+                ("neosophie-report", True, []),
+            ],
+        )
+
+    def test_compare_review_effort_reports_keeps_extra_candidate_items_separate(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            report_path = root / "candidate-report.json"
+            report_path.write_text(
+                json.dumps(
+                    {
+                        "format": EVAL_FORMAT,
+                        "review_effort": {
+                            "items": [
+                                {
+                                    "reference_id": None,
+                                    "candidate_id": "seg_extra",
+                                    "start_ms": 0,
+                                    "end_ms": 500,
+                                    "reasons": ["extra_candidate"],
+                                    "reference_text": "",
+                                    "candidate_text": "noise",
+                                    "reference_channel": None,
+                                    "candidate_channel": "MIX",
+                                }
+                            ]
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            comparison = compare_review_effort_reports([report_path])
+
+        self.assertEqual(comparison["reference_issue_count"], 0)
+        self.assertEqual(comparison["extra_candidate_issue_count"], 1)
+        self.assertEqual(comparison["extra_candidate_items"][0]["label"], "candidate-report")
+        self.assertEqual(comparison["extra_candidate_items"][0]["candidate_segment_id"], "seg_extra")
+
+    def test_compare_review_effort_reports_disambiguates_duplicate_report_stems(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            first = root / "a" / "report.json"
+            second = root / "b" / "report.json"
+            first.parent.mkdir()
+            second.parent.mkdir()
+            report = {
+                "format": EVAL_FORMAT,
+                "review_effort": {
+                    "items": [
+                        {
+                            "reference_id": "seg_000001",
+                            "candidate_id": "seg_000001",
+                            "start_ms": 0,
+                            "end_ms": 1000,
+                            "reasons": ["text"],
+                            "reference_text": "あ",
+                            "candidate_text": "い",
+                            "reference_channel": "L",
+                            "candidate_channel": "L",
+                        }
+                    ]
+                },
+            }
+            first.write_text(json.dumps(report), encoding="utf-8")
+            second.write_text(json.dumps(report), encoding="utf-8")
+
+            comparison = compare_review_effort_reports([first, second])
+
+        self.assertEqual([candidate["label"] for candidate in comparison["candidates"]], ["report", "report#2"])
+        self.assertEqual([candidate["label"] for candidate in comparison["items"][0]["candidates"]], [
+            "report",
+            "report#2",
+        ])
+
+    def test_compare_review_effort_reports_rejects_different_case_sets(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            first = root / "first.json"
+            second = root / "second.json"
+            first.write_text(
+                json.dumps(
+                    {
+                        "format": EVAL_SUITE_FORMAT,
+                        "cases": [{"id": "front-a", "candidate_id": "a", "report": {"review_effort": {"items": []}}}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            second.write_text(
+                json.dumps(
+                    {
+                        "format": EVAL_SUITE_FORMAT,
+                        "cases": [{"id": "front-b", "candidate_id": "b", "report": {"review_effort": {"items": []}}}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "same case ids"):
+                compare_review_effort_reports([first, second])
 
     def test_evaluate_manifest_aggregates_channel_reports_when_one_case_has_no_comparable_segments(self):
         with tempfile.TemporaryDirectory() as tmpdir:

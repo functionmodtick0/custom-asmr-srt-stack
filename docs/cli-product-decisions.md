@@ -678,6 +678,24 @@ uv run casrt compare-evals qwen-report.json stable-report.json quiet8-report.jso
 - `--product-gate` 또는 개별 gate 인자를 지정하면 각 item에 `gate_passed`와 `gate_failures`를 표시한다. `compare-evals` 자체는 gate 실패 때문에 실패 exit code를 반환하지 않는다.
 - 이 명령은 모델/heuristic 승격을 자동 결정하지 않는다. 사람이 다음 실험 후보를 고르는 비교표만 만든다.
 
+### Review Effort Comparison
+
+```bash
+uv run casrt compare-review-effort qwen-report.json neosophie-report.json granite-report.json \
+  --json \
+  -o review-effort-comparison.json
+```
+
+동작:
+
+- 입력은 `eval-transcript` 단일 report 또는 `eval-manifest` suite report JSON이다.
+- 여러 suite report는 같은 case id set을 가져야 하며, 다르면 실패한다.
+- output format은 `custom-asmr-review-effort-comparison-v1`이다.
+- `items`는 reference segment 단위로 후보별 `passed`, `reasons`, candidate segment id, channel, timing delta를 나란히 보존한다.
+- `extra_candidate_items`는 reference id가 없는 extra candidate 실패를 별도로 보존한다.
+- candidate status 순서는 입력 report 순서를 유지한다. 같은 파일 stem이 반복되면 label은 `report`, `report#2`처럼 자동으로 분리한다.
+- 이 명령은 transcript를 수정하지 않고, WebUI 옵션을 늘리지 않는다. 후보 간 보완 가능성과 공통 실패 segment를 찾기 위한 CLI-only 진단 도구다.
+
 ### Review Pack
 
 ```bash

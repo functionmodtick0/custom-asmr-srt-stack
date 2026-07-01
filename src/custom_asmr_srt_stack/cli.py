@@ -38,6 +38,7 @@ from custom_asmr_srt_stack.channel_attribution import (
 from custom_asmr_srt_stack.channel_sweep import sweep_channel_attribution
 from custom_asmr_srt_stack.evaluation import (
     compare_eval_reports,
+    compare_review_effort_reports,
     evaluate_manifest,
     evaluate_transcripts,
     load_transcript_document,
@@ -525,6 +526,21 @@ def compare_evals(args: argparse.Namespace) -> None:
             f"best={best['label']} "
             f"review_effort={best['segments_needing_edit_ratio']:.4f} "
             f"practical_cer={best['practical_cer']:.4f}"
+        ),
+    )
+
+
+def compare_review_effort(args: argparse.Namespace) -> None:
+    report = compare_review_effort_reports(args.reports)
+    if args.output is not None:
+        write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    emit(
+        args,
+        report,
+        (
+            f"reference_issues={report['reference_issue_count']} "
+            f"extra_candidate_issues={report['extra_candidate_issue_count']} "
+            f"reports={report['report_count']}"
         ),
     )
 
@@ -1548,6 +1564,19 @@ def build_parser() -> argparse.ArgumentParser:
     compare_evals_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
     add_quality_gate_args(compare_evals_parser, action_verb="Mark")
     compare_evals_parser.set_defaults(func=compare_evals)
+
+    compare_review_effort_parser = subcommands.add_parser(
+        "compare-review-effort",
+        help="Compare eval report review-effort failures by reference segment.",
+    )
+    compare_review_effort_parser.add_argument("reports", type=Path, nargs="+")
+    compare_review_effort_parser.add_argument("-o", "--output", type=Path)
+    compare_review_effort_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON output.",
+    )
+    compare_review_effort_parser.set_defaults(func=compare_review_effort)
 
     review_pack_parser = subcommands.add_parser(
         "review-pack",

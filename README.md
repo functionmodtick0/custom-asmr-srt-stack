@@ -560,6 +560,14 @@ uv run casrt compare-evals qwen-report.json stable-report.json quiet8-report.jso
 `compare-evals`는 `review_effort` 수정 비율, practical CER, timing/channel 지표, breakdown ratio, ASMR artifact ratio를 후보별로 뽑고 사람이 다음 실험 후보를 고르기 쉽도록 정렬합니다.
 품질 gate 인자를 함께 넣으면 실패 exit code 대신 후보별 `gate_passed`와 `gate_failures`를 표시합니다. `--product-gate`는 practical CER, timing, channel, MIX ratio, review effort, candidate `needs_review`, human-reviewed reference 조건을 한 번에 표시합니다.
 
+```bash
+uv run casrt compare-review-effort qwen-report.json neosophie-report.json granite-report.json \
+  --json \
+  -o review-effort-comparison.json
+```
+
+`compare-review-effort`는 여러 eval report의 실패 item을 reference segment 기준으로 묶어 후보별 pass/fail과 text/channel/timing/missing/extra reason을 비교합니다. 후보끼리 서로 보완되는지, 아니면 같은 구간에서 함께 실패하는지 확인하는 CLI-only 진단 도구입니다.
+
 평가 report에서 사람이 바로 볼 수정 큐 JSON도 만들 수 있습니다.
 
 ```bash
