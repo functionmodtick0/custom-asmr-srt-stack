@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from custom_asmr_srt_stack.candidate_channel_audit import CANDIDATE_CHANNEL_AUDIT_SUITE_FORMAT
 from custom_asmr_srt_stack.channel_reference_audit import REFERENCE_CHANNEL_AUDIT_SUITE_FORMAT
 from custom_asmr_srt_stack.evaluation import EVAL_COMPARISON_FORMAT
 from custom_asmr_srt_stack.reference_audit import REFERENCE_AUDIT_FORMAT, REFERENCE_AUDIT_SUITE_FORMAT
@@ -33,6 +34,7 @@ def build_pipeline_readiness(
     eval_comparison_file: Path | None = None,
     alignment_comparison_file: Path | None = None,
     channel_comparison_file: Path | None = None,
+    candidate_channel_audit_file: Path | None = None,
     quality_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     reference_type = readiness_reference_type(eval_comparison_file, alignment_comparison_file, channel_comparison_file)
@@ -54,7 +56,12 @@ def build_pipeline_readiness(
             best,
             quality_gate=quality_gate,
         )
-    if channel_comparison_file is not None:
+    if candidate_channel_audit_file is not None:
+        stages["channel_attribution"] = candidate_channel_energy_stage(
+            candidate_channel_audit_file,
+            quality_gate=quality_gate,
+        )
+    elif channel_comparison_file is not None:
         stages["channel_attribution"] = channel_stage(channel_comparison_file, quality_gate=quality_gate)
     asr_only_blocking_stages = [
         stage for stage in ASR_ONLY_STAGE_ORDER if stages[stage]["status"] == "fail"
@@ -323,6 +330,93 @@ def alignment_stage_from_item(
             "best_label": label,
             "timing_edit_segment_ratio": timing_ratio,
             "time_aligned_500ms_ratio": time_aligned_500ms_ratio,
+        },
+        quality_gate=gate,
+    )
+
+
+def candidate_channel_energy_stage(path: Path, *, quality_gate: dict[str, Any] | None = None) -> dict[str, Any]:
+    report = read_json_report(path)
+    if report.get("format") != CANDIDATE_CHANNEL_AUDIT_SUITE_FORMAT:
+        raise ValueError(f"{path}: candidate channel audit format must be {CANDIDATE_CHANNEL_AUDIT_SUITE_FORMAT}")
+    summary = require_mapping(report.get("summary"), f"{path}: candidate channel audit summary")
+    energy_labeled_count = require_int(
+        summary.get("energy_labeled_count"),
+        f"{path}: candidate channel audit energy_labeled_count",
+    )
+    match_ratio = optional_number(
+        summary.get("energy_labeled_match_ratio"),
+        f"{path}: candidate channel audit energy_labeled_match_ratio",
+    )
+    mix_ratio = optional_number(
+        summary.get("energy_labeled_mix_ratio"),
+        f"{path}: candidate channel audit energy_labeled_mix_ratio",
+    )
+    gate = readiness_stage_gate(
+        quality_gate,
+        "min_channel_time_aligned_accuracy",
+        "max_channel_time_aligned_mix_ratio",
+    )
+    reasons = []
+    warnings = ["channel attribution is judged by stereo energy proxy, not human-reviewed reference labels"]
+    if energy_labeled_count == 0:
+        reasons.append("candidate channel energy audit has no energy-labeled speech segments")
+    if gate:
+        min_accuracy = gate.get("min_channel_time_aligned_accuracy")
+        if min_accuracy is not None:
+            if match_ratio is None:
+                reasons.append("energy-labeled candidate channel match ratio is unavailable")
+            elif match_ratio < min_accuracy:
+                reasons.append(
+                    f"energy-labeled candidate channel match ratio {match_ratio:.4f} < {min_accuracy:.4f}"
+                )
+        max_mix_ratio = gate.get("max_channel_time_aligned_mix_ratio")
+        if max_mix_ratio is not None:
+            if mix_ratio is None:
+                reasons.append("energy-labeled candidate MIX ratio is unavailable")
+            elif mix_ratio > max_mix_ratio:
+                reasons.append(f"energy-labeled candidate MIX ratio {mix_ratio:.4f} > {max_mix_ratio:.4f}")
+    elif match_ratio is None or match_ratio < 1.0 or (mix_ratio is not None and mix_ratio > 0.0):
+        reasons.append("candidate channel labels do not fully match stereo energy proxy")
+    return stage_report(
+        "channel_attribution",
+        reasons=reasons,
+        warnings=warnings,
+        metrics={
+            "report": str(path),
+            "source": "candidate_channel_energy_audit",
+            "speech_segment_count": optional_int(
+                summary.get("speech_segment_count"),
+                f"{path}: candidate channel audit speech_segment_count",
+            ),
+            "energy_labeled_count": energy_labeled_count,
+            "energy_uncertain_count": require_int(
+                summary.get("energy_uncertain_count"),
+                f"{path}: candidate channel audit energy_uncertain_count",
+            ),
+            "match_count": require_int(summary.get("match_count"), f"{path}: candidate channel audit match_count"),
+            "missed_attribution_count": require_int(
+                summary.get("missed_attribution_count"),
+                f"{path}: candidate channel audit missed_attribution_count",
+            ),
+            "wrong_side_count": require_int(
+                summary.get("wrong_side_count"),
+                f"{path}: candidate channel audit wrong_side_count",
+            ),
+            "over_attribution_count": require_int(
+                summary.get("over_attribution_count"),
+                f"{path}: candidate channel audit over_attribution_count",
+            ),
+            "energy_labeled_match_ratio": match_ratio,
+            "energy_labeled_mix_ratio": mix_ratio,
+            "energy_labeled_wrong_side_ratio": optional_number(
+                summary.get("energy_labeled_wrong_side_ratio"),
+                f"{path}: candidate channel audit energy_labeled_wrong_side_ratio",
+            ),
+            "over_attribution_ratio": optional_number(
+                summary.get("over_attribution_ratio"),
+                f"{path}: candidate channel audit over_attribution_ratio",
+            ),
         },
         quality_gate=gate,
     )

@@ -57,7 +57,7 @@ CASRT_QWEN_ASR_WORKER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_sr
   uv run casrt serve
 ```
 
-2026-07-01 all8 front120 batch CLI 평가에서 official Qwen3-ASR 1.7B local snapshot은 practical CER 59.7%, time-aligned 500ms 16.0%, review effort 100%로 실패했습니다. Granite base보다 text CER는 낮지만 product gate에는 한참 못 미칩니다. 2026-07-02 energy VAD t54/pad800/max30s sweep 후보는 coverage recall을 99.5%까지 올렸지만 실제 Qwen ASR에서는 practical CER 60.2%, time-aligned 500ms 15.2%로 baseline보다 악화되어 기본값으로 승격하지 않습니다. 같은 all8 set에서 `neosophie/Qwen3-ASR-1.7B-JA` local snapshot은 practical CER 59.4%, time-aligned 500ms 16.0%, review effort 100%로 Qwen official보다 text만 아주 조금 낫지만 product gate를 통과하지 못했습니다. Qwen3-ForcedAligner context 500/2000ms 실험도 Qwen official all8의 time-aligned 500ms를 각각 11.1%/6.9%로 낮춰 기본값으로 승격하지 않습니다. 같은 aligner를 reference-copy oracle에 적용했을 때도 time-aligned 500ms가 95.1%에서 51.2%로 떨어졌으므로, 현재 Qwen3-ForcedAligner는 기본 alignment 계층으로 승격하지 않습니다. 현 최선 alignment 정책은 no-op baseline이며, reference-copy oracle 비교에서는 time-aligned 500ms 95.1%로 alignment gate를 통과합니다. 따라서 현재 상태는 VAD/chunk/alignment가 모두 실패하고 ASR text만 남은 것이 아니라, VAD는 gate pass, alignment는 no-op이 Qwen aligner보다 낫고, reference human review와 channel attribution이 ASR-only blocker로 남은 상태입니다.
+2026-07-01 all8 front120 batch CLI 평가에서 official Qwen3-ASR 1.7B local snapshot은 practical CER 59.7%, time-aligned 500ms 16.0%, review effort 100%로 실패했습니다. Granite base보다 text CER는 낮지만 product gate에는 한참 못 미칩니다. 2026-07-02 energy VAD t54/pad800/max30s sweep 후보는 coverage recall을 99.5%까지 올렸지만 실제 Qwen ASR에서는 practical CER 60.2%, time-aligned 500ms 15.2%로 baseline보다 악화되어 기본값으로 승격하지 않습니다. 같은 all8 set에서 `neosophie/Qwen3-ASR-1.7B-JA` local snapshot은 practical CER 59.4%, time-aligned 500ms 16.0%, review effort 100%로 Qwen official보다 text만 아주 조금 낫지만 product gate를 통과하지 못했습니다. Qwen3-ForcedAligner context 500/2000ms 실험도 Qwen official all8의 time-aligned 500ms를 각각 11.1%/6.9%로 낮춰 기본값으로 승격하지 않습니다. 같은 aligner를 reference-copy oracle에 적용했을 때도 time-aligned 500ms가 95.1%에서 51.2%로 떨어졌으므로, 현재 Qwen3-ForcedAligner는 기본 alignment 계층으로 승격하지 않습니다. 현 최선 alignment 정책은 no-op baseline이며, reference-copy oracle 비교에서는 time-aligned 500ms 95.1%로 alignment gate를 통과합니다. `th2_quietnone` channel attribution 후보는 candidate energy audit에서 energy-labeled 64개를 모두 맞춰 energy-proxy channel gate를 통과하지만, reference L/R label은 energy와 30개 mismatch/18개 uncertain이므로 human review 전에는 reference blocker로 남습니다. 따라서 현재 상태는 VAD/chunk/alignment/channel이 모두 실패하고 ASR text만 남은 것이 아니라, VAD는 gate pass, alignment는 no-op pass, channel attribution은 energy-proxy pass, reference human review가 ASR-only blocker로 남고 text ASR은 product quality blocker로 남은 상태입니다.
 
 Gemma 4 E4B는 full checkpoint를 다운로드하더라도 로딩은 4-bit runtime quantization을 켜는 구성을 권장합니다. VRAM 여유가 있으면 품질 비교용으로 `CASRT_TRANSFORMERS_QUANTIZATION=8bit`도 사용할 수 있습니다.
 
@@ -425,6 +425,16 @@ uv run casrt audit-review-case-channels cases/case-index.json \
 `audit-review-case-channels`는 prepared reference의 L/R label을 stereo energy와 비교합니다. Output `custom-asmr-reference-channel-audit-suite-v1`은 segment id/time/channel, L/R dBFS, energy channel, match/mismatch/uncertain status만 저장하고 transcript text는 저장하지 않습니다. `--review-effort-output`은 mismatch/uncertain segment를 기존 `review-pack`에 넣을 수 있는 queue로 만듭니다. 2026-07-02 all8 pseudo-gold `threshold=2`, quiet gate off 기준 match ratio는 53.1%라, 현재 channel attribution 실패는 모델만의 문제가 아니라 reference channel 검수도 필요한 상태입니다.
 
 ```bash
+uv run casrt audit-candidate-channels cases/eval-manifest.json \
+  --audio-map cases/audio-map.json \
+  --threshold-db 2 \
+  --quiet-channel-max-dbfs none \
+  -o cases/candidate-channel-audit.json
+```
+
+`audit-candidate-channels`는 candidate L/R/MIX label을 stereo energy와 비교하되 reference label을 사용하지 않습니다. Output `custom-asmr-candidate-channel-audit-suite-v1`은 energy-labeled 구간의 match, MIX로 남은 missed attribution, wrong-side, over-attribution counts/ratios를 저장하고 transcript text는 저장하지 않습니다. 이 report는 channel heuristic을 pseudo-gold reference label 문제와 분리해 보는 CLI-only 진단 입력이며, `pipeline-readiness --candidate-channel-audit`에 넣으면 `channel_attribution` stage를 energy proxy 기준으로 판정합니다.
+
+```bash
 uv run casrt review-pack cases/reference-audit-review-effort.json \
   --source-case-index cases/case-index.json \
   -o cases/reference-audit-review-pack \
@@ -629,13 +639,14 @@ uv run casrt pipeline-readiness \
   --eval-comparison cases/eval-comparison.json \
   --alignment-comparison cases/alignment-comparison.json \
   --channel-comparison cases/channel-sweep/comparison.json \
+  --candidate-channel-audit cases/candidate-channel-audit.json \
   --product-gate \
   --fail-unless-asr-only-ready \
   --json \
   -o cases/pipeline-readiness.json
 ```
 
-`pipeline-readiness`는 reference audit, optional reference channel audit, VAD coverage comparison, eval comparison을 읽어 `custom-asmr-pipeline-readiness-v1`을 만듭니다. `asr_only_ready`는 reference, VAD/chunking, alignment, channel attribution stage가 모두 pass일 때만 true입니다. VAD comparison에 `quality_gate`가 있으면 통과 후보를 VAD stage pass로 보고, gate가 없으면 missed reference speech가 남은 후보를 fail로 봅니다. `--reference-channel-audit`을 주면 reference L/R label mismatch/uncertain count도 reference stage blocker로 봅니다. `--alignment-comparison`이나 `--channel-comparison`을 주면 해당 stage만 별도 eval comparison에서 읽어, aligner oracle이나 reference-copy channel sweep을 ASR text 후보 평가와 분리할 수 있습니다. 기본 판정은 남은 edit ratio가 0보다 크면 fail인 엄격 모드이고, `--product-gate` 또는 개별 gate 인자를 주면 alignment/channel/text stage는 문서화된 threshold 기준으로 pass/fail을 계산합니다. `--product-gate`의 human-reviewed reference 조건은 reference stage에 붙어 pseudo-gold 기준본을 ASR-only ready로 보지 않습니다. Text ASR은 별도 `text_asr` stage라서, “텍스트 모델만 남았는지”와 “제품 품질이 끝났는지”를 분리해 봅니다. `--fail-unless-asr-only-ready`는 report를 출력/저장한 뒤 아직 ASR-only 단계가 아니면 실패합니다.
+`pipeline-readiness`는 reference audit, optional reference channel audit, VAD coverage comparison, eval comparison을 읽어 `custom-asmr-pipeline-readiness-v1`을 만듭니다. `asr_only_ready`는 reference, VAD/chunking, alignment, channel attribution stage가 모두 pass일 때만 true입니다. VAD comparison에 `quality_gate`가 있으면 통과 후보를 VAD stage pass로 보고, gate가 없으면 missed reference speech가 남은 후보를 fail로 봅니다. `--reference-channel-audit`을 주면 reference L/R label mismatch/uncertain count도 reference stage blocker로 봅니다. `--alignment-comparison`이나 `--channel-comparison`을 주면 해당 stage만 별도 eval comparison에서 읽어, aligner oracle이나 reference-copy channel sweep을 ASR text 후보 평가와 분리할 수 있습니다. `--candidate-channel-audit`을 주면 `channel_attribution` stage는 reference label 대신 candidate energy-proxy audit로 판정하며 `--channel-comparison`보다 우선합니다. 기본 판정은 남은 edit ratio가 0보다 크면 fail인 엄격 모드이고, `--product-gate` 또는 개별 gate 인자를 주면 alignment/channel/text stage는 문서화된 threshold 기준으로 pass/fail을 계산합니다. `--product-gate`의 human-reviewed reference 조건은 reference stage에 붙어 pseudo-gold 기준본을 ASR-only ready로 보지 않습니다. Text ASR은 별도 `text_asr` stage라서, “텍스트 모델만 남았는지”와 “제품 품질이 끝났는지”를 분리해 봅니다. `--fail-unless-asr-only-ready`는 report를 출력/저장한 뒤 아직 ASR-only 단계가 아니면 실패합니다.
 
 평가 report에서 사람이 바로 볼 수정 큐 JSON도 만들 수 있습니다.
 

@@ -1965,6 +1965,126 @@ class ProjectCliTests(unittest.TestCase):
             self.assertIn("reference_channel_audit_item_count=1", error)
             self.assertIn("reference-channel-energy-mismatch", error)
 
+    def test_audit_candidate_channels_reports_energy_agreement_without_reference_labels_or_text(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_dir = root / "audio"
+            references = root / "references"
+            candidates = root / "candidates"
+            audio_dir.mkdir()
+            references.mkdir()
+            candidates.mkdir()
+            audio = audio_dir / "front.wav"
+            write_stereo_samples(
+                audio,
+                [(6000, 100)] * 1000
+                + [(100, 6000)] * 1000
+                + [(5000, 5000)] * 1000
+                + [(100, 6000)] * 1000,
+            )
+            reference = MasterDocument(
+                source_language="ja",
+                source_file="front.wav",
+                duration_ms=4000,
+                segments=(Segment("seg_000001", 0, 4000, "MIX", "speech", "ref"),),
+            )
+            candidate = MasterDocument(
+                source_language="ja",
+                source_file="front.wav",
+                duration_ms=4000,
+                segments=(
+                    Segment("seg_000001", 0, 1000, "L", "speech", "secret-match"),
+                    Segment("seg_000002", 1000, 2000, "MIX", "speech", "secret-missed"),
+                    Segment("seg_000003", 2000, 3000, "R", "speech", "secret-over"),
+                    Segment("seg_000004", 3000, 4000, "L", "speech", "secret-wrong"),
+                ),
+            )
+            (references / "front.master.json").write_text(
+                json.dumps(reference.to_json(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (candidates / "front.master.json").write_text(
+                json.dumps(candidate.to_json(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            manifest = root / "eval-manifest.json"
+            audio_map = root / "audio-map.json"
+            output_path = root / "candidate-channel-audit.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-manifest-v1",
+                        "cases": [
+                            {
+                                "id": "front",
+                                "reference": "references/front.master.json",
+                                "candidate": "candidates/front.master.json",
+                                "candidate_id": "candidate",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            audio_map.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-audio-map-v1",
+                        "items": [{"case_id": "front", "audio": "audio/front.wav"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "audit-candidate-channels",
+                    "--json",
+                    "--threshold-db",
+                    "3",
+                    "--quiet-channel-max-dbfs",
+                    "none",
+                    "--audio-map",
+                    str(audio_map),
+                    "-o",
+                    str(output_path),
+                    str(manifest),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            saved_report = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual(report["format"], "custom-asmr-candidate-channel-audit-suite-v1")
+            self.assertEqual(saved_report["format"], "custom-asmr-candidate-channel-audit-suite-v1")
+            self.assertEqual(report["summary"]["speech_segment_count"], 4)
+            self.assertEqual(report["summary"]["energy_labeled_count"], 3)
+            self.assertEqual(report["summary"]["energy_uncertain_count"], 1)
+            self.assertEqual(report["summary"]["match_count"], 1)
+            self.assertEqual(report["summary"]["missed_attribution_count"], 1)
+            self.assertEqual(report["summary"]["wrong_side_count"], 1)
+            self.assertEqual(report["summary"]["over_attribution_count"], 1)
+            self.assertAlmostEqual(report["summary"]["energy_labeled_match_ratio"], 1 / 3)
+            self.assertAlmostEqual(report["summary"]["energy_labeled_mix_ratio"], 1 / 3)
+            self.assertAlmostEqual(report["summary"]["energy_labeled_wrong_side_ratio"], 1 / 3)
+            self.assertEqual(report["summary"]["over_attribution_ratio"], 1.0)
+            self.assertEqual(
+                report["summary"]["status_counts"],
+                {
+                    "match": 1,
+                    "missed_attribution": 1,
+                    "over_attribution": 1,
+                    "wrong_side": 1,
+                },
+            )
+            self.assertEqual(report["summary"]["candidate_channel_counts"], {"L": 2, "MIX": 1, "R": 1})
+            self.assertEqual(report["summary"]["energy_channel_counts"], {"L": 1, "MIX": 1, "R": 2})
+            self.assertEqual(
+                [item["status"] for item in report["cases"][0]["items"]],
+                ["match", "missed_attribution", "over_attribution", "wrong_side"],
+            )
+            self.assertNotIn("secret", json.dumps(report, ensure_ascii=False))
+
     def test_review_case_status_can_fail_after_reporting_candidate_review_flags(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -4000,6 +4120,133 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["stages"]["text_asr"]["status"], "pass")
             self.assertEqual(report["stages"]["channel_attribution"]["metrics"]["report"], str(channel_comparison))
             self.assertIn("channel_attribution", error)
+
+    def test_pipeline_readiness_can_use_candidate_channel_energy_audit_for_channel_stage(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference_audit = root / "reference-audit.json"
+            vad_comparison = root / "vad-comparison.json"
+            eval_comparison = root / "eval-comparison.json"
+            candidate_channel_audit = root / "candidate-channel-audit.json"
+            reference_audit.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-reference-audit-suite-v1",
+                        "case_count": 1,
+                        "summary": {
+                            "segment_count": 1,
+                            "review_count": 0,
+                            "same_channel_overlap_pair_count": 0,
+                            "exact_boundary_overlap_pair_count": 0,
+                            "long_segment_count": 0,
+                            "speech_coverage_ratio": 0.3,
+                            "flag_type_counts": {},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            vad_comparison.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-vad-coverage-comparison-v1",
+                        "quality_gate": {"max_missed_reference_ms": 0},
+                        "items": [
+                            {
+                                "label": "chunked",
+                                "gate_passed": True,
+                                "gate_failures": [],
+                                "missed_reference_duration_ms": 0,
+                                "extra_detected_duration_ms": 0,
+                                "reference_recall": 1.0,
+                                "detected_precision": 1.0,
+                                "detected_max_interval_ms": 30000,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            eval_comparison.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-comparison-v1",
+                        "items": [
+                            {
+                                "label": "asr-candidate",
+                                "reference_type": "human-reviewed",
+                                "timing_edit_segment_ratio": 0.0,
+                                "time_aligned_500ms_ratio": 1.0,
+                                "channel_edit_segment_ratio": 1.0,
+                                "channel_time_aligned_accuracy": 0.0,
+                                "channel_time_aligned_mix_ratio": 1.0,
+                                "text_edit_segment_ratio": 0.0,
+                                "segments_needing_edit_ratio": 0.0,
+                                "practical_cer": 0.0,
+                                "candidate_review_ratio": 0.0,
+                                "dominant_review_effort_reason": None,
+                                "dominant_review_effort_ratio": None,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            candidate_channel_audit.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-candidate-channel-audit-suite-v1",
+                        "case_count": 1,
+                        "summary": {
+                            "speech_segment_count": 10,
+                            "energy_labeled_count": 10,
+                            "energy_uncertain_count": 0,
+                            "match_count": 9,
+                            "missed_attribution_count": 1,
+                            "wrong_side_count": 0,
+                            "mix_match_count": 0,
+                            "over_attribution_count": 0,
+                            "energy_labeled_match_ratio": 0.9,
+                            "energy_labeled_mix_ratio": 0.1,
+                            "energy_labeled_wrong_side_ratio": 0.0,
+                            "over_attribution_ratio": None,
+                            "status_counts": {"match": 9, "missed_attribution": 1},
+                            "reason_counts": {"left_dominant": 5, "right_dominant": 5},
+                            "candidate_channel_counts": {"L": 5, "MIX": 1, "R": 4},
+                            "energy_channel_counts": {"L": 5, "R": 5},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "pipeline-readiness",
+                    "--json",
+                    "--product-gate",
+                    "--fail-unless-asr-only-ready",
+                    "--reference-audit",
+                    str(reference_audit),
+                    "--vad-comparison",
+                    str(vad_comparison),
+                    "--eval-comparison",
+                    str(eval_comparison),
+                    "--candidate-channel-audit",
+                    str(candidate_channel_audit),
+                ]
+            )
+
+            self.assertEqual(result, 0, error)
+            report = json.loads(output)
+            self.assertTrue(report["summary"]["asr_only_ready"])
+            channel_stage = report["stages"]["channel_attribution"]
+            self.assertEqual(channel_stage["status"], "pass")
+            self.assertEqual(channel_stage["metrics"]["source"], "candidate_channel_energy_audit")
+            self.assertEqual(channel_stage["metrics"]["energy_labeled_match_ratio"], 0.9)
+            self.assertEqual(channel_stage["metrics"]["energy_labeled_mix_ratio"], 0.1)
+            self.assertIn("stereo energy proxy", channel_stage["warnings"][0])
+            self.assertEqual(report["stages"]["text_asr"]["status"], "pass")
 
     def test_pipeline_readiness_can_use_separate_alignment_comparison(self):
         with tempfile.TemporaryDirectory() as tmpdir:

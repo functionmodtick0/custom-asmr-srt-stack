@@ -30,6 +30,7 @@ from custom_asmr_srt_stack.case_batch import (
 )
 from custom_asmr_srt_stack.case_transcription import transcribe_review_case_candidates
 from custom_asmr_srt_stack.case_slicing import slice_master_document
+from custom_asmr_srt_stack.candidate_channel_audit import audit_candidate_channels_manifest
 from custom_asmr_srt_stack.channel_attribution import (
     CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
     CHANNEL_ATTRIBUTION_THRESHOLD_DB,
@@ -450,6 +451,31 @@ def audit_review_case_channels_command(args: argparse.Namespace) -> None:
         )
 
 
+def audit_candidate_channels_command(args: argparse.Namespace) -> None:
+    report = audit_candidate_channels_manifest(
+        args.manifest,
+        audio_map_file=args.audio_map,
+        source_language=args.source_language,
+        threshold_db=args.threshold_db,
+        quiet_channel_max_dbfs=args.quiet_channel_max_dbfs,
+    )
+    if args.output is not None:
+        write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    summary = report["summary"]
+    emit(
+        args,
+        report,
+        (
+            f"candidate channel audit: cases={report['case_count']} "
+            f"energy_labeled={summary['energy_labeled_count']} "
+            f"matches={summary['match_count']} "
+            f"missed={summary['missed_attribution_count']} "
+            f"wrong_side={summary['wrong_side_count']} "
+            f"over_attribution={summary['over_attribution_count']}"
+        ),
+    )
+
+
 def save_review_case_reference_command(args: argparse.Namespace) -> None:
     master = load_transcript_document(args.input, source_language=args.source_language)
     report = save_review_case_reference(args.case_index, case_id=args.case_id, master=master)
@@ -690,6 +716,7 @@ def pipeline_readiness_command(args: argparse.Namespace) -> None:
         eval_comparison_file=args.eval_comparison,
         alignment_comparison_file=args.alignment_comparison,
         channel_comparison_file=args.channel_comparison,
+        candidate_channel_audit_file=args.candidate_channel_audit,
         quality_gate=pipeline_readiness_quality_gate(args),
     )
     if args.output is not None:
@@ -1748,6 +1775,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     audit_review_case_channels_parser.set_defaults(func=audit_review_case_channels_command)
 
+    audit_candidate_channels_parser = subcommands.add_parser(
+        "audit-candidate-channels",
+        parents=[output_parent],
+        help="Audit eval candidate L/R/MIX labels against stereo energy without using reference labels.",
+    )
+    audit_candidate_channels_parser.add_argument("manifest", type=Path)
+    audit_candidate_channels_parser.add_argument("--audio-map", type=Path, required=True)
+    audit_candidate_channels_parser.add_argument("-o", "--output", type=Path)
+    audit_candidate_channels_parser.add_argument("--source-language", default="ja")
+    audit_candidate_channels_parser.add_argument(
+        "--threshold-db",
+        type=float,
+        default=CHANNEL_ATTRIBUTION_THRESHOLD_DB,
+        help="L/R dB delta required before energy is treated as candidate channel evidence.",
+    )
+    audit_candidate_channels_parser.add_argument(
+        "--quiet-channel-max-dbfs",
+        type=quiet_channel_max_dbfs_arg,
+        default=CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
+        help="Treat dominant energy as channel evidence only if the quieter side is at or below this dBFS; use 'none' to disable.",
+    )
+    audit_candidate_channels_parser.set_defaults(func=audit_candidate_channels_command)
+
     save_review_case_reference_parser = subcommands.add_parser(
         "save-review-case-reference",
         parents=[output_parent],
@@ -1946,6 +1996,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--channel-comparison",
         type=Path,
         help="Optional eval comparison report to use only for the channel_attribution readiness stage.",
+    )
+    pipeline_readiness_parser.add_argument(
+        "--candidate-channel-audit",
+        type=Path,
+        help=(
+            "Optional candidate channel energy audit to use only for the channel_attribution readiness stage; "
+            "takes precedence over --channel-comparison."
+        ),
     )
     pipeline_readiness_parser.add_argument("-o", "--output", type=Path)
     pipeline_readiness_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")

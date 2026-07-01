@@ -430,6 +430,28 @@ uv run casrt audit-review-case-channels cases/case-index.json \
 - `--fail-on-audit`은 channel audit review item이 남아 있으면 report 출력/저장 후 실패한다.
 - 이 명령은 reference를 수정하거나 energy channel을 정답으로 승격하지 않는다. Human-reviewed 승격 전 L/R label 검수 우선순위를 정하는 진단 도구다.
 
+### `audit-candidate-channels`
+
+```bash
+uv run casrt audit-candidate-channels cases/eval-manifest.json \
+  --audio-map cases/audio-map.json \
+  --threshold-db 2 \
+  --quiet-channel-max-dbfs none \
+  --json \
+  -o cases/candidate-channel-audit.json
+```
+
+동작:
+
+- 입력은 `custom-asmr-eval-manifest-v1`과 `custom-asmr-review-audio-map-v1`이다.
+- output format은 `custom-asmr-candidate-channel-audit-suite-v1`이다.
+- 각 candidate speech segment에 대해 stereo L/R RMS dBFS, delta, energy channel, candidate channel, status를 저장한다.
+- Status는 energy-labeled L/R 기준 `match`, `missed_attribution`(candidate가 MIX 유지), `wrong_side`, energy-uncertain 기준 `mix_match`, `over_attribution`으로 나눈다.
+- Summary는 `energy_labeled_match_ratio`, `energy_labeled_mix_ratio`, `energy_labeled_wrong_side_ratio`, `over_attribution_ratio`를 포함한다. 이 값은 pseudo-gold reference label 없이 channel attribution heuristic을 진단하기 위한 proxy metric이다.
+- Transcript text와 reference label은 저장하지 않는다. Segment id/time/channel과 energy diagnostics만 저장한다.
+- `--threshold-db`와 `--quiet-channel-max-dbfs`는 CLI-only 실험값이다. WebUI 옵션으로 노출하지 않는다.
+- 이 명령은 candidate/reference/audio를 수정하지 않고, energy channel을 human-reviewed 정답으로 승격하지 않는다.
+
 Audit queue는 기존 review pack 생성 경로를 그대로 사용한다.
 
 ```bash
@@ -803,6 +825,7 @@ uv run casrt pipeline-readiness \
 - `--reference-channel-audit`을 지정하면 reference L/R label energy mismatch와 uncertain count를 `reference` stage blocker와 metrics에 포함한다.
 - `--alignment-comparison`을 지정하면 `alignment` stage만 해당 eval comparison에서 읽고, `channel_attribution`과 `text_asr`는 `--eval-comparison`에서 계속 읽는다. Reference-copy oracle처럼 alignment만 따로 평가한 report를 readiness에 반영하기 위한 CLI-only override다.
 - `--channel-comparison`을 지정하면 `channel_attribution` stage만 해당 eval comparison에서 읽고, `alignment`와 `text_asr`는 `--eval-comparison`에서 계속 읽는다. Reference-copy channel sweep처럼 channel만 따로 평가한 report를 readiness에 반영하기 위한 CLI-only override다.
+- `--candidate-channel-audit`을 지정하면 `channel_attribution` stage만 `custom-asmr-candidate-channel-audit-suite-v1`에서 읽고, reference label comparison 대신 stereo energy proxy 기준으로 pass/fail을 계산한다. 이 option은 `--channel-comparison`보다 우선하며, reference channel label 문제는 `--reference-channel-audit`을 통해 `reference` stage에 남긴다.
 - 기본 eval-derived stage 판정은 남은 timing/channel/text/review edit ratio가 0보다 크면 fail인 엄격 모드다. `--product-gate` 또는 개별 gate 인자를 지정하면 `alignment`, `channel_attribution`, `text_asr` stage는 product threshold 기준으로 pass/fail을 계산하고 각 stage에 적용된 `quality_gate`를 저장한다. `--product-gate`의 human-reviewed reference 조건은 `reference` stage에 적용해 pseudo-gold 기준본을 ASR-only ready로 보지 않는다.
 - `production_ready`는 ASR-only stage와 `text_asr`가 모두 pass일 때만 true다.
 - `--fail-unless-asr-only-ready`는 report 출력/저장 후 `asr_only_ready=false`이면 실패한다.
