@@ -390,7 +390,7 @@ uv run casrt prepare-review-cases plan.json -o cases --json
 
 `plan.json`은 `custom-asmr-case-slice-plan-v1` 형식이며 각 case의 `id`, `audio`, `reference`, `start_ms`, `end_ms`를 담습니다. 모든 case에 `candidate`가 있으면 `eval-manifest.json`도 함께 생성합니다. 출력에는 `audio-map.json`, `case-index.json`, `audio/*.wav`, `references/*.master.json`이 포함됩니다.
 
-현재 durable human-review 시작점은 `.casrt/experiments/all8-front120-review-cases/case-index.json`입니다. `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/uploads` 01~08 WAV와 2025-12-22 stable-ts draft SRT에서 만든 120초 pseudo-gold set이며, `review-case-status` 기준 `case_count=8`, `reference_review_count=15`, `reference_review_duration_ms=163066`, `case_issue_count=0`입니다. WebUI Review path로 이 `case-index.json`을 열고 reference를 검수한 뒤 `freeze-case-references --reference-type human-reviewed`로 승격합니다.
+현재 durable human-review 시작점은 `.casrt/experiments/all8-front120-review-cases/case-index.json`입니다. `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/uploads` 01~08 WAV와 2025-12-22 stable-ts draft SRT에서 만든 120초 pseudo-gold set이며, `review-case-status` 기준 `case_count=8`, `reference_review_count=15`, `reference_review_duration_ms=163066`, `case_issue_count=0`입니다. 구조 검수와 channel 검수를 함께 보는 WebUI queue는 `.casrt/experiments/all8-front120-review-cases/combined-reference-review-pack-product-structure-focus-metrics-smoke`입니다. WebUI Review path로 이 pack이나 `case-index.json`을 열고 reference를 검수한 뒤 `freeze-case-references --reference-type human-reviewed`로 승격합니다. 현재 best readiness 기준 ASR-only blocker는 reference뿐이고, product quality blocker는 reference와 text ASR입니다.
 
 준비된 case set 상태 확인:
 
