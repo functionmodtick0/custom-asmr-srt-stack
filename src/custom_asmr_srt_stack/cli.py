@@ -551,6 +551,13 @@ def align_review_case_candidates_command(args: argparse.Namespace) -> None:
 def freeze_case_references(args: argparse.Namespace) -> None:
     if args.fail_on_reference_audit:
         enforce_reference_audit_gate(args.case_index, source_language=args.source_language)
+    if args.fail_on_reference_channel_audit:
+        enforce_reference_channel_audit_gate(
+            args.case_index,
+            source_language=args.source_language,
+            threshold_db=args.reference_channel_threshold_db,
+            quiet_channel_max_dbfs=args.reference_channel_quiet_max_dbfs,
+        )
     report = freeze_case_references_batch(
         args.case_index,
         output_dir=args.output,
@@ -569,6 +576,13 @@ def freeze_case_references(args: argparse.Namespace) -> None:
 def build_eval_manifest(args: argparse.Namespace) -> None:
     if args.fail_on_reference_audit:
         enforce_reference_audit_gate(args.case_index, source_language=args.source_language)
+    if args.fail_on_reference_channel_audit:
+        enforce_reference_channel_audit_gate(
+            args.case_index,
+            source_language=args.source_language,
+            threshold_db=args.reference_channel_threshold_db,
+            quiet_channel_max_dbfs=args.reference_channel_quiet_max_dbfs,
+        )
     manifest = build_eval_manifest_from_case_index(
         args.case_index,
         reference_type=args.reference_type,
@@ -602,6 +616,32 @@ def enforce_reference_audit_gate(case_index: Path, *, source_language: str) -> N
         raise ValueError(
             "reference audit gate failed: "
             f"reference_audit_item_count={item_count} reason_counts={reason_counts}"
+        )
+
+
+def enforce_reference_channel_audit_gate(
+    case_index: Path,
+    *,
+    source_language: str,
+    threshold_db: float,
+    quiet_channel_max_dbfs: float | None,
+) -> None:
+    audit_report = audit_review_case_channels(
+        case_index,
+        source_language=source_language,
+        threshold_db=threshold_db,
+        quiet_channel_max_dbfs=quiet_channel_max_dbfs,
+    )
+    review_effort_report = reference_channel_audit_review_effort_report(
+        audit_report,
+        source_case_index=str(case_index),
+    )
+    item_count = review_effort_report["item_count"]
+    if item_count > 0:
+        reason_counts = json.dumps(review_effort_report["reason_counts"], ensure_ascii=False, sort_keys=True)
+        raise ValueError(
+            "reference channel audit gate failed: "
+            f"reference_channel_audit_item_count={item_count} reason_counts={reason_counts}"
         )
 
 
@@ -1886,6 +1926,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Fail before writing output if reference audit structural review items remain.",
     )
+    freeze_case_references_parser.add_argument(
+        "--fail-on-reference-channel-audit",
+        action="store_true",
+        help="Fail before writing output if reference L/R channel labels conflict with stereo energy evidence.",
+    )
+    freeze_case_references_parser.add_argument(
+        "--reference-channel-threshold-db",
+        type=float,
+        default=CHANNEL_ATTRIBUTION_THRESHOLD_DB,
+        help="L/R dB delta used by --fail-on-reference-channel-audit.",
+    )
+    freeze_case_references_parser.add_argument(
+        "--reference-channel-quiet-max-dbfs",
+        type=quiet_channel_max_dbfs_arg,
+        default=CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
+        help="Quieter-side dBFS gate used by --fail-on-reference-channel-audit; use 'none' to disable.",
+    )
     freeze_case_references_parser.set_defaults(func=freeze_case_references)
 
     build_eval_manifest_parser = subcommands.add_parser(
@@ -1910,6 +1967,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--fail-on-reference-audit",
         action="store_true",
         help="Fail if reference audit structural review items remain.",
+    )
+    build_eval_manifest_parser.add_argument(
+        "--fail-on-reference-channel-audit",
+        action="store_true",
+        help="Fail if reference L/R channel labels conflict with stereo energy evidence.",
+    )
+    build_eval_manifest_parser.add_argument(
+        "--reference-channel-threshold-db",
+        type=float,
+        default=CHANNEL_ATTRIBUTION_THRESHOLD_DB,
+        help="L/R dB delta used by --fail-on-reference-channel-audit.",
+    )
+    build_eval_manifest_parser.add_argument(
+        "--reference-channel-quiet-max-dbfs",
+        type=quiet_channel_max_dbfs_arg,
+        default=CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
+        help="Quieter-side dBFS gate used by --fail-on-reference-channel-audit; use 'none' to disable.",
     )
     build_eval_manifest_parser.set_defaults(func=build_eval_manifest)
 

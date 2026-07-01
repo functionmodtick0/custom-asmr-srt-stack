@@ -547,6 +547,9 @@ uv run casrt freeze-case-references cases/case-index.json \
   --reference-notes "manual review pass 2026-06-30" \
   --fail-on-review \
   --fail-on-reference-audit \
+  --fail-on-reference-channel-audit \
+  --reference-channel-threshold-db 2 \
+  --reference-channel-quiet-max-dbfs none \
   -o cases-frozen \
   --json
 ```
@@ -561,6 +564,7 @@ uv run casrt freeze-case-references cases/case-index.json \
 - audio/reference/candidate source file이 없거나 candidate가 있는 case와 없는 case가 섞이면 output directory를 만들기 전에 실패한다.
 - `--fail-on-review`를 지정하면 reference에 `needs_review=true`가 남아 있을 때 output directory를 만들기 전에 실패한다.
 - `--fail-on-reference-audit`를 지정하면 reference audit 구조 검수 queue가 남아 있을 때 output directory를 만들기 전에 실패한다. Gate 대상은 남은 review flag, 기본 100ms 이상 same-channel overlap, same-channel exact-boundary duplicate, 31초 이상 long segment 등 `audit-review-case-references --review-effort-output`과 같은 기준이다.
+- `--fail-on-reference-channel-audit`를 지정하면 reference L/R label이 stereo energy mismatch/uncertain review queue를 남길 때 output directory를 만들기 전에 실패한다. `--reference-channel-threshold-db`와 `--reference-channel-quiet-max-dbfs`는 이 gate의 energy 기준이다. 이 gate는 energy를 정답으로 승격하지 않고 human-reviewed 승격 전 channel label 검수 누락을 막는다.
 - 이 명령도 human-reviewed 여부를 추정하지 않는다. `--reference-type human-reviewed`는 사람이 실제 검수를 끝낸 reference에만 사용한다.
 
 candidate가 포함된 준비 case set에서 평가 manifest를 다시 만들 때는 `build-eval-manifest`를 사용한다.
@@ -571,6 +575,9 @@ uv run casrt build-eval-manifest cases/case-index.json \
   --reference-notes "manual review pass 2026-06-30" \
   --fail-on-review \
   --fail-on-reference-audit \
+  --fail-on-reference-channel-audit \
+  --reference-channel-threshold-db 2 \
+  --reference-channel-quiet-max-dbfs none \
   -o cases/eval-manifest.human-reviewed.json \
   --json
 ```
@@ -582,6 +589,7 @@ uv run casrt build-eval-manifest cases/case-index.json \
 - `review-case-status`와 같은 방식으로 파일 존재 여부와 stale count를 확인하고, 문제가 있으면 manifest를 쓰지 않고 실패한다.
 - `--fail-on-review`는 reference에 `needs_review=true`가 남아 있으면 manifest를 쓰지 않고 실패한다.
 - `--fail-on-reference-audit`는 reference audit 구조 검수 queue가 남아 있으면 manifest를 쓰지 않고 실패한다.
+- `--fail-on-reference-channel-audit`는 reference channel audit mismatch/uncertain queue가 남아 있으면 manifest를 쓰지 않고 실패한다.
 - output file은 `custom-asmr-eval-manifest-v1`이다.
 - `--reference-type`이 있으면 root `reference_type`을 override한다. 사람이 검수한 기준본을 모델 승격에 쓰려면 이 값을 `human-reviewed`로 명시한다.
 - `--reference-type`이 없으면 `case-index.json`의 root/item reference type을 보존한다.
