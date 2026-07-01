@@ -369,7 +369,7 @@ uv run casrt prepare-review-cases plan.json -o cases --json
 
 `plan.json`은 `custom-asmr-case-slice-plan-v1` 형식이며 각 case의 `id`, `audio`, `reference`, `start_ms`, `end_ms`를 담습니다. 모든 case에 `candidate`가 있으면 `eval-manifest.json`도 함께 생성합니다. 출력에는 `audio-map.json`, `case-index.json`, `audio/*.wav`, `references/*.master.json`이 포함됩니다.
 
-현재 durable human-review 시작점은 `.casrt/experiments/all8-front120-review-cases/case-index.json`입니다. `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/uploads` 01~08 WAV와 2025-12-22 stable-ts draft SRT에서 만든 120초 pseudo-gold set이며, `review-case-status` 기준 `case_count=8`, `reference_review_count=15`, `case_issue_count=0`입니다. WebUI Review path로 이 `case-index.json`을 열고 reference를 검수한 뒤 `freeze-case-references --reference-type human-reviewed`로 승격합니다.
+현재 durable human-review 시작점은 `.casrt/experiments/all8-front120-review-cases/case-index.json`입니다. `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/uploads` 01~08 WAV와 2025-12-22 stable-ts draft SRT에서 만든 120초 pseudo-gold set이며, `review-case-status` 기준 `case_count=8`, `reference_review_count=15`, `reference_review_duration_ms=163066`, `case_issue_count=0`입니다. WebUI Review path로 이 `case-index.json`을 열고 reference를 검수한 뒤 `freeze-case-references --reference-type human-reviewed`로 승격합니다.
 
 준비된 case set 상태 확인:
 
@@ -377,7 +377,7 @@ uv run casrt prepare-review-cases plan.json -o cases --json
 uv run casrt review-case-status cases/case-index.json --json -o cases/status.json
 ```
 
-`review-case-status`는 `case-index.json` 기준으로 audio/reference/candidate 파일 존재 여부, 실제 segment 수, 남은 `needs_review` 수를 다시 계산합니다. Report에는 `next_review_case_id`, candidate가 없는 `cases_missing_candidate`, candidate `needs_review`가 남은 `cases_with_candidate_review`, case별 `first_review_segment`도 포함되어 CLI/WebUI가 같은 다음 검수/후보 준비 위치를 표시할 수 있습니다. `--fail-on-issues`는 파일 누락이나 stale count가 있을 때, `--fail-on-review`는 reference에 검수 flag가 남았을 때, `--fail-on-missing-candidates`는 candidate path가 없는 case가 있을 때, `--fail-on-candidate-review`는 candidate에 검수 flag가 남았을 때 report를 출력/저장한 뒤 실패 exit code를 반환합니다.
+`review-case-status`는 `case-index.json` 기준으로 audio/reference/candidate 파일 존재 여부, 실제 segment 수, 남은 `needs_review` 수와 duration을 다시 계산합니다. Report에는 `next_review_case_id`, candidate가 없는 `cases_missing_candidate`, candidate `needs_review`가 남은 `cases_with_candidate_review`, case별 `first_review_segment`도 포함되어 CLI/WebUI가 같은 다음 검수/후보 준비 위치를 표시할 수 있습니다. `--fail-on-issues`는 파일 누락이나 stale count가 있을 때, `--fail-on-review`는 reference에 검수 flag가 남았을 때, `--fail-on-missing-candidates`는 candidate path가 없는 case가 있을 때, `--fail-on-candidate-review`는 candidate에 검수 flag가 남았을 때 report를 출력/저장한 뒤 실패 exit code를 반환합니다.
 
 준비된 case set의 남은 reference 검수 구간만 audio clip queue로 만들기:
 

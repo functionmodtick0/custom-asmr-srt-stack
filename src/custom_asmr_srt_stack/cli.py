@@ -319,7 +319,9 @@ def review_case_status_command(args: argparse.Namespace) -> None:
         (
             f"review case status: cases={report['case_count']} "
             f"review={report['reference_review_count']} "
-            f"candidate_review={report['candidate_review_count']} issues={report['case_issue_count']}"
+            f"review_ms={report['reference_review_duration_ms']} "
+            f"candidate_review={report['candidate_review_count']} "
+            f"candidate_review_ms={report['candidate_review_duration_ms']} issues={report['case_issue_count']}"
         ),
     )
     if args.fail_on_issues and not report["ok"]:

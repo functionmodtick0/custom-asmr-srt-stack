@@ -1073,12 +1073,14 @@ class ProjectCliTests(unittest.TestCase):
             self.assertIsNone(report["next_candidate_review_case_id"])
             self.assertEqual(report["reference_type_counts"], {"pseudo-gold": 1})
             self.assertEqual(report["reference_review_count"], 1)
+            self.assertEqual(report["reference_review_duration_ms"], 1)
             self.assertEqual(report["reference_review_case_count"], 1)
             self.assertEqual(report["reference_review_clear_case_count"], 0)
             self.assertEqual(report["cases_needing_review"], ["front-a"])
             self.assertEqual(report["next_review_case_id"], "front-a")
             self.assertEqual(report["items"][0]["reference_segments"], 2)
             self.assertEqual(report["items"][0]["reference_review_count"], 1)
+            self.assertEqual(report["items"][0]["reference_review_duration_ms"], 1)
             self.assertEqual(
                 {
                     key: report["items"][0]["first_review_segment"][key]
@@ -1199,10 +1201,12 @@ class ProjectCliTests(unittest.TestCase):
             report = json.loads(output)
             self.assertTrue(report["ok"])
             self.assertEqual(report["candidate_review_count"], 1)
+            self.assertEqual(report["candidate_review_duration_ms"], 2)
             self.assertEqual(report["candidate_review_case_count"], 1)
             self.assertEqual(report["candidate_review_clear_case_count"], 0)
             self.assertEqual(report["cases_with_candidate_review"], ["front-a"])
             self.assertEqual(report["next_candidate_review_case_id"], "front-a")
+            self.assertEqual(report["items"][0]["candidate_review_duration_ms"], 2)
             self.assertEqual(json.loads(status_path.read_text(encoding="utf-8"))["candidate_review_count"], 1)
             self.assertIn("candidate_review_count=1", error)
 

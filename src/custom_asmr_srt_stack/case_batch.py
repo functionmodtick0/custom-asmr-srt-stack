@@ -194,9 +194,11 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
     reference_type_counts: dict[str, int] = {}
     missing_file_count = 0
     reference_review_count = 0
+    reference_review_duration_ms = 0
     reference_review_clear_case_count = 0
     candidate_case_count = 0
     candidate_review_count = 0
+    candidate_review_duration_ms = 0
     candidate_review_clear_case_count = 0
     cases_missing_candidate: list[str] = []
     cases_needing_review: list[str] = []
@@ -217,11 +219,13 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
         reference_type_counts[item["reference_type"]] = reference_type_counts.get(item["reference_type"], 0) + 1
         missing_file_count += item["missing_file_count"]
         reference_review_count += item["reference_review_count"]
+        reference_review_duration_ms += item["reference_review_duration_ms"]
         if item.get("candidate") is not None:
             candidate_case_count += 1
             item_candidate_review_count = item.get("candidate_review_count")
             if isinstance(item_candidate_review_count, int):
                 candidate_review_count += item_candidate_review_count
+                candidate_review_duration_ms += item["candidate_review_duration_ms"]
                 if item_candidate_review_count > 0:
                     cases_with_candidate_review.append(item["id"])
                 elif candidate_loaded_without_issues(item):
@@ -253,10 +257,12 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
         "cases_with_issues": cases_with_issues,
         "case_issue_count": len(cases_with_issues),
         "reference_review_count": reference_review_count,
+        "reference_review_duration_ms": reference_review_duration_ms,
         "reference_review_case_count": len(cases_needing_review),
         "reference_review_clear_case_count": reference_review_clear_case_count,
         "cases_needing_review": cases_needing_review,
         "next_review_case_id": cases_needing_review[0] if cases_needing_review else None,
+        "candidate_review_duration_ms": candidate_review_duration_ms,
         "ok": missing_file_count == 0 and not cases_with_issues,
         "items": items,
     }
@@ -1053,6 +1059,7 @@ def review_case_status_item(
 
     reference_segments = 0
     reference_review_count = 0
+    reference_review_duration_ms = 0
     first_review_segment = None
     if reference["exists"]:
         reference_counts, reference_issue = transcript_status(
@@ -1061,6 +1068,7 @@ def review_case_status_item(
         )
         reference_segments = reference_counts["segments"]
         reference_review_count = reference_counts["review_count"]
+        reference_review_duration_ms = reference_counts["review_duration_ms"]
         first_review_segment = reference_counts["first_review_segment"]
         if reference_issue is not None:
             issues.append(f"reference {reference_issue}")
@@ -1077,6 +1085,7 @@ def review_case_status_item(
     candidate = None
     candidate_segments = None
     candidate_review_count = None
+    candidate_review_duration_ms = None
     candidate_value = raw_item.get("candidate")
     if candidate_value is not None:
         if not isinstance(candidate_value, str) or not candidate_value:
@@ -1092,6 +1101,7 @@ def review_case_status_item(
             )
             candidate_segments = candidate_counts["segments"]
             candidate_review_count = candidate_counts["review_count"]
+            candidate_review_duration_ms = candidate_counts["review_duration_ms"]
             if candidate_issue is not None:
                 issues.append(f"candidate {candidate_issue}")
 
@@ -1106,9 +1116,11 @@ def review_case_status_item(
         "index_review_count": raw_item.get("review_count"),
         "reference_segments": reference_segments,
         "reference_review_count": reference_review_count,
+        "reference_review_duration_ms": reference_review_duration_ms,
         "first_review_segment": first_review_segment,
         "candidate_segments": candidate_segments,
         "candidate_review_count": candidate_review_count,
+        "candidate_review_duration_ms": candidate_review_duration_ms,
         "missing_file_count": missing_file_count,
         "issues": issues,
     }
@@ -1127,11 +1139,18 @@ def transcript_status(path: Path, *, source_language: str) -> tuple[dict[str, An
     try:
         master = load_transcript_document(path, source_language=source_language)
     except (OSError, ValueError, json.JSONDecodeError) as error:
-        return {"segments": 0, "review_count": 0, "first_review_segment": None}, f"cannot be loaded: {error}"
+        return {
+            "segments": 0,
+            "review_count": 0,
+            "review_duration_ms": 0,
+            "first_review_segment": None,
+        }, f"cannot be loaded: {error}"
     first_review_segment = next((segment.to_json() for segment in master.segments if segment.needs_review), None)
+    review_segments = [segment for segment in master.segments if segment.needs_review]
     return {
         "segments": len(master.segments),
-        "review_count": sum(1 for segment in master.segments if segment.needs_review),
+        "review_count": len(review_segments),
+        "review_duration_ms": sum(max(0, segment.end_ms - segment.start_ms) for segment in review_segments),
         "first_review_segment": first_review_segment,
     }, None
 
