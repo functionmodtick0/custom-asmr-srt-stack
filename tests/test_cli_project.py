@@ -2139,6 +2139,16 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(pack["items"][0]["end_ms"], 10000)
             self.assertLessEqual(pack["items"][0]["clip_end_ms"] - pack["items"][0]["clip_start_ms"], 6000)
             self.assertLess(pack["items"][0]["clip_end_ms"] - pack["items"][0]["clip_start_ms"], 11000)
+            self.assertEqual(
+                pack["duration_summary"],
+                {
+                    "source_item_duration_ms_sum": 10000,
+                    "effective_item_duration_ms_sum": 5000,
+                    "clip_duration_ms_sum": pack["items"][0]["clip_end_ms"] - pack["items"][0]["clip_start_ms"],
+                    "clip_duration_ms_max": pack["items"][0]["clip_end_ms"] - pack["items"][0]["clip_start_ms"],
+                    "focus_item_count": 1,
+                },
+            )
 
     def test_audit_candidate_channels_reports_energy_agreement_without_reference_labels_or_text(self):
         with tempfile.TemporaryDirectory() as tmpdir:

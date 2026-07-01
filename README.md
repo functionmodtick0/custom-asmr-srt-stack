@@ -677,7 +677,7 @@ uv run casrt review-pack review-effort.json \
   --json
 ```
 
-`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다. `review-effort`의 priority 순서와 score/rank, root `case_summaries`/`case_count`/`next_case_id`는 pack index에도 보존됩니다. Item에 `review_clip_start_ms/review_clip_end_ms`가 있으면 clip WAV는 그 focus 구간과 context만 잘라 만들고, 원래 `start_ms/end_ms`는 source case 편집 위치로 유지합니다. `--source-case-index`를 주면 case-index의 `items[].audio`에서 case별 audio path를 자동으로 가져오고, WebUI에서 후보 실패 clip을 보다가 `case 열기`로 원 reference segment 편집 화면에 바로 들어갈 수 있습니다. `next_case_id`가 있으면 clip을 선택하지 않아도 `case 열기`가 해당 case의 첫 queue item으로 이동합니다. `review-effort` 안에 `source_case_index`가 이미 들어 있으면 이 옵션도 생략할 수 있습니다.
+`review-pack/index.json`과 `review-pack/clips/*.wav`가 생성되며, 사람이 human-reviewed gold를 만들 때 다음 수정 후보를 바로 들을 수 있습니다. `review-effort`의 priority 순서와 score/rank, root `case_summaries`/`case_count`/`next_case_id`는 pack index에도 보존됩니다. Item에 `review_clip_start_ms/review_clip_end_ms`가 있으면 clip WAV는 그 focus 구간과 context만 잘라 만들고, 원래 `start_ms/end_ms`는 source case 편집 위치로 유지합니다. Root `duration_summary`에는 원래 item duration 합계, focus 적용 후 effective duration 합계, 실제 clip duration 합계와 max가 들어갑니다. `--source-case-index`를 주면 case-index의 `items[].audio`에서 case별 audio path를 자동으로 가져오고, WebUI에서 후보 실패 clip을 보다가 `case 열기`로 원 reference segment 편집 화면에 바로 들어갈 수 있습니다. `next_case_id`가 있으면 clip을 선택하지 않아도 `case 열기`가 해당 case의 첫 queue item으로 이동합니다. `review-effort` 안에 `source_case_index`가 이미 들어 있으면 이 옵션도 생략할 수 있습니다.
 
 생성된 pack은 WebUI에서도 열 수 있습니다.
 

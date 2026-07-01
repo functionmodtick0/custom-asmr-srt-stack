@@ -867,6 +867,7 @@ uv run casrt review-pack review-effort.json \
 - output directory는 없거나 비어 있어야 한다. 기존 clip과 새 index가 섞이는 것을 막기 위해 non-empty directory에는 쓰지 않는다.
 - 각 item의 `start_ms/end_ms`에 기본 500ms context를 붙이고 audio duration 안으로 clamp해서 `clips/*.wav`를 만든다. Optional `review_clip_start_ms/review_clip_end_ms`가 있으면 WAV 생성에는 그 focus range를 사용하고, 원래 `start_ms/end_ms`는 source segment 편집 계약으로 보존한다. Focus range는 반드시 원래 item bounds 안에 있어야 하며, 잘못된 값이면 output directory를 만들기 전에 실패한다.
 - `index.json` format은 `custom-asmr-review-pack-v1`이다. 각 item은 원래 review reason/text/timing, priority score/rank, `clip_file`, `clip_start_ms`, `clip_end_ms`, `clip_context_ms`를 보존한다.
+- Root `duration_summary`는 `source_item_duration_ms_sum`, `effective_item_duration_ms_sum`, `clip_duration_ms_sum`, `clip_duration_ms_max`, `focus_item_count`를 포함한다. 이 값은 focus clip이 review burden을 얼마나 줄였는지 반복 실험에서 비교하기 위한 관측 metric이며, item timing contract를 바꾸지 않는다.
 - input report에 `case_summaries`, `case_count`, `next_case_id`가 있으면 pack root에도 보존한다. WebUI는 이 값을 사용해 review-pack header에서 case 수와 다음 검수 case를 표시할 수 있다.
 - `--source-case-index`를 지정하거나 input report에 `source_case_index`가 있으면 pack-level과 case/reference id가 있는 item에 `source_case_index`를 보존한다. WebUI는 이 값을 사용해 후보 실패 clip에서 source review case editor의 reference segment로 이동한다.
 - Pack 생성은 human-reviewed gold 제작을 쉽게 하기 위한 CLI 도구이며 WebUI 옵션을 늘리지 않는다.

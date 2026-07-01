@@ -40,6 +40,7 @@ def build_review_pack(
 
     audio_cache: dict[str, tuple[bytes, int]] = {}
     packed_items = []
+    duration_summary = empty_review_pack_duration_summary()
     for index, item in enumerate(items, start=1):
         case_id = item_case_id(item)
         audio_path = audio_path_for_case(audio_by_case, case_id)
@@ -55,6 +56,16 @@ def build_review_pack(
         clip_end_ms = min(duration_ms, focus_end_ms + context_ms)
         if clip_end_ms <= clip_start_ms:
             raise ValueError(f"review item {index} selects an empty audio range")
+        update_review_pack_duration_summary(
+            duration_summary,
+            item=item,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            focus_start_ms=focus_start_ms,
+            focus_end_ms=focus_end_ms,
+            clip_start_ms=clip_start_ms,
+            clip_end_ms=clip_end_ms,
+        )
         clip_file = review_clip_name(index, case_id, item)
         (clips_dir / clip_file).write_bytes(slice_wav(audio_bytes, start_ms=clip_start_ms, end_ms=clip_end_ms))
         packed_item = dict(item)
@@ -74,6 +85,7 @@ def build_review_pack(
         "format": REVIEW_PACK_FORMAT,
         "source_report": review_effort_report.get("source_report"),
         "clip_count": len(packed_items),
+        "duration_summary": duration_summary,
         "items": packed_items,
     }
     preserve_review_effort_summary(review_effort_report, result)
@@ -93,6 +105,40 @@ def preserve_review_effort_summary(source: dict[str, Any], target: dict[str, Any
     next_case_id = source.get("next_case_id")
     if next_case_id is None or isinstance(next_case_id, str):
         target["next_case_id"] = next_case_id
+
+
+def empty_review_pack_duration_summary() -> dict[str, int]:
+    return {
+        "source_item_duration_ms_sum": 0,
+        "effective_item_duration_ms_sum": 0,
+        "clip_duration_ms_sum": 0,
+        "clip_duration_ms_max": 0,
+        "focus_item_count": 0,
+    }
+
+
+def update_review_pack_duration_summary(
+    summary: dict[str, int],
+    *,
+    item: dict[str, Any],
+    start_ms: int,
+    end_ms: int,
+    focus_start_ms: int,
+    focus_end_ms: int,
+    clip_start_ms: int,
+    clip_end_ms: int,
+) -> None:
+    clip_duration_ms = clip_end_ms - clip_start_ms
+    summary["source_item_duration_ms_sum"] += end_ms - start_ms
+    summary["effective_item_duration_ms_sum"] += focus_end_ms - focus_start_ms
+    summary["clip_duration_ms_sum"] += clip_duration_ms
+    summary["clip_duration_ms_max"] = max(summary["clip_duration_ms_max"], clip_duration_ms)
+    if item_has_review_clip_bounds(item):
+        summary["focus_item_count"] += 1
+
+
+def item_has_review_clip_bounds(item: dict[str, Any]) -> bool:
+    return item.get("review_clip_start_ms") is not None or item.get("review_clip_end_ms") is not None
 
 
 def prepare_output_dir(output_dir: Path) -> None:

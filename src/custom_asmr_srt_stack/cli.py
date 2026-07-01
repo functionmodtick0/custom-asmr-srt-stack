@@ -949,7 +949,9 @@ def review_pack(args: argparse.Namespace) -> None:
     emit(
         args,
         report,
-        f"review pack: {args.output} clips={report['clip_count']}",
+        "review pack: "
+        f"{args.output} clips={report['clip_count']} "
+        f"clip_duration_ms_sum={report['duration_summary']['clip_duration_ms_sum']}",
     )
 
 
