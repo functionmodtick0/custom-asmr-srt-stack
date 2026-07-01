@@ -876,6 +876,15 @@ def ratio_arg(value: float | None, name: str) -> float | None:
     return value
 
 
+def quiet_channel_max_dbfs_arg(value: str) -> float | None:
+    if value.strip().lower() in {"none", "off", "disabled"}:
+        return None
+    try:
+        return float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("--quiet-channel-max-dbfs must be a number or 'none'") from error
+
+
 def serve(args: argparse.Namespace) -> None:
     run_server(host=args.host, port=args.port)
 
@@ -1495,9 +1504,9 @@ def build_parser() -> argparse.ArgumentParser:
     attribute_channels_parser.add_argument("--threshold-db", type=float, default=CHANNEL_ATTRIBUTION_THRESHOLD_DB)
     attribute_channels_parser.add_argument(
         "--quiet-channel-max-dbfs",
-        type=float,
+        type=quiet_channel_max_dbfs_arg,
         default=CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
-        help="Keep MIX unless the quieter side is at or below this dBFS value.",
+        help="Keep MIX unless the quieter side is at or below this dBFS value; use 'none' to disable.",
     )
     attribute_channels_parser.add_argument(
         "--diagnostics-output",
@@ -1522,9 +1531,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sweep_channel_attribution_parser.add_argument(
         "--quiet-channel-max-dbfs",
-        type=float,
+        type=quiet_channel_max_dbfs_arg,
         action="append",
-        help="Quiet-side gate to test. Repeat for multiple values; default is the product quiet-side gate.",
+        help="Quiet-side gate to test. Repeat for multiple values; use 'none' to disable.",
     )
     sweep_channel_attribution_parser.add_argument(
         "--reset-speech-channels-to-mix",

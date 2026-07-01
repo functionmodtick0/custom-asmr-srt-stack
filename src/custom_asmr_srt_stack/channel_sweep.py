@@ -30,7 +30,7 @@ def sweep_channel_attribution(
     audio_map_file: Path,
     output_dir: Path,
     threshold_db_values: list[float],
-    quiet_channel_max_dbfs_values: list[float],
+    quiet_channel_max_dbfs_values: list[float | None],
     source_language: str = "ja",
     reset_speech_channels_to_mix: bool = False,
 ) -> dict[str, Any]:
@@ -206,8 +206,9 @@ def audio_path_for_case(audio_by_case: dict[str | None, Path], case_id: str) -> 
         raise ValueError(f"audio map is missing case_id {case_id!r}") from error
 
 
-def channel_sweep_setting_id(*, threshold_db: float, quiet_channel_max_dbfs: float) -> str:
-    return f"th{safe_float_id(threshold_db)}_quiet{safe_float_id(quiet_channel_max_dbfs)}"
+def channel_sweep_setting_id(*, threshold_db: float, quiet_channel_max_dbfs: float | None) -> str:
+    quiet_id = "none" if quiet_channel_max_dbfs is None else safe_float_id(quiet_channel_max_dbfs)
+    return f"th{safe_float_id(threshold_db)}_quiet{quiet_id}"
 
 
 def safe_float_id(value: float) -> str:

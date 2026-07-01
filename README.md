@@ -507,7 +507,7 @@ uv run casrt eval-manifest aligned-candidates/eval-manifest.json --product-gate
 uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.attributed.master.json --json
 ```
 
-기본값은 L/R 차이 8dB 이상 및 quieter side -40dBFS 이하입니다. 2026-06-30 01/04/07 front120 pseudo-gold에서 stable-ts MIX-only 후보에 적용했을 때 practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 68.8%, MIX ratio 40.3%, review effort 64/74였습니다.
+기본값은 L/R 차이 8dB 이상 및 quieter side -40dBFS 이하입니다. `--quiet-channel-max-dbfs none`은 quieter-side gate를 끄는 CLI-only 실험 옵션입니다. 2026-06-30 01/04/07 front120 pseudo-gold에서 stable-ts MIX-only 후보에 적용했을 때 practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 68.8%, MIX ratio 40.3%, review effort 64/74였습니다.
 
 튜닝/검수용으로는 `--diagnostics-output channel-diagnostics.json`을 추가해 segment별 L/R dBFS, 판정 이유, reason/channel count summary를 저장할 수 있습니다.
 
@@ -519,6 +519,7 @@ uv run casrt sweep-channel-attribution eval-manifest.json \
   --threshold-db 6 \
   --threshold-db 8 \
   --threshold-db 10 \
+  --quiet-channel-max-dbfs none \
   --reset-speech-channels-to-mix \
   --product-gate \
   -o channel-sweep \

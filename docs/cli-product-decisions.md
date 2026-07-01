@@ -592,7 +592,7 @@ uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.att
 - 입력 transcript는 SRT 또는 `master.json`을 받는다.
 - audio는 stereo WAV 또는 ffmpeg로 decode 가능한 stereo audio를 받는다.
 - audio를 L/R/MIX mono WAV로 정규화한 뒤, `MIX` speech segment에만 L/R RMS 기반 channel attribution을 적용한다.
-- L/R 확정 기준 기본값은 8dB 차이와 quieter side -40dBFS 이하 gate다. `--threshold-db`와 `--quiet-channel-max-dbfs`는 benchmark 재현용 CLI 옵션이며 WebUI에는 노출하지 않는다.
+- L/R 확정 기준 기본값은 8dB 차이와 quieter side -40dBFS 이하 gate다. `--threshold-db`와 `--quiet-channel-max-dbfs`는 benchmark 재현용 CLI 옵션이며 WebUI에는 노출하지 않는다. `--quiet-channel-max-dbfs none`은 quieter-side gate를 끄고 L/R delta만으로 판정하는 실험 후보를 만든다.
 - `--diagnostics-output`은 `custom-asmr-channel-diagnostics-v1` JSON을 쓴다. 각 segment의 original/attributed channel, L/R dBFS, delta, quieter side dBFS, decision reason을 담으며 WebUI 옵션으로 노출하지 않는다. stdout JSON과 diagnostics JSON은 `reason_counts`, original/attributed channel counts, speech/MIX speech segment count도 포함해 threshold 실패 원인을 빠르게 볼 수 있게 한다.
 - `L`, `R`로 이미 라벨링된 segment, speech가 아닌 segment, 작은 L/R 차이 segment는 변경하지 않는다.
 - mono audio나 L/R을 만들 수 없는 audio는 실패한다. 잘못된 channel 후처리를 조용히 통과시키지 않는다.
@@ -618,6 +618,7 @@ uv run casrt sweep-channel-attribution eval-manifest.json \
 - `audio-map`은 `custom-asmr-review-audio-map-v1` 또는 `{ "case_id": "audio.wav" }` object를 받는다.
 - audio/reference/candidate source file이 없으면 output directory를 만들기 전에 실패한다.
 - 각 threshold/quiet-side setting별로 attributed candidate master, generated eval manifest, eval report를 만든다.
+- `--quiet-channel-max-dbfs none`은 setting id를 `quietnone`으로 저장하고 output JSON에는 `quiet_channel_max_dbfs: null`로 기록한다.
 - output root에는 `custom-asmr-channel-attribution-sweep-v1` `index.json`과 `comparison.json`을 쓴다.
 - `index.json`의 setting item에는 changed segment 수와 함께 `reason_counts`, original/attributed channel counts, speech/MIX speech segment count를 보존한다. 이 값은 threshold가 낮아서 wrong L/R을 만드는지, 높아서 MIX를 과하게 남기는지 확인하기 위한 diagnostics다.
 - `--threshold-db`와 `--quiet-channel-max-dbfs`는 반복 가능하다. 지정하지 않으면 제품 기본값 8dB와 -40dBFS를 사용한다.

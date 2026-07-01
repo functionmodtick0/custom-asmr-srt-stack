@@ -1065,6 +1065,36 @@ class ProjectCliTests(unittest.TestCase):
             attributed = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(attributed["segments"][0]["channel"], "MIX")
 
+    def test_attribute_channels_can_disable_quiet_side_gate(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "active-both.wav"
+            source = root / "candidate.srt"
+            output_path = root / "attributed.master.json"
+            write_stereo_samples(audio, [(6000, 2000)] * 1000)
+            source.write_text("1\n00:00:00,000 --> 00:00:01,000\n左寄り\n", encoding="utf-8")
+
+            result, output = run_cli(
+                [
+                    "attribute-channels",
+                    "--json",
+                    "--quiet-channel-max-dbfs",
+                    "none",
+                    str(audio),
+                    str(source),
+                    "-o",
+                    str(output_path),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            payload = json.loads(output)
+            self.assertIsNone(payload["quiet_channel_max_dbfs"])
+            self.assertEqual(payload["changed_segments"], 1)
+            self.assertEqual(payload["reason_counts"], {"left_dominant": 1})
+            attributed = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual(attributed["segments"][0]["channel"], "L")
+
     def test_attribute_channels_writes_diagnostics_output(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1324,6 +1354,62 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(attributed["segments"][0]["channel"], "R")
             comparison = json.loads((output_dir / "comparison.json").read_text(encoding="utf-8"))
             self.assertEqual(comparison["items"][0]["segments_needing_edit"], 0.0)
+
+    def test_sweep_channel_attribution_can_test_without_quiet_side_gate(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "stereo.wav"
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            audio_map = root / "audio-map.json"
+            manifest = root / "manifest.json"
+            output_dir = root / "sweep"
+            write_stereo_samples(audio, [(6000, 2000)] * 1000)
+            reference.write_text("1\n00:00:00,000 --> 00:00:01,000\n[L] 左寄り\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:00,000 --> 00:00:01,000\n左寄り\n", encoding="utf-8")
+            audio_map.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-audio-map-v1",
+                        "items": [{"case_id": "front-a", "audio": "stereo.wav"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-manifest-v1",
+                        "reference_type": "human-reviewed",
+                        "cases": [{"id": "front-a", "reference": "reference.srt", "candidate": "candidate.srt"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "sweep-channel-attribution",
+                    "--json",
+                    str(manifest),
+                    "--audio-map",
+                    str(audio_map),
+                    "-o",
+                    str(output_dir),
+                    "--threshold-db",
+                    "8",
+                    "--quiet-channel-max-dbfs",
+                    "none",
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["items"][0]["setting_id"], "th8_quietnone")
+            self.assertIsNone(report["items"][0]["quiet_channel_max_dbfs"])
+            self.assertEqual(report["items"][0]["changed_segments"], 1)
+            self.assertEqual(report["items"][0]["reason_counts"], {"left_dominant": 1})
+            self.assertTrue((output_dir / "th8_quietnone" / "candidates" / "front-a.master.json").exists())
 
     def test_slice_case_writes_rebased_audio_and_transcript(self):
         with tempfile.TemporaryDirectory() as tmpdir:
