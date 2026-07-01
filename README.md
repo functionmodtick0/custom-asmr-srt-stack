@@ -396,9 +396,15 @@ uv run casrt prepare-review-cases plan.json -o cases --json
 
 ```bash
 uv run casrt review-case-status cases/case-index.json --json -o cases/status.json
+uv run casrt review-case-status cases/case-index.json \
+  --include-reference-audits \
+  --reference-channel-threshold-db 2 \
+  --reference-channel-quiet-max-dbfs none \
+  --json \
+  -o cases/status-with-audits.json
 ```
 
-`review-case-status`는 `case-index.json` 기준으로 audio/reference/candidate 파일 존재 여부, 실제 segment 수, 남은 `needs_review` 수와 duration을 다시 계산합니다. Report에는 `next_review_case_id`, candidate가 없는 `cases_missing_candidate`, candidate `needs_review`가 남은 `cases_with_candidate_review`, case별 `first_review_segment`도 포함되어 CLI/WebUI가 같은 다음 검수/후보 준비 위치를 표시할 수 있습니다. `--fail-on-issues`는 파일 누락이나 stale count가 있을 때, `--fail-on-review`는 reference에 검수 flag가 남았을 때, `--fail-on-missing-candidates`는 candidate path가 없는 case가 있을 때, `--fail-on-candidate-review`는 candidate에 검수 flag가 남았을 때 report를 출력/저장한 뒤 실패 exit code를 반환합니다.
+`review-case-status`는 `case-index.json` 기준으로 audio/reference/candidate 파일 존재 여부, 실제 segment 수, 남은 `needs_review` 수와 duration을 다시 계산합니다. Report에는 `next_review_case_id`, candidate가 없는 `cases_missing_candidate`, candidate `needs_review`가 남은 `cases_with_candidate_review`, case별 `first_review_segment`도 포함되어 CLI/WebUI가 같은 다음 검수/후보 준비 위치를 표시할 수 있습니다. `--include-reference-audits`를 주면 구조 audit과 reference channel audit summary를 status에 붙입니다. `--fail-on-issues`는 파일 누락이나 stale count가 있을 때, `--fail-on-review`는 reference에 검수 flag가 남았을 때, `--fail-on-missing-candidates`는 candidate path가 없는 case가 있을 때, `--fail-on-candidate-review`는 candidate에 검수 flag가 남았을 때, `--fail-on-reference-audit`과 `--fail-on-reference-channel-audit`은 각 audit queue가 남았을 때 report를 출력/저장한 뒤 실패 exit code를 반환합니다.
 
 ```bash
 uv run casrt audit-review-case-references cases/case-index.json \

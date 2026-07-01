@@ -365,6 +365,12 @@ uv run casrt prepare-review-cases plan.json -o cases --json
 ```bash
 uv run casrt review-case-status cases/case-index.json --json -o cases/status.json
 uv run casrt review-case-status cases/case-index.json --fail-on-issues --fail-on-review --fail-on-missing-candidates --fail-on-candidate-review
+uv run casrt review-case-status cases/case-index.json \
+  --include-reference-audits \
+  --reference-channel-threshold-db 2 \
+  --reference-channel-quiet-max-dbfs none \
+  --json \
+  -o cases/status-with-audits.json
 ```
 
 동작:
@@ -377,11 +383,13 @@ uv run casrt review-case-status cases/case-index.json --fail-on-issues --fail-on
 - `reference_review_duration_ms`, `reference_review_case_count`, `reference_review_clear_case_count`, `cases_needing_review`, `next_review_case_id`를 함께 남겨 검수 flag가 남은 case 진행률과 남은 audio 시간을 볼 수 있게 한다. Clear count는 reference가 실제로 읽혔고 `needs_review` flag가 없는 case만 세며, human-reviewed 판정은 아니다.
 - `candidate_case_count`, `missing_candidate_case_count`, `cases_missing_candidate`, `next_missing_candidate_case_id`를 함께 남겨 eval manifest 준비 전 candidate attach 진행률을 볼 수 있게 한다. Candidate path가 아예 없는 case만 missing candidate로 센다. Candidate path가 있는데 파일이 없거나 읽을 수 없으면 기존 file/parse issue로 보고한다.
 - `candidate_review_count`, `candidate_review_duration_ms`, `candidate_review_case_count`, `candidate_review_clear_case_count`, `cases_with_candidate_review`, `next_candidate_review_case_id`를 함께 남겨 모델 승격 전 candidate `needs_review` flag 진행률과 미확정 candidate audio 시간을 볼 수 있게 한다. Candidate clear count는 candidate가 실제로 읽혔고 `needs_review` flag가 없는 case만 센다.
+- `--include-reference-audits`를 지정하면 reference structure audit summary와 reference channel audit summary를 root `reference_audit`, `reference_channel_audit`에 붙인다. 기본 status는 빠른 파일/flag check로 유지하고, audit 계산은 명시 옵션이나 audit fail gate가 있을 때만 실행한다.
 - 각 item의 `first_review_segment`는 reference에서 첫 `needs_review=true` segment의 `id`, `start_ms`, `end_ms`, `channel`, `kind`, `text`, `needs_review`를 담는다. 남은 review flag가 없거나 reference를 읽을 수 없으면 `null`이다.
 - 기본 exit code는 report 생성을 우선해 성공이다. `--fail-on-issues`는 missing file, parse failure, stale count가 있을 때 report 출력/저장 후 실패한다.
 - `--fail-on-review`는 reference에 `needs_review=true`가 남아 있으면 report 출력/저장 후 실패한다.
 - `--fail-on-missing-candidates`는 candidate path가 없는 case가 있으면 report 출력/저장 후 실패한다. Candidate path가 있는데 파일이 없거나 읽을 수 없는 경우는 `--fail-on-issues`가 담당한다.
 - `--fail-on-candidate-review`는 candidate에 `needs_review=true`가 남아 있으면 report 출력/저장 후 실패한다.
+- `--fail-on-reference-audit`와 `--fail-on-reference-channel-audit`는 각각 structure/channel audit queue가 남아 있으면 audit summary를 report에 포함한 뒤 실패한다.
 - 이 명령도 human-reviewed 여부를 추정하지 않는다. `reference_type`은 index에 기록된 값을 집계할 뿐이며, 모델 승격 평가는 여전히 `eval-manifest --require-reference-type human-reviewed`가 담당한다.
 
 Prepared reference의 구조 문제는 `audit-review-case-references`로 확인한다.

@@ -333,6 +333,20 @@ def prepare_review_cases_command(args: argparse.Namespace) -> None:
 
 def review_case_status_command(args: argparse.Namespace) -> None:
     report = review_case_status(args.case_index, source_language=args.source_language)
+    include_reference_audit = args.include_reference_audits or args.fail_on_reference_audit
+    include_reference_channel_audit = args.include_reference_audits or args.fail_on_reference_channel_audit
+    if include_reference_audit:
+        report["reference_audit"] = reference_audit_status_summary(
+            args.case_index,
+            source_language=args.source_language,
+        )
+    if include_reference_channel_audit:
+        report["reference_channel_audit"] = reference_channel_audit_status_summary(
+            args.case_index,
+            source_language=args.source_language,
+            threshold_db=args.reference_channel_threshold_db,
+            quiet_channel_max_dbfs=args.reference_channel_quiet_max_dbfs,
+        )
     if args.output is not None:
         write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     emit(
@@ -360,6 +374,60 @@ def review_case_status_command(args: argparse.Namespace) -> None:
         )
     if args.fail_on_candidate_review and report["candidate_review_count"] > 0:
         raise ValueError(f"review case status failed: candidate_review_count={report['candidate_review_count']}")
+    if args.fail_on_reference_audit and report["reference_audit"]["item_count"] > 0:
+        reason_counts = json.dumps(report["reference_audit"]["reason_counts"], ensure_ascii=False, sort_keys=True)
+        raise ValueError(
+            "review case status failed: "
+            f"reference_audit_item_count={report['reference_audit']['item_count']} reason_counts={reason_counts}"
+        )
+    if args.fail_on_reference_channel_audit and report["reference_channel_audit"]["item_count"] > 0:
+        reason_counts = json.dumps(
+            report["reference_channel_audit"]["reason_counts"],
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        raise ValueError(
+            "review case status failed: "
+            f"reference_channel_audit_item_count={report['reference_channel_audit']['item_count']} "
+            f"reason_counts={reason_counts}"
+        )
+
+
+def reference_audit_status_summary(case_index: Path, *, source_language: str) -> dict[str, Any]:
+    audit_report = audit_review_case_references(case_index, source_language=source_language)
+    review_effort_report = reference_audit_review_effort_report(audit_report, source_case_index=str(case_index))
+    return {
+        "format": audit_report["format"],
+        "item_count": review_effort_report["item_count"],
+        "reason_counts": review_effort_report["reason_counts"],
+        "summary": audit_report["summary"],
+    }
+
+
+def reference_channel_audit_status_summary(
+    case_index: Path,
+    *,
+    source_language: str,
+    threshold_db: float,
+    quiet_channel_max_dbfs: float | None,
+) -> dict[str, Any]:
+    audit_report = audit_review_case_channels(
+        case_index,
+        source_language=source_language,
+        threshold_db=threshold_db,
+        quiet_channel_max_dbfs=quiet_channel_max_dbfs,
+    )
+    review_effort_report = reference_channel_audit_review_effort_report(
+        audit_report,
+        source_case_index=str(case_index),
+    )
+    return {
+        "format": audit_report["format"],
+        "item_count": review_effort_report["item_count"],
+        "reason_counts": review_effort_report["reason_counts"],
+        "thresholds": audit_report["thresholds"],
+        "summary": audit_report["summary"],
+    }
 
 
 def audit_review_case_references_command(args: argparse.Namespace) -> None:
@@ -1742,6 +1810,33 @@ def build_parser() -> argparse.ArgumentParser:
         "--fail-on-candidate-review",
         action="store_true",
         help="Return a failing exit code after emitting the report if candidate segments still need review.",
+    )
+    review_case_status_parser.add_argument(
+        "--include-reference-audits",
+        action="store_true",
+        help="Include reference structure and channel audit summaries in the status report.",
+    )
+    review_case_status_parser.add_argument(
+        "--fail-on-reference-audit",
+        action="store_true",
+        help="Return a failing exit code after emitting the report if reference structural audit items remain.",
+    )
+    review_case_status_parser.add_argument(
+        "--fail-on-reference-channel-audit",
+        action="store_true",
+        help="Return a failing exit code after emitting the report if reference channel audit items remain.",
+    )
+    review_case_status_parser.add_argument(
+        "--reference-channel-threshold-db",
+        type=float,
+        default=CHANNEL_ATTRIBUTION_THRESHOLD_DB,
+        help="L/R dB delta used by --include-reference-audits and --fail-on-reference-channel-audit.",
+    )
+    review_case_status_parser.add_argument(
+        "--reference-channel-quiet-max-dbfs",
+        type=quiet_channel_max_dbfs_arg,
+        default=CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
+        help="Quieter-side dBFS gate used by reference channel audit status; use 'none' to disable.",
     )
     review_case_status_parser.set_defaults(func=review_case_status_command)
 

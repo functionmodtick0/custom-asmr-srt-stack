@@ -1707,6 +1707,97 @@ class ProjectCliTests(unittest.TestCase):
             )
             self.assertIn("missing_candidate_count=1", fail_error)
 
+    def test_review_case_status_can_include_and_fail_on_reference_audit_summaries(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_dir = root / "cases"
+            audio_dir = case_dir / "audio"
+            reference_dir = case_dir / "references"
+            audio_dir.mkdir(parents=True)
+            reference_dir.mkdir()
+            write_stereo_samples(audio_dir / "front.wav", [(100, 6000)] * 1000)
+            reference = MasterDocument(
+                source_language="ja",
+                source_file="front.wav",
+                duration_ms=1000,
+                segments=(
+                    Segment("seg_000001", 0, 800, "L", "speech", "あ"),
+                    Segment("seg_000002", 400, 1000, "L", "speech", "い"),
+                ),
+            )
+            (reference_dir / "front.master.json").write_text(
+                json.dumps(reference.to_json(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            case_index = case_dir / "case-index.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [
+                            {
+                                "id": "front",
+                                "audio": "audio/front.wav",
+                                "reference": "references/front.master.json",
+                                "segments": 2,
+                                "review_count": 0,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            status_path = root / "status.json"
+
+            result, output = run_cli(
+                [
+                    "review-case-status",
+                    "--json",
+                    "--include-reference-audits",
+                    "--reference-channel-threshold-db",
+                    "3",
+                    "--reference-channel-quiet-max-dbfs",
+                    "none",
+                    "-o",
+                    str(status_path),
+                    str(case_index),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["reference_review_count"], 0)
+            self.assertEqual(report["reference_audit"]["item_count"], 1)
+            self.assertEqual(report["reference_audit"]["reason_counts"], {"reference-same-channel-overlap": 1})
+            self.assertEqual(report["reference_channel_audit"]["item_count"], 2)
+            self.assertEqual(
+                report["reference_channel_audit"]["reason_counts"],
+                {"reference-channel-energy-mismatch": 2},
+            )
+            self.assertEqual(json.loads(status_path.read_text(encoding="utf-8")), report)
+
+            fail_path = root / "status.fail-channel.json"
+            fail_result, fail_output, fail_error = run_cli_with_stderr(
+                [
+                    "review-case-status",
+                    "--json",
+                    "--fail-on-reference-channel-audit",
+                    "--reference-channel-threshold-db",
+                    "3",
+                    "--reference-channel-quiet-max-dbfs",
+                    "none",
+                    "-o",
+                    str(fail_path),
+                    str(case_index),
+                ]
+            )
+
+            self.assertEqual(fail_result, 1)
+            fail_report = json.loads(fail_output)
+            self.assertEqual(fail_report["reference_channel_audit"]["item_count"], 2)
+            self.assertIn("reference_channel_audit_item_count=2", fail_error)
+            self.assertEqual(json.loads(fail_path.read_text(encoding="utf-8")), fail_report)
+
     def test_audit_review_case_references_reports_overlap_diagnostics(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
