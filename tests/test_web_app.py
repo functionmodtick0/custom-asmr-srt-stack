@@ -584,9 +584,38 @@ class WebAppBehaviorTests(unittest.TestCase):
 
               await context.openSelectedReviewPackSourceCase();
               assert.strictEqual(elements.get("selectedLabel").textContent, "seg_000002");
+              assert.strictEqual(elements.get("applyEnergyChannelButton").hidden, false);
+              assert.strictEqual(elements.get("applyEnergyChannelButton").disabled, false);
+              assert.strictEqual(elements.get("applyEnergyChannelButton").textContent, "ENERGY R 적용");
               assert.strictEqual(
                 elements.get("statusText").textContent,
                 "front-a/seg_000002 · ENERGY R · L -37.5 dBFS · R -33.0 dBFS · delta -4.6 dB",
+              );
+
+              context.fetch = async (path, options) => {
+                assert.strictEqual(path, "/api/review-case/save-reference");
+                const payload = JSON.parse(options.body);
+                assert.strictEqual(payload.case_index_path, "/cases/case-index.json");
+                assert.strictEqual(payload.case_id, "front-a");
+                assert.strictEqual(payload.master.segments[0].channel, "R");
+                assert.strictEqual(payload.master.segments[0].needs_review, true);
+                return {
+                  ok: true,
+                  async json() {
+                    return {
+                      segments: 1,
+                      review_count: 1,
+                      review_duration_ms: 1000,
+                    };
+                  },
+                };
+              };
+
+              await context.applyEnergyChannelToSelectedSegment();
+              assert.strictEqual(elements.get("applyEnergyChannelButton").disabled, true);
+              assert.strictEqual(
+                elements.get("statusText").textContent,
+                "seg_000002 channel을 ENERGY R로 저장했습니다.",
               );
             })().catch((error) => {
               console.error(error);

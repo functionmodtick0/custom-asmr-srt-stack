@@ -31,6 +31,7 @@ const els = {
   startButton: document.getElementById("startButton"),
   retranscribeButton: document.getElementById("retranscribeButton"),
   sourceCaseButton: document.getElementById("sourceCaseButton"),
+  applyEnergyChannelButton: document.getElementById("applyEnergyChannelButton"),
   reviewDoneButton: document.getElementById("reviewDoneButton"),
   caseListButton: document.getElementById("caseListButton"),
   nextCaseButton: document.getElementById("nextCaseButton"),
@@ -317,6 +318,8 @@ function render() {
   els.retranscribeButton.hidden = Boolean(state.reviewCaseReference);
   els.sourceCaseButton.hidden = true;
   els.sourceCaseButton.disabled = true;
+  els.applyEnergyChannelButton.hidden = true;
+  els.applyEnergyChannelButton.disabled = true;
   els.reviewDoneButton.hidden = !state.reviewCaseReference;
   els.caseListButton.hidden = !state.reviewCaseReference;
   els.nextCaseButton.hidden = !state.reviewCaseReference;
@@ -355,6 +358,8 @@ function renderReviewPack() {
   els.retranscribeButton.hidden = false;
   els.sourceCaseButton.hidden = !items.some((item) => reviewPackSourceTarget(item));
   els.sourceCaseButton.disabled = !reviewPackSourceTarget(sourceItem);
+  els.applyEnergyChannelButton.hidden = true;
+  els.applyEnergyChannelButton.disabled = true;
   els.reviewDoneButton.hidden = true;
   els.reviewDoneButton.disabled = true;
   els.caseListButton.hidden = true;
@@ -381,6 +386,8 @@ function renderReviewCaseSet() {
   els.retranscribeButton.hidden = false;
   els.sourceCaseButton.hidden = true;
   els.sourceCaseButton.disabled = true;
+  els.applyEnergyChannelButton.hidden = true;
+  els.applyEnergyChannelButton.disabled = true;
   els.reviewDoneButton.hidden = true;
   els.reviewDoneButton.disabled = true;
   els.caseListButton.hidden = true;
@@ -587,6 +594,11 @@ function reviewPackSelectedOrDefaultSourceItem() {
     if (nextCaseItem) return nextCaseItem;
   }
   return null;
+}
+
+function reviewPackEnergyChannelSuggestion(item) {
+  if (!reviewPackIsReferenceChannelAuditItem(item)) return null;
+  return ["L", "R"].includes(item?.candidate_channel) ? item.candidate_channel : null;
 }
 
 function textBlock(className, value) {
@@ -815,6 +827,12 @@ function updateSelectedActionState() {
   const segment = selectedSegment();
   els.retranscribeButton.disabled = !segment;
   els.reviewDoneButton.disabled = !state.reviewCaseReference || !segment?.needs_review;
+  const energyChannel = state.reviewCaseReference?.energyChannel || null;
+  const energySegmentId = state.reviewCaseReference?.energyChannelSegmentId || null;
+  const canShowEnergyAction = Boolean(energyChannel && segment?.id === energySegmentId);
+  els.applyEnergyChannelButton.hidden = !canShowEnergyAction;
+  els.applyEnergyChannelButton.disabled = !canShowEnergyAction || segment.channel === energyChannel;
+  els.applyEnergyChannelButton.textContent = energyChannel ? `ENERGY ${energyChannel} 적용` : "ENERGY 적용";
 }
 
 function selectedSegment() {
@@ -958,6 +976,18 @@ async function markSelectedReviewDone() {
   );
 }
 
+async function applyEnergyChannelToSelectedSegment() {
+  const segment = selectedSegment();
+  const energyChannel = state.reviewCaseReference?.energyChannel || null;
+  const energySegmentId = state.reviewCaseReference?.energyChannelSegmentId || null;
+  if (!segment || !energyChannel || segment.id !== energySegmentId || segment.channel === energyChannel) return;
+  segment.channel = energyChannel;
+  render();
+  drawWaveform();
+  await saveCurrentMasterNow();
+  setStatus("Channel 저장됨", `${segment.id} channel을 ENERGY ${energyChannel}로 저장했습니다.`);
+}
+
 function nextReviewSegmentId(currentId) {
   const segments = state.master?.segments || [];
   const currentIndex = segments.findIndex((segment) => segment.id === currentId);
@@ -1040,7 +1070,7 @@ async function loadReviewPath() {
   throw new Error("지원하지 않는 review path입니다.");
 }
 
-function loadReviewCaseItem(index, selectedSegmentId = null, secondarySegmentId = null) {
+function loadReviewCaseItem(index, selectedSegmentId = null, secondarySegmentId = null, sourceReviewItem = null) {
   const caseSet = state.reviewCaseSet;
   const item = caseSet?.items?.[index];
   if (!caseSet || !item?.reference_master) return;
@@ -1063,6 +1093,8 @@ function loadReviewCaseItem(index, selectedSegmentId = null, secondarySegmentId 
     caseId: item.id,
     itemIndex: index,
     secondarySegmentId,
+    energyChannel: reviewPackEnergyChannelSuggestion(sourceReviewItem),
+    energyChannelSegmentId: sourceReviewItem?.reference_id || null,
   };
   render();
   drawWaveform();
@@ -1079,7 +1111,7 @@ async function openSelectedReviewPackSourceCase() {
     throw new Error(`source case를 찾을 수 없습니다: ${target.caseId}`);
   }
   state.reviewCaseSet = caseSet;
-  loadReviewCaseItem(caseIndex, target.segmentId, reviewPackSecondaryReferenceId(item));
+  loadReviewCaseItem(caseIndex, target.segmentId, reviewPackSecondaryReferenceId(item), item);
   const sourceHint = reviewPackSourceHintText(item);
   if (sourceHint) {
     setStatus("Review case", sourceHint);
@@ -1174,6 +1206,7 @@ els.saveModelButton.addEventListener("click", saveModelSettings);
 els.importTranslatedButton.addEventListener("click", () => els.translatedInput.click());
 els.loadReviewPackButton.addEventListener("click", () => safeRun(loadReviewPath));
 els.sourceCaseButton.addEventListener("click", () => safeRun(openSelectedReviewPackSourceCase));
+els.applyEnergyChannelButton.addEventListener("click", () => safeRun(applyEnergyChannelToSelectedSegment));
 els.reviewDoneButton.addEventListener("click", () => safeRun(markSelectedReviewDone));
 els.caseListButton.addEventListener("click", () => safeRun(returnToReviewCases));
 els.nextCaseButton.addEventListener("click", () => safeRun(openNextReviewCase));
