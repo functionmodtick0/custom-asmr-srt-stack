@@ -393,6 +393,14 @@ uv run casrt save-review-case-reference cases/case-index.json case-id edited.mas
 
 `save-review-case-reference`는 master JSON 또는 SRT 입력을 받아 해당 case의 reference 파일을 교체하고 `segments`/`review_count`를 다시 기록합니다. 검수 완료 여부나 `reference_type`은 바꾸지 않습니다.
 
+이미 준비된 case set에 case-local candidate transcript를 붙이기:
+
+```bash
+uv run casrt attach-review-case-candidates cases/case-index.json attach-candidates.json --json
+```
+
+`attach-candidates.json`은 `custom-asmr-case-candidate-attach-plan-v1` 형식이며 모든 case id에 대한 candidate path를 담습니다. Candidate 입력은 해당 case audio 기준의 SRT 또는 master JSON이어야 하며, 이 명령은 `candidates/*.master.json`을 쓰고 `case-index.json`을 갱신합니다. 기존 candidate를 덮어쓸 때만 `--replace`를 사용합니다.
+
 검수한 case reference를 한 번에 고정:
 
 ```bash

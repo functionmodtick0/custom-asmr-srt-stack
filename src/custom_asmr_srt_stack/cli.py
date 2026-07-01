@@ -15,6 +15,7 @@ from custom_asmr_srt_stack.alignment import alignment_diagnostics, run_alignment
 from custom_asmr_srt_stack.audio import normalize_audio_to_wav, slice_wav, split_wav_channels
 from custom_asmr_srt_stack.case_batch import (
     EVAL_MANIFEST_BUILD_FORMAT,
+    attach_review_case_candidates,
     build_review_case_pack,
     build_eval_manifest_from_case_index,
     freeze_case_references as freeze_case_references_batch,
@@ -332,6 +333,20 @@ def save_review_case_reference_command(args: argparse.Namespace) -> None:
         args,
         report,
         f"review case reference saved: {report['case_id']} segments={report['segments']} review={report['review_count']}",
+    )
+
+
+def attach_review_case_candidates_command(args: argparse.Namespace) -> None:
+    report = attach_review_case_candidates(
+        args.case_index,
+        args.plan,
+        replace=args.replace,
+        source_language=args.source_language,
+    )
+    emit(
+        args,
+        report,
+        f"review case candidates attached: cases={report['candidate_count']} replace={report['replace']}",
     )
 
 
@@ -1073,6 +1088,21 @@ def build_parser() -> argparse.ArgumentParser:
     save_review_case_reference_parser.add_argument("input", type=Path)
     save_review_case_reference_parser.add_argument("--source-language", default="ja")
     save_review_case_reference_parser.set_defaults(func=save_review_case_reference_command)
+
+    attach_review_case_candidates_parser = subcommands.add_parser(
+        "attach-review-case-candidates",
+        parents=[output_parent],
+        help="Attach case-local candidate transcripts to an existing prepared review case index.",
+    )
+    attach_review_case_candidates_parser.add_argument("case_index", type=Path)
+    attach_review_case_candidates_parser.add_argument("plan", type=Path)
+    attach_review_case_candidates_parser.add_argument("--source-language", default="ja")
+    attach_review_case_candidates_parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="Overwrite existing candidate entries and candidate files.",
+    )
+    attach_review_case_candidates_parser.set_defaults(func=attach_review_case_candidates_command)
 
     freeze_case_references_parser = subcommands.add_parser(
         "freeze-case-references",

@@ -18,9 +18,11 @@ from custom_asmr_srt_stack.review_pack import (
 )
 
 CASE_SLICE_PLAN_FORMAT = "custom-asmr-case-slice-plan-v1"
+CASE_CANDIDATE_ATTACH_PLAN_FORMAT = "custom-asmr-case-candidate-attach-plan-v1"
 REVIEW_CASE_SET_FORMAT = "custom-asmr-review-case-set-v1"
 REVIEW_CASE_STATUS_FORMAT = "custom-asmr-review-case-status-v1"
 REVIEW_CASE_REFERENCE_SAVE_FORMAT = "custom-asmr-review-case-reference-save-v1"
+REVIEW_CASE_CANDIDATE_ATTACH_FORMAT = "custom-asmr-review-case-candidate-attach-v1"
 EVAL_MANIFEST_BUILD_FORMAT = "custom-asmr-eval-manifest-build-v1"
 CASE_REFERENCE_FREEZE_FORMAT = "custom-asmr-case-reference-freeze-v1"
 
@@ -384,6 +386,134 @@ def save_review_case_reference(
             "review_count": raw_item["review_count"],
         }
     raise ValueError(f"review case id is missing: {case_id}")
+
+
+def attach_review_case_candidates(
+    case_index_file: Path,
+    plan_file: Path,
+    *,
+    replace: bool = False,
+    source_language: str = "ja",
+) -> dict[str, Any]:
+    resolved_index_path = case_index_file.expanduser().resolve()
+    case_index = load_review_case_index(resolved_index_path)
+    raw_items = case_index.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ValueError("review case index items must be a non-empty array")
+
+    plan = load_case_candidate_attach_plan(plan_file)
+    candidates = validate_case_candidate_attach_plan(plan)
+    candidate_by_case_id = {candidate["case_id"]: candidate for candidate in candidates}
+    raw_item_by_case_id: dict[str, dict[str, Any]] = {}
+    for index, raw_item in enumerate(raw_items):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"review case index item {index} must be an object")
+        case_id = require_index_string(raw_item, "id", index)
+        if case_id in raw_item_by_case_id:
+            raise ValueError(f"review case index item id is duplicated: {case_id}")
+        raw_item_by_case_id[case_id] = raw_item
+        if raw_item.get("candidate") is not None and not replace:
+            raise ValueError(f"review case {case_id} already has a candidate; use --replace to overwrite")
+
+    missing_cases = sorted(set(raw_item_by_case_id) - set(candidate_by_case_id))
+    extra_cases = sorted(set(candidate_by_case_id) - set(raw_item_by_case_id))
+    if missing_cases:
+        raise ValueError("candidate attach plan is missing case ids: " + ", ".join(missing_cases))
+    if extra_cases:
+        raise ValueError("candidate attach plan has unknown case ids: " + ", ".join(extra_cases))
+
+    default_candidate_id = optional_attach_plan_string(plan, "candidate_id")
+    base_dir = plan_file.parent
+    candidates_dir = resolved_index_path.parent / "candidates"
+    prepared: list[dict[str, Any]] = []
+    for case_id, candidate in candidate_by_case_id.items():
+        candidate_value = candidate["candidate"]
+        candidate_path = resolve_plan_path(base_dir, candidate_value)
+        if not candidate_path.is_file():
+            raise ValueError(f"candidate file does not exist for {case_id}: {candidate_path}")
+        candidate_id = candidate.get("candidate_id") or default_candidate_id or candidate_path.stem
+        candidate_master = load_transcript_document(candidate_path, source_language=source_language)
+        candidate_relative = Path("candidates") / f"{case_file_stem(case_id)}.master.json"
+        candidate_output = resolved_index_path.parent / candidate_relative
+        if candidate_output.exists() and not replace:
+            raise ValueError(f"candidate output already exists for {case_id}: {candidate_output}")
+        prepared.append(
+            {
+                "case_id": case_id,
+                "candidate": candidate_value,
+                "candidate_id": candidate_id,
+                "candidate_master": candidate_master,
+                "candidate_relative": candidate_relative,
+                "candidate_output": candidate_output,
+            }
+        )
+
+    candidates_dir.mkdir(exist_ok=True)
+    attached_items: list[dict[str, Any]] = []
+    for item in prepared:
+        item["candidate_output"].write_text(
+            json.dumps(item["candidate_master"].to_json(), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        raw_item = raw_item_by_case_id[item["case_id"]]
+        raw_item["candidate"] = str(item["candidate_relative"])
+        raw_item["candidate_id"] = item["candidate_id"]
+        raw_item["source_candidate"] = item["candidate"]
+        attached_items.append(
+            {
+                "case_id": item["case_id"],
+                "candidate": str(item["candidate_relative"]),
+                "candidate_id": item["candidate_id"],
+                "source_candidate": item["candidate"],
+                "segments": len(item["candidate_master"].segments),
+                "review_count": sum(1 for segment in item["candidate_master"].segments if segment.needs_review),
+            }
+        )
+
+    resolved_index_path.write_text(json.dumps(case_index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {
+        "format": REVIEW_CASE_CANDIDATE_ATTACH_FORMAT,
+        "case_index": str(resolved_index_path),
+        "plan": str(plan_file),
+        "candidate_count": len(attached_items),
+        "replace": replace,
+        "items": attached_items,
+    }
+
+
+def load_case_candidate_attach_plan(plan_file: Path) -> dict[str, Any]:
+    data = json.loads(plan_file.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("candidate attach plan must be a JSON object")
+    return data
+
+
+def validate_case_candidate_attach_plan(plan: dict[str, Any]) -> list[dict[str, str]]:
+    if plan.get("format") != CASE_CANDIDATE_ATTACH_PLAN_FORMAT:
+        raise ValueError(f"candidate attach plan format must be {CASE_CANDIDATE_ATTACH_PLAN_FORMAT}")
+    optional_attach_plan_string(plan, "candidate_id")
+    raw_candidates = plan.get("candidates")
+    if not isinstance(raw_candidates, list) or not raw_candidates:
+        raise ValueError("candidate attach plan candidates must be a non-empty array")
+
+    candidates: list[dict[str, str]] = []
+    seen_ids: set[str] = set()
+    for index, raw_candidate in enumerate(raw_candidates):
+        if not isinstance(raw_candidate, dict):
+            raise ValueError(f"candidate attach plan candidate {index} must be an object")
+        case_id = require_attach_candidate_string(raw_candidate, "case_id", index)
+        if case_id in seen_ids:
+            raise ValueError(f"candidate attach plan case_id is duplicated: {case_id}")
+        seen_ids.add(case_id)
+        normalized = {
+            "case_id": case_id,
+            "candidate": require_attach_candidate_string(raw_candidate, "candidate", index),
+        }
+        candidate_id = raw_candidate.get("candidate_id")
+        if candidate_id is not None:
+            normalized["candidate_id"] = require_attach_candidate_string(raw_candidate, "candidate_id", index)
+        candidates.append(normalized)
+    return candidates
 
 
 def build_eval_manifest_from_case_index(
@@ -813,10 +943,26 @@ def optional_plan_string(plan: dict[str, Any], key: str) -> str | None:
     return value
 
 
+def optional_attach_plan_string(plan: dict[str, Any], key: str) -> str | None:
+    value = plan.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"candidate attach plan {key} must be a non-empty string")
+    return value
+
+
 def require_case_string(case: dict[str, Any], key: str, index: int) -> str:
     value = case.get(key)
     if not isinstance(value, str) or not value:
         raise ValueError(f"case slice plan case {index} {key} must be a non-empty string")
+    return value
+
+
+def require_attach_candidate_string(candidate: dict[str, Any], key: str, index: int) -> str:
+    value = candidate.get(key)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"candidate attach plan candidate {index} {key} must be a non-empty string")
     return value
 
 

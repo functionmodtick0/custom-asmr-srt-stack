@@ -407,6 +407,36 @@ uv run casrt save-review-case-reference cases/case-index.json case-id edited.mas
 - 기존 reference file이 없거나 case id가 없으면 실패하며, 새 reference path를 조용히 만들지 않는다.
 - 이 명령은 `reference_type`을 변경하거나 human-reviewed 승격을 판정하지 않는다.
 
+이미 준비된 case set에 case-local candidate transcript를 붙일 때는 `attach-review-case-candidates`를 사용한다.
+
+```bash
+uv run casrt attach-review-case-candidates cases/case-index.json attach-candidates.json --json
+```
+
+`attach-candidates.json` 예시:
+
+```json
+{
+  "format": "custom-asmr-case-candidate-attach-plan-v1",
+  "candidate_id": "granite-base-filtered",
+  "candidates": [
+    {
+      "case_id": "front-a",
+      "candidate": "outputs/front-a.granite.master.json"
+    }
+  ]
+}
+```
+
+동작:
+
+- 입력 candidate는 이미 해당 case audio 기준으로 생성된 SRT 또는 master JSON이다. 긴 원본 transcript를 slice하지 않는다.
+- plan은 prepared `case-index.json`의 모든 case id를 정확히 한 번씩 포함해야 한다. 누락/중복/알 수 없는 case id가 있으면 실패한다.
+- 모든 candidate 입력과 기존 candidate overwrite 가능 여부를 먼저 검증하고, 그 다음 `candidates/<case-id>.master.json`과 `case-index.json`을 쓴다.
+- 기존 candidate가 있으면 기본적으로 실패한다. 같은 case set에 새 후보를 붙일 때만 `--replace`를 명시한다.
+- output format은 `custom-asmr-review-case-candidate-attach-v1`이다.
+- 이 명령은 reference를 수정하거나 human-reviewed 승격을 판정하지 않는다. Candidate가 붙은 뒤 `build-eval-manifest`와 `eval-manifest --require-reference-type human-reviewed`가 모델 승격 gate를 담당한다.
+
 사람이 검수한 reference들을 batch로 고정할 때는 `freeze-case-references`를 사용한다.
 
 ```bash
