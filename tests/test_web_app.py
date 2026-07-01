@@ -1,6 +1,25 @@
 import subprocess
 import textwrap
 import unittest
+from html.parser import HTMLParser
+
+
+class AdapterSelectParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.in_adapter_select = False
+        self.options = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs_dict = dict(attrs)
+        if tag == "select" and attrs_dict.get("id") == "adapterInput":
+            self.in_adapter_select = True
+        if self.in_adapter_select and tag == "option":
+            self.options.append(attrs_dict.get("value"))
+
+    def handle_endtag(self, tag):
+        if tag == "select" and self.in_adapter_select:
+            self.in_adapter_select = False
 
 
 class WebAppBehaviorTests(unittest.TestCase):
@@ -131,6 +150,17 @@ class WebAppBehaviorTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_model_adapter_select_exposes_all_local_adapters(self):
+        parser = AdapterSelectParser()
+        with open("web/index.html", encoding="utf-8") as html_file:
+            parser.feed(html_file.read())
+
+        self.assertIn("local-transformers", parser.options)
+        self.assertIn("local-qwen-asr", parser.options)
+        self.assertIn("local-qwen-hf-asr", parser.options)
+        self.assertIn("local-cohere-asr", parser.options)
+        self.assertIn("local-granite-asr", parser.options)
 
 
 if __name__ == "__main__":
