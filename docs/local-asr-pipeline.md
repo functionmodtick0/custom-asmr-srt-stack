@@ -576,7 +576,7 @@ uv run casrt eval-manifest gold.json --product-gate
   - first clip GET: `200 audio/wav 1962284 bytes` for `clips/000001__01-front120__text__seg_000003__seg_000004.wav`.
   - 판단: pack 생성은 CLI가 담당하고 WebUI는 local path로 priority 검수 큐를 열어 clip을 재생하는 viewer 역할만 한다. 추가 threshold/model 옵션은 노출하지 않는다.
   - 2026-07-02 behavior update: reference overlap audit item은 `REF2` segment id/channel을 표시하고, channel energy audit item은 `ENERGY` verdict와 L/R dBFS/delta evidence를 표시한다. `case 열기`로 source case editor에 들어간 뒤에도 reference audit overlap/long-segment evidence와 channel audit energy evidence를 status에 유지하고, overlap item은 `REF2` segment row를 보조 표시한다. 판단: human-reviewed reference 제작 중 pack 화면에서 본 검수 단서가 편집 화면 진입 시 사라지지 않게 하되, WebUI 옵션은 늘리지 않는다.
-  - 2026-07-02 behavior update: review-pack root `duration_summary`가 있으면 WebUI header에 `listen` duration과 `focus effective/source` duration을 표시한다. Example test fixture header: `2 review clips · 2 cases · listen 0:06.000 · focus 0:05.000/0:10.000 · next front-b`. 판단: focus-window 검수 부담 감소를 JSON 파일을 열지 않고 확인할 수 있게 하며, WebUI option은 추가하지 않는다.
+  - 2026-07-02 behavior update: review-pack root `duration_summary`가 있으면 WebUI header에 `listen` duration과 `focus effective/source` duration을 표시한다. Item `review_clip_*`가 원 segment bounds와 다르면 row meta에도 `focus 0:01.200 - 0:01.700` 같은 focus time range를 표시한다. Example test fixture header: `2 review clips · 2 cases · listen 0:06.000 · focus 0:05.000/0:10.000 · next front-b`. 판단: focus-window 검수 부담 감소를 JSON 파일을 열지 않고 확인할 수 있게 하며, WebUI option은 추가하지 않는다.
 - 2026-06-30 WebUI review case set smoke:
   - server: `uv run casrt serve --port 5174`
   - load API input: `/tmp/casrt-quality.Q5OdDf/all8-front120-review-cases`

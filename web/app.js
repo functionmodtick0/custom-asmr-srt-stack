@@ -404,12 +404,17 @@ function renderReviewPackItem(item, index) {
 
   const meta = document.createElement("div");
   meta.className = "review-pack-meta";
-  meta.append(
+  const metaParts = [
     textBlock("review-rank", `#${item.priority_rank || index + 1}`),
     textBlock("review-detail", formatMsRange(item.start_ms, item.end_ms)),
     textBlock("review-detail", item.case_id || "single"),
     textBlock("review-detail", item.reference_id || "ref -"),
-  );
+  ];
+  const focusRange = reviewPackFocusRangeText(item);
+  if (focusRange) {
+    metaParts.push(textBlock("review-detail", focusRange));
+  }
+  meta.append(...metaParts);
 
   const reasons = document.createElement("div");
   reasons.className = "review-reasons";
@@ -605,6 +610,15 @@ function reviewTextLine(label, channel, text) {
 function reviewPackSelectedLabel(item) {
   if (!item) return "선택 없음";
   return `#${item.priority_rank || state.reviewPackSelectedIndex + 1} ${formatMsRange(item.start_ms, item.end_ms)}`;
+}
+
+function reviewPackFocusRangeText(item) {
+  if (!item) return "";
+  const focusStartMs = finiteNumber(item.review_clip_start_ms);
+  const focusEndMs = finiteNumber(item.review_clip_end_ms);
+  if (!Number.isFinite(focusStartMs) || !Number.isFinite(focusEndMs)) return "";
+  if (focusStartMs === item.start_ms && focusEndMs === item.end_ms) return "";
+  return `focus ${formatMsRange(focusStartMs, focusEndMs)}`;
 }
 
 function formatScore(score) {

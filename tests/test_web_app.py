@@ -257,6 +257,8 @@ class WebAppBehaviorTests(unittest.TestCase):
               left_dbfs: -37.536,
               right_dbfs: -32.968,
               delta_db: -4.568,
+              review_clip_start_ms: 1200,
+              review_clip_end_ms: 1700,
             };
             const mergedChannelAuditItem = {
               ...channelAuditItem,
@@ -269,6 +271,7 @@ class WebAppBehaviorTests(unittest.TestCase):
             const channelAuditRow = context.renderReviewPackItem(channelAuditItem, 3);
             const mergedChannelAuditRow = context.renderReviewPackItem(mergedChannelAuditItem, 4);
             const referenceMeta = referenceRow.children[0];
+            const channelAuditMeta = channelAuditRow.children[0];
             const referenceTexts = referenceRow.children[2];
             const candidateTexts = candidateRow.children[2];
             const auditOverlapTexts = auditOverlapRow.children[2];
@@ -276,6 +279,7 @@ class WebAppBehaviorTests(unittest.TestCase):
             const mergedChannelAuditTexts = mergedChannelAuditRow.children[2];
 
             assert.strictEqual(referenceMeta.children[3].textContent, "seg_000002");
+            assert.strictEqual(channelAuditMeta.children[4].textContent, "focus 0:01.200 - 0:01.700");
             assert.strictEqual(context.reviewPackHasCandidate(referenceOnly), false);
             assert.strictEqual(context.reviewPackHasCandidate(candidateItem), true);
             assert.strictEqual(context.reviewPackHasCandidate(auditOverlapItem), true);
