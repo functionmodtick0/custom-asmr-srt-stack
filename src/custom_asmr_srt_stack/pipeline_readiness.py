@@ -32,8 +32,9 @@ def build_pipeline_readiness(
     channel_comparison_file: Path | None = None,
     quality_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    reference_type = readiness_reference_type(eval_comparison_file, channel_comparison_file)
     stages = {
-        "reference": reference_stage(reference_audit_file),
+        "reference": reference_stage(reference_audit_file, quality_gate=quality_gate, reference_type=reference_type),
         "vad_chunking": vad_stage(vad_comparison_file),
     }
     stages.update(eval_stages(eval_comparison_file, quality_gate=quality_gate))
@@ -69,7 +70,12 @@ def build_pipeline_readiness(
     return report
 
 
-def reference_stage(path: Path | None) -> dict[str, Any]:
+def reference_stage(
+    path: Path | None,
+    *,
+    quality_gate: dict[str, Any] | None = None,
+    reference_type: str | None = None,
+) -> dict[str, Any]:
     if path is None:
         return unknown_stage("reference", "reference audit report was not provided")
     report = read_json_report(path)
@@ -91,6 +97,13 @@ def reference_stage(path: Path | None) -> dict[str, Any]:
         count = require_int(metrics.get(key), f"{path}: reference audit {key}")
         if count > 0:
             reasons.append(f"{label}: {count}")
+    gate = readiness_stage_gate(quality_gate, "required_reference_type")
+    if gate:
+        required_reference_type = gate["required_reference_type"]
+        if reference_type is None:
+            reasons.append("reference_type is unavailable")
+        elif reference_type != required_reference_type:
+            reasons.append(f"reference_type {reference_type!r} != {required_reference_type!r}")
 
     warnings = []
     flag_type_counts = metrics.get("flag_type_counts")
@@ -121,7 +134,9 @@ def reference_stage(path: Path | None) -> dict[str, Any]:
                 metrics.get("speech_coverage_ratio"),
                 f"{path}: reference audit speech_coverage_ratio",
             ),
+            "reference_type": reference_type,
         },
+        quality_gate=gate,
     )
 
 
@@ -296,7 +311,6 @@ def text_stage_from_item(
         "max_practical_cer",
         "max_segments_needing_edit_ratio",
         "max_candidate_review_ratio",
-        "required_reference_type",
     )
     reasons = []
     if gate:
@@ -314,13 +328,6 @@ def text_stage_from_item(
                 reasons.append(
                     f"candidate review ratio {candidate_review_ratio:.4f} > {max_candidate_review_ratio:.4f}"
                 )
-        required_reference_type = gate.get("required_reference_type")
-        if required_reference_type is not None:
-            reference_type = best.get("reference_type")
-            if reference_type is None:
-                reasons.append("reference_type is unavailable")
-            elif reference_type != required_reference_type:
-                reasons.append(f"reference_type {reference_type!r} != {required_reference_type!r}")
     else:
         if text_ratio > 0.0:
             reasons.append(f"best candidate still needs text edits: {text_ratio:.4f}")
@@ -355,6 +362,15 @@ def best_eval_comparison_item(path: Path) -> tuple[str, dict[str, Any]]:
     best = items[0]
     label = require_string(best.get("label"), f"{path}: eval best label")
     return label, best
+
+
+def readiness_reference_type(*paths: Path | None) -> str | None:
+    for path in paths:
+        if path is None:
+            continue
+        _label, best = best_eval_comparison_item(path)
+        return optional_string(best.get("reference_type"))
+    return None
 
 
 def next_stage(stages: dict[str, dict[str, Any]]) -> str | None:
