@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import socket
 import sys
 import tempfile
@@ -25,6 +26,7 @@ SOURCE_LANGUAGE_TO_GRANITE = {
 }
 GRANITE_SAMPLE_RATE = 16_000
 GRANITE_DEFAULT_PROMPT = "<|audio|>transcribe the speech with proper punctuation and capitalization."
+GRANITE_TIMESTAMP_RE = re.compile(r"\[T:(\d{1,3})\]")
 _NETWORK_DISABLED = False
 
 
@@ -32,6 +34,12 @@ _NETWORK_DISABLED = False
 class GraniteAsrResult:
     text: str
     start_ms: int
+    end_ms: int
+
+
+@dataclass(frozen=True)
+class GraniteTimedToken:
+    text: str
     end_ms: int
 
 
@@ -49,19 +57,7 @@ class GraniteAsrRuntime:
             return []
 
         result = self.generate_result(model_id, audio_bytes, source_language, duration_ms)
-        text = clean_transcription_text(result.text)
-        if not text:
-            return []
-        return [
-            {
-                "start_ms": result.start_ms,
-                "end_ms": result.end_ms,
-                "channel": channel,
-                "kind": "speech",
-                "text": text,
-                "needs_review": True,
-            }
-        ]
+        return granite_segments_from_result(result, channel, duration_ms)
 
     def generate_result(
         self,
@@ -159,6 +155,107 @@ def granite_prompt() -> str:
 
 def granite_max_new_tokens() -> int:
     return int(os.environ.get("CASRT_GRANITE_ASR_MAX_NEW_TOKENS", "512"))
+
+
+def granite_parse_timestamps_enabled() -> bool:
+    return os.environ.get("CASRT_GRANITE_ASR_PARSE_TIMESTAMPS", "").strip().lower() in {"1", "true", "yes"}
+
+
+def granite_segments_from_result(result: GraniteAsrResult, channel: str, duration_ms: int) -> list[dict[str, Any]]:
+    if granite_parse_timestamps_enabled():
+        timed_segments = granite_timestamp_segments(result, channel, duration_ms)
+        if timed_segments:
+            return timed_segments
+    text = clean_transcription_text(strip_granite_timestamp_markup(result.text))
+    if not text:
+        return []
+    return [
+        {
+            "start_ms": max(0, min(result.start_ms, duration_ms)),
+            "end_ms": max(0, min(result.end_ms, duration_ms)),
+            "channel": channel,
+            "kind": "speech",
+            "text": text,
+            "needs_review": True,
+        }
+    ]
+
+
+def granite_timestamp_segments(result: GraniteAsrResult, channel: str, duration_ms: int) -> list[dict[str, Any]]:
+    tokens = granite_timed_tokens(result.text, duration_ms)
+    if not tokens:
+        return []
+
+    segments: list[dict[str, Any]] = []
+    current_words: list[str] = []
+    current_start_ms = result.start_ms
+    current_end_ms = result.start_ms
+    next_start_ms = result.start_ms
+
+    def flush() -> None:
+        nonlocal current_words, current_start_ms, current_end_ms
+        text = clean_transcription_text(" ".join(current_words))
+        if text and current_end_ms > current_start_ms:
+            segments.append(
+                {
+                    "start_ms": max(0, min(current_start_ms, duration_ms)),
+                    "end_ms": max(0, min(current_end_ms, duration_ms)),
+                    "channel": channel,
+                    "kind": "speech",
+                    "text": text,
+                    "needs_review": True,
+                }
+            )
+        current_words = []
+        current_start_ms = next_start_ms
+        current_end_ms = next_start_ms
+
+    for token in tokens:
+        token_end_ms = result.start_ms + token.end_ms
+        if granite_is_silence_token(token.text):
+            flush()
+            next_start_ms = max(result.start_ms, token_end_ms)
+            current_start_ms = next_start_ms
+            current_end_ms = next_start_ms
+            continue
+        if not current_words:
+            current_start_ms = next_start_ms
+        current_words.append(token.text)
+        current_end_ms = max(current_end_ms, token_end_ms)
+    flush()
+    return segments
+
+
+def granite_timed_tokens(text: str, duration_ms: int) -> list[GraniteTimedToken]:
+    matches = list(GRANITE_TIMESTAMP_RE.finditer(text))
+    if not matches:
+        return []
+
+    tokens: list[GraniteTimedToken] = []
+    offset_cs = 0
+    last_end_cs = -1
+    previous_end = 0
+    for match in matches:
+        token_text = text[previous_end : match.start()].strip()
+        token_end_cs = int(match.group(1))
+        while token_end_cs + offset_cs < last_end_cs:
+            offset_cs += 1000
+        absolute_end_cs = token_end_cs + offset_cs
+        last_end_cs = absolute_end_cs
+        end_ms = max(0, min(absolute_end_cs * 10, duration_ms))
+        if token_text:
+            tokens.append(GraniteTimedToken(text=token_text, end_ms=end_ms))
+        previous_end = match.end()
+    return tokens
+
+
+def granite_is_silence_token(text: str) -> bool:
+    return text.strip().replace(" ", "") == "_"
+
+
+def strip_granite_timestamp_markup(text: str) -> str:
+    without_timestamps = GRANITE_TIMESTAMP_RE.sub(" ", text)
+    return re.sub(r"(^|\s)_($|\s)", " ", without_timestamps).strip()
 
 
 def granite_model_device(model: Any) -> str:

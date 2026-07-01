@@ -92,6 +92,88 @@ class GraniteAsrWorkerTests(unittest.TestCase):
             ],
         )
 
+    def test_response_for_line_parses_granite_timestamp_tags_when_enabled(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_dir = Path(tmpdir) / "model"
+            model_dir.mkdir()
+            (model_dir / "model.safetensors").write_bytes(b"fake")
+            request = {
+                "type": "transcribe",
+                "model_id": str(model_dir),
+                "channel": "MIX",
+                "source_language": "ja",
+                "audio_base64": base64.b64encode(mono_wav_bytes(duration_ms=2000)).decode("ascii"),
+            }
+            runtime = FakeRuntime(GraniteAsrResult("_ [T:25] ねえ [T:70] _ [T:110] こっち [T:160]", 0, 2000))
+
+            with mock.patch.dict("os.environ", {"CASRT_GRANITE_ASR_PARSE_TIMESTAMPS": "1"}):
+                response = response_for_line(runtime, json.dumps(request))
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(
+            response["segments"],
+            [
+                {
+                    "start_ms": 250,
+                    "end_ms": 700,
+                    "channel": "MIX",
+                    "kind": "speech",
+                    "text": "ねえ",
+                    "needs_review": True,
+                },
+                {
+                    "start_ms": 1100,
+                    "end_ms": 1600,
+                    "channel": "MIX",
+                    "kind": "speech",
+                    "text": "こっち",
+                    "needs_review": True,
+                },
+            ],
+        )
+
+    def test_response_for_line_unwraps_granite_timestamp_rollover(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_dir = Path(tmpdir) / "model"
+            model_dir.mkdir()
+            (model_dir / "model.safetensors").write_bytes(b"fake")
+            request = {
+                "type": "transcribe",
+                "model_id": str(model_dir),
+                "channel": "MIX",
+                "source_language": "ja",
+                "audio_base64": base64.b64encode(mono_wav_bytes(duration_ms=10500)).decode("ascii"),
+            }
+            runtime = FakeRuntime(GraniteAsrResult("前 [T:990] 後 [T:20]", 0, 10500))
+
+            with mock.patch.dict("os.environ", {"CASRT_GRANITE_ASR_PARSE_TIMESTAMPS": "1"}):
+                response = response_for_line(runtime, json.dumps(request))
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["segments"][0]["text"], "前後")
+        self.assertEqual(response["segments"][0]["end_ms"], 10200)
+
+    def test_response_for_line_strips_granite_timestamp_markup_without_parser(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_dir = Path(tmpdir) / "model"
+            model_dir.mkdir()
+            (model_dir / "model.safetensors").write_bytes(b"fake")
+            request = {
+                "type": "transcribe",
+                "model_id": str(model_dir),
+                "channel": "MIX",
+                "source_language": "ja",
+                "audio_base64": base64.b64encode(mono_wav_bytes(duration_ms=900)).decode("ascii"),
+            }
+            runtime = FakeRuntime(GraniteAsrResult("_ [T:25] ねえ [T:70]", 0, 900))
+
+            response = response_for_line(runtime, json.dumps(request))
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["segments"][0]["text"], "ねえ")
+        self.assertEqual(response["segments"][0]["start_ms"], 0)
+        self.assertEqual(response["segments"][0]["end_ms"], 900)
+
     def test_response_for_line_reports_invalid_requests(self):
         response = response_for_line(
             FakeRuntime(GraniteAsrResult("ねえ", 0, 1)),
