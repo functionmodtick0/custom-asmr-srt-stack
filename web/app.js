@@ -512,9 +512,28 @@ function reviewPackChannelEvidenceText(item) {
 }
 
 function reviewPackSourceHintText(item) {
-  if (!reviewPackIsReferenceChannelAuditItem(item)) return null;
-  const verdict = item?.candidate_channel ? `ENERGY ${item.candidate_channel}` : "ENERGY -";
-  return `${item.case_id || "case -"}/${item.reference_id || "ref -"} · ${verdict} · ${reviewPackChannelEvidenceText(item)}`;
+  if (!reviewPackIsReferenceAuditItem(item)) return null;
+  const reasonText = Array.isArray(item?.reasons) ? item.reasons.join(" / ") : "reference audit";
+  if (reviewPackIsReferenceChannelAuditItem(item)) {
+    const verdict = item?.candidate_channel ? `ENERGY ${item.candidate_channel}` : "ENERGY -";
+    return `${item.case_id || "case -"}/${item.reference_id || "ref -"} · ${verdict} · ${reviewPackChannelEvidenceText(item)}`;
+  }
+  return `${item.case_id || "case -"}/${item.reference_id || "ref -"} · ${reasonText} · ${reviewPackReferenceAuditEvidenceText(item)}`;
+}
+
+function reviewPackReferenceAuditEvidenceText(item) {
+  const parts = [];
+  if (item?.reference_channel) parts.push(`REF ${item.reference_channel}`);
+  if (item?.candidate_id || item?.candidate_channel) {
+    const channel = item?.candidate_channel ? ` ${item.candidate_channel}` : "";
+    parts.push(`REF2${channel} ${item?.candidate_id || "ref -"}`);
+  }
+  if (Number.isFinite(item?.overlap_ms)) {
+    parts.push(`overlap ${formatDuration(item.overlap_ms)}`);
+  } else if (Number.isFinite(item?.start_ms) && Number.isFinite(item?.end_ms)) {
+    parts.push(`duration ${formatDuration(item.end_ms - item.start_ms)}`);
+  }
+  return parts.join(" · ") || formatMsRange(item?.start_ms, item?.end_ms);
 }
 
 function formatDbfs(value) {

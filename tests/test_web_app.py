@@ -313,11 +313,14 @@ class WebAppBehaviorTests(unittest.TestCase):
                           priority_rank: 1,
                           case_id: "front-a",
                           reference_id: "seg_000002",
+                          candidate_id: "seg_000001",
                           start_ms: 1000,
                           end_ms: 2000,
-                          reasons: ["reference-needs-review"],
+                          reasons: ["reference-same-channel-overlap"],
                           reference_channel: "L",
                           reference_text: "確認",
+                          candidate_channel: "L",
+                          overlap_ms: 20,
                           clip_url: "/api/review-pack/clip?x=1",
                         },
                       ],
@@ -368,6 +371,10 @@ class WebAppBehaviorTests(unittest.TestCase):
               assert.strictEqual(elements.get("selectedLabel").textContent, "seg_000002");
               assert.strictEqual(elements.get("reviewDoneButton").hidden, false);
               assert.strictEqual(elements.get("sourceCaseButton").hidden, true);
+              assert.strictEqual(
+                elements.get("statusText").textContent,
+                "front-a/seg_000002 · reference-same-channel-overlap · REF L · REF2 L seg_000001 · overlap 0:00.020",
+              );
             })().catch((error) => {
               console.error(error);
               process.exit(1);
