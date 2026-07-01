@@ -39,6 +39,7 @@ class WebAppBehaviorTests(unittest.TestCase):
                   hidden: false,
                   textContent: "",
                   style: {},
+                  dataset: {},
                   children: [],
                   classList: { add() {}, remove() {}, toggle() {} },
                   addEventListener() {},
@@ -146,6 +147,47 @@ class WebAppBehaviorTests(unittest.TestCase):
             assert.strictEqual(first.id, "seg_000002");
             assert.strictEqual(context.reviewSegmentPreview(first), "0:01.234 - 0:03.456 · 確認する");
             assert.strictEqual(context.reviewSegmentPreview(null), "검수 flag 없음");
+        """,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_review_pack_item_hides_candidate_row_when_candidate_is_absent(self):
+        result = self.run_app_assertions(
+            r"""
+            const referenceOnly = {
+              priority_rank: 1,
+              case_id: "front-a",
+              reference_id: "seg_000002",
+              start_ms: 1000,
+              end_ms: 2000,
+              reasons: ["reference-needs-review"],
+              reference_channel: "L",
+              reference_text: "確認",
+              candidate_id: null,
+              candidate_channel: null,
+              candidate_text: "",
+            };
+            const candidateItem = {
+              ...referenceOnly,
+              candidate_id: "seg_000002",
+              candidate_channel: "R",
+              candidate_text: "候補",
+            };
+
+            const referenceRow = context.renderReviewPackItem(referenceOnly, 0);
+            const candidateRow = context.renderReviewPackItem(candidateItem, 1);
+            const referenceMeta = referenceRow.children[0];
+            const referenceTexts = referenceRow.children[2];
+            const candidateTexts = candidateRow.children[2];
+
+            assert.strictEqual(referenceMeta.children[3].textContent, "seg_000002");
+            assert.strictEqual(context.reviewPackHasCandidate(referenceOnly), false);
+            assert.strictEqual(context.reviewPackHasCandidate(candidateItem), true);
+            assert.strictEqual(referenceTexts.children.length, 1);
+            assert.strictEqual(referenceTexts.children[0].children[0].textContent, "REF L");
+            assert.strictEqual(candidateTexts.children.length, 2);
+            assert.strictEqual(candidateTexts.children[1].children[0].textContent, "CAND R");
         """,
         )
 

@@ -388,6 +388,7 @@ function renderReviewPackItem(item, index) {
     textBlock("review-rank", `#${item.priority_rank || index + 1}`),
     textBlock("review-detail", formatMsRange(item.start_ms, item.end_ms)),
     textBlock("review-detail", item.case_id || "single"),
+    textBlock("review-detail", item.reference_id || "ref -"),
   );
 
   const reasons = document.createElement("div");
@@ -399,10 +400,10 @@ function renderReviewPackItem(item, index) {
 
   const texts = document.createElement("div");
   texts.className = "review-pack-texts";
-  texts.append(
-    reviewTextLine("REF", item.reference_channel, item.reference_text),
-    reviewTextLine("CAND", item.candidate_channel, item.candidate_text),
-  );
+  texts.append(reviewTextLine("REF", item.reference_channel, item.reference_text));
+  if (reviewPackHasCandidate(item)) {
+    texts.append(reviewTextLine("CAND", item.candidate_channel, item.candidate_text));
+  }
 
   row.addEventListener("click", () => selectReviewPackItem(index, true));
   row.append(meta, reasons, texts);
@@ -452,6 +453,10 @@ function firstReviewSegment(item) {
 function reviewSegmentPreview(segment) {
   if (!segment) return "검수 flag 없음";
   return `${formatMsRange(segment.start_ms, segment.end_ms)} · ${segment.text || "-"}`;
+}
+
+function reviewPackHasCandidate(item) {
+  return Boolean(item?.candidate_id || item?.candidate_channel || item?.candidate_text);
 }
 
 function textBlock(className, value) {
