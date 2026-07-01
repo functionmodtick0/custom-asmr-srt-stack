@@ -414,6 +414,17 @@ uv run casrt audit-review-case-references cases/case-index.json \
 `audit-review-case-references`는 prepared reference set의 overlap, same-channel overlap, exact-boundary overlap, long segment, near-full speech coverage, 남은 review flag를 text 없이 segment id/time/channel 중심으로 진단합니다. `--review-effort-output`을 주면 기존 `review-pack`에 넣을 수 있는 구조 검수 queue도 만듭니다. `--fail-on-audit`은 queue item이 남아 있을 때 report를 출력/저장한 뒤 실패합니다. Pseudo-gold를 human-reviewed로 올리기 전 구조 검수 우선순위를 정하는 CLI-only 도구이며 reference를 수정하지 않습니다.
 
 ```bash
+uv run casrt audit-review-case-channels cases/case-index.json \
+  --threshold-db 2 \
+  --quiet-channel-max-dbfs none \
+  --json \
+  -o cases/reference-channel-audit.json \
+  --review-effort-output cases/reference-channel-audit-review-effort.json
+```
+
+`audit-review-case-channels`는 prepared reference의 L/R label을 stereo energy와 비교합니다. Output `custom-asmr-reference-channel-audit-suite-v1`은 segment id/time/channel, L/R dBFS, energy channel, match/mismatch/uncertain status만 저장하고 transcript text는 저장하지 않습니다. `--review-effort-output`은 mismatch/uncertain segment를 기존 `review-pack`에 넣을 수 있는 queue로 만듭니다. 2026-07-02 all8 pseudo-gold `threshold=2`, quiet gate off 기준 match ratio는 53.1%라, 현재 channel attribution 실패는 모델만의 문제가 아니라 reference channel 검수도 필요한 상태입니다.
+
+```bash
 uv run casrt review-pack cases/reference-audit-review-effort.json \
   --audio-map cases/audio-map.json \
   -o cases/reference-audit-review-pack \

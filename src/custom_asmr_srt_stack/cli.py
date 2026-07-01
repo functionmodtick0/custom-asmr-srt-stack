@@ -36,6 +36,10 @@ from custom_asmr_srt_stack.channel_attribution import (
     attribute_master_channels_by_energy,
     channel_diagnostics_summary,
 )
+from custom_asmr_srt_stack.channel_reference_audit import (
+    audit_review_case_channels,
+    reference_channel_audit_review_effort_report,
+)
 from custom_asmr_srt_stack.channel_sweep import sweep_channel_attribution
 from custom_asmr_srt_stack.evaluation import (
     compare_eval_reports,
@@ -397,6 +401,51 @@ def audit_review_case_references_command(args: argparse.Namespace) -> None:
         raise ValueError(
             "reference audit failed: "
             f"reference_audit_item_count={review_effort_report['item_count']} reason_counts={reason_counts}"
+        )
+
+
+def audit_review_case_channels_command(args: argparse.Namespace) -> None:
+    report = audit_review_case_channels(
+        args.case_index,
+        source_language=args.source_language,
+        threshold_db=args.threshold_db,
+        quiet_channel_max_dbfs=args.quiet_channel_max_dbfs,
+    )
+    review_effort_report = None
+    if args.review_effort_output is not None or args.fail_on_audit:
+        review_effort_report = reference_channel_audit_review_effort_report(
+            report,
+            source_report=str(args.output or args.case_index),
+            source_case_index=str(args.case_index),
+        )
+    if args.review_effort_output is not None:
+        if review_effort_report is None:
+            raise ValueError("reference channel audit review effort report was not generated")
+        write_text(
+            args.review_effort_output,
+            json.dumps(review_effort_report, ensure_ascii=False, indent=2) + "\n",
+        )
+        report["review_effort_output"] = str(args.review_effort_output)
+    if args.output is not None:
+        write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    summary = report["summary"]
+    emit(
+        args,
+        report,
+        (
+            f"reference channel audit: cases={report['case_count']} "
+            f"eligible={summary['eligible_reference_channel_count']} "
+            f"matches={summary['match_count']} "
+            f"mismatches={summary['mismatch_count']} "
+            f"uncertain={summary['energy_uncertain_count']}"
+        ),
+    )
+    if args.fail_on_audit and review_effort_report is not None and review_effort_report["item_count"] > 0:
+        reason_counts = json.dumps(review_effort_report["reason_counts"], ensure_ascii=False, sort_keys=True)
+        raise ValueError(
+            "reference channel audit failed: "
+            f"reference_channel_audit_item_count={review_effort_report['item_count']} "
+            f"reason_counts={reason_counts}"
         )
 
 
@@ -1648,6 +1697,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="Speech union coverage ratio at or above this value is flagged as near-full coverage.",
     )
     audit_review_case_references_parser.set_defaults(func=audit_review_case_references_command)
+
+    audit_review_case_channels_parser = subcommands.add_parser(
+        "audit-review-case-channels",
+        parents=[output_parent],
+        help="Audit prepared review case reference L/R labels against stereo energy.",
+    )
+    audit_review_case_channels_parser.add_argument("case_index", type=Path)
+    audit_review_case_channels_parser.add_argument("-o", "--output", type=Path)
+    audit_review_case_channels_parser.add_argument(
+        "--review-effort-output",
+        type=Path,
+        help="Also write a custom-asmr-review-effort-v1 queue that can be passed to review-pack.",
+    )
+    audit_review_case_channels_parser.add_argument(
+        "--fail-on-audit",
+        action="store_true",
+        help="Return a failing exit code after emitting the report if channel audit review items remain.",
+    )
+    audit_review_case_channels_parser.add_argument("--source-language", default="ja")
+    audit_review_case_channels_parser.add_argument(
+        "--threshold-db",
+        type=float,
+        default=CHANNEL_ATTRIBUTION_THRESHOLD_DB,
+        help="L/R dB delta required before energy is treated as a reference channel signal.",
+    )
+    audit_review_case_channels_parser.add_argument(
+        "--quiet-channel-max-dbfs",
+        type=quiet_channel_max_dbfs_arg,
+        default=CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS,
+        help="Treat dominant energy as channel evidence only if the quieter side is at or below this dBFS; use 'none' to disable.",
+    )
+    audit_review_case_channels_parser.set_defaults(func=audit_review_case_channels_command)
 
     save_review_case_reference_parser = subcommands.add_parser(
         "save-review-case-reference",

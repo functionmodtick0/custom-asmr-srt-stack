@@ -408,6 +408,28 @@ uv run casrt audit-review-case-references cases/case-index.json \
 - 기본 threshold는 overlap `1ms` 이상, long segment `30000ms` 이상, near-full speech coverage `0.95` 이상이다. CLI 옵션으로 바꿀 수 있지만 WebUI 옵션으로 노출하지 않는다.
 - 이 명령은 reference를 수정하거나 human-reviewed 여부를 추정하지 않는다. Pseudo-gold를 human-reviewed로 올리기 전 구조 검수 우선순위를 정하는 CLI-only 진단 도구다.
 
+### `audit-review-case-channels`
+
+```bash
+uv run casrt audit-review-case-channels cases/case-index.json \
+  --threshold-db 2 \
+  --quiet-channel-max-dbfs none \
+  --json \
+  -o cases/reference-channel-audit.json \
+  --review-effort-output cases/reference-channel-audit-review-effort.json
+```
+
+동작:
+
+- 입력은 audio와 reference가 있는 `custom-asmr-review-case-set-v1` `case-index.json`이다.
+- output format은 `custom-asmr-reference-channel-audit-suite-v1`이다.
+- 각 L/R reference speech segment에 대해 stereo L/R RMS dBFS, delta, energy channel, match/mismatch/uncertain status를 저장한다.
+- Transcript text는 저장하지 않는다. Segment id/time/channel과 energy diagnostics만 저장한다.
+- `--threshold-db`와 `--quiet-channel-max-dbfs`는 CLI-only 실험값이다. WebUI 옵션으로 노출하지 않는다.
+- `--review-effort-output`을 지정하면 mismatch/uncertain segment를 기존 `review-pack`에 넣을 수 있는 `custom-asmr-review-effort-v1` queue로 저장한다.
+- `--fail-on-audit`은 channel audit review item이 남아 있으면 report 출력/저장 후 실패한다.
+- 이 명령은 reference를 수정하거나 energy channel을 정답으로 승격하지 않는다. Human-reviewed 승격 전 L/R label 검수 우선순위를 정하는 진단 도구다.
+
 Audit queue는 기존 review pack 생성 경로를 그대로 사용한다.
 
 ```bash
