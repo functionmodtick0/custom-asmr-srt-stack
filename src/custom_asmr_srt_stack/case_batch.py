@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ from custom_asmr_srt_stack.review_pack import (
 
 CASE_SLICE_PLAN_FORMAT = "custom-asmr-case-slice-plan-v1"
 CASE_CANDIDATE_ATTACH_PLAN_FORMAT = "custom-asmr-case-candidate-attach-plan-v1"
+CASE_CANDIDATE_ATTACH_PLAN_BUILD_FORMAT = "custom-asmr-case-candidate-attach-plan-build-v1"
 REVIEW_CASE_SET_FORMAT = "custom-asmr-review-case-set-v1"
 REVIEW_CASE_STATUS_FORMAT = "custom-asmr-review-case-status-v1"
 REVIEW_CASE_REFERENCE_SAVE_FORMAT = "custom-asmr-review-case-reference-save-v1"
@@ -485,6 +487,90 @@ def attach_review_case_candidates(
         "replace": replace,
         "items": attached_items,
     }
+
+
+def build_case_candidate_attach_plan(
+    case_index_file: Path,
+    candidate_dir: Path,
+    *,
+    output: Path,
+    candidate_id: str | None = None,
+) -> dict[str, Any]:
+    if candidate_id is not None and not candidate_id:
+        raise ValueError("candidate_id must be a non-empty string")
+    if not candidate_dir.is_dir():
+        raise ValueError(f"candidate directory does not exist: {candidate_dir}")
+
+    case_index = load_review_case_index(case_index_file)
+    raw_items = case_index.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ValueError("review case index items must be a non-empty array")
+
+    output_parent = output.parent.expanduser().resolve()
+    candidate_entries: list[dict[str, str]] = []
+    missing_cases: list[str] = []
+    ambiguous_cases: list[str] = []
+    seen_case_ids: set[str] = set()
+    for index, raw_item in enumerate(raw_items):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"review case index item {index} must be an object")
+        case_id = require_index_string(raw_item, "id", index)
+        if case_id in seen_case_ids:
+            raise ValueError(f"review case index item id is duplicated: {case_id}")
+        seen_case_ids.add(case_id)
+        matches = matching_candidate_files(candidate_dir, case_id)
+        if not matches:
+            missing_cases.append(case_id)
+            continue
+        if len(matches) > 1:
+            ambiguous_cases.append(f"{case_id}: " + ", ".join(path.name for path in matches))
+            continue
+        candidate_entries.append(
+            {
+                "case_id": case_id,
+                "candidate": relative_path_value(matches[0], base_dir=output_parent),
+            }
+        )
+
+    if missing_cases:
+        raise ValueError("candidate directory is missing case ids: " + ", ".join(missing_cases))
+    if ambiguous_cases:
+        raise ValueError("candidate directory has ambiguous case files: " + "; ".join(ambiguous_cases))
+
+    plan: dict[str, Any] = {
+        "format": CASE_CANDIDATE_ATTACH_PLAN_FORMAT,
+        "candidates": candidate_entries,
+    }
+    if candidate_id is not None:
+        plan["candidate_id"] = candidate_id
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    report = {
+        "format": CASE_CANDIDATE_ATTACH_PLAN_BUILD_FORMAT,
+        "output": str(output),
+        "case_index": str(case_index_file),
+        "candidate_dir": str(candidate_dir),
+        "candidate_count": len(candidate_entries),
+        "candidates": candidate_entries,
+    }
+    if candidate_id is not None:
+        report["candidate_id"] = candidate_id
+    return report
+
+
+def matching_candidate_files(candidate_dir: Path, case_id: str) -> list[Path]:
+    stem = case_file_stem(case_id)
+    candidate_names = [
+        f"{stem}.master.json",
+        f"{stem}.json",
+        f"{stem}.srt",
+    ]
+    return [candidate_dir / name for name in candidate_names if (candidate_dir / name).is_file()]
+
+
+def relative_path_value(path: Path, *, base_dir: Path) -> str:
+    return Path(os.path.relpath(path.expanduser().resolve(), base_dir)).as_posix()
 
 
 def load_case_candidate_attach_plan(plan_file: Path) -> dict[str, Any]:

@@ -1320,6 +1320,166 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(manifest["cases"][0]["candidate"], "candidates/front-a.master.json")
             self.assertEqual(manifest["cases"][0]["candidate_id"], "local-candidate")
 
+    def test_build_candidate_attach_plan_matches_case_files_and_feeds_attach(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_dir = root / "cases"
+            candidate_dir = root / "candidate-outputs"
+            plan_dir = root / "plans"
+            case_dir.mkdir()
+            candidate_dir.mkdir()
+            case_index = case_dir / "case-index.json"
+            output_plan = plan_dir / "attach-candidates.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [
+                            {
+                                "id": "front-a",
+                                "audio": "audio/front-a.wav",
+                                "reference": "references/front-a.master.json",
+                                "segments": 1,
+                                "review_count": 0,
+                            },
+                            {
+                                "id": "front-b",
+                                "audio": "audio/front-b.wav",
+                                "reference": "references/front-b.master.json",
+                                "segments": 1,
+                                "review_count": 0,
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (candidate_dir / "front-a.srt").write_text(
+                "1\n00:00:00,000 --> 00:00:00,002\n候補A\n",
+                encoding="utf-8",
+            )
+            (candidate_dir / "front-b.master.json").write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "front-b.wav", "duration_ms": 2},
+                        "segments": [
+                            {
+                                "id": "seg_000001",
+                                "start_ms": 0,
+                                "end_ms": 2,
+                                "channel": "MIX",
+                                "kind": "speech",
+                                "text": "候補B",
+                                "needs_review": False,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "build-candidate-attach-plan",
+                    "--json",
+                    str(case_index),
+                    str(candidate_dir),
+                    "-o",
+                    str(output_plan),
+                    "--candidate-id",
+                    "local-candidate",
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["format"], "custom-asmr-case-candidate-attach-plan-build-v1")
+            self.assertEqual(report["candidate_count"], 2)
+            plan = json.loads(output_plan.read_text(encoding="utf-8"))
+            self.assertEqual(plan["format"], "custom-asmr-case-candidate-attach-plan-v1")
+            self.assertEqual(plan["candidate_id"], "local-candidate")
+            self.assertEqual(
+                plan["candidates"],
+                [
+                    {"case_id": "front-a", "candidate": "../candidate-outputs/front-a.srt"},
+                    {"case_id": "front-b", "candidate": "../candidate-outputs/front-b.master.json"},
+                ],
+            )
+
+            attach_result, attach_output = run_cli(
+                [
+                    "attach-review-case-candidates",
+                    "--json",
+                    str(case_index),
+                    str(output_plan),
+                ]
+            )
+
+            self.assertEqual(attach_result, 0)
+            attach_report = json.loads(attach_output)
+            self.assertEqual(attach_report["candidate_count"], 2)
+            updated_case_index = json.loads(case_index.read_text(encoding="utf-8"))
+            self.assertEqual(updated_case_index["items"][0]["candidate"], "candidates/front-a.master.json")
+            self.assertEqual(updated_case_index["items"][1]["candidate"], "candidates/front-b.master.json")
+
+    def test_build_candidate_attach_plan_rejects_ambiguous_case_files_without_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            candidate_dir = root / "candidate-outputs"
+            candidate_dir.mkdir()
+            case_index = root / "case-index.json"
+            output_plan = root / "attach-candidates.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [
+                            {
+                                "id": "front-a",
+                                "audio": "audio/front-a.wav",
+                                "reference": "references/front-a.master.json",
+                                "segments": 1,
+                                "review_count": 0,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (candidate_dir / "front-a.srt").write_text(
+                "1\n00:00:00,000 --> 00:00:00,002\n候補\n",
+                encoding="utf-8",
+            )
+            (candidate_dir / "front-a.json").write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "front-a.wav", "duration_ms": 2},
+                        "segments": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "build-candidate-attach-plan",
+                    "--json",
+                    str(case_index),
+                    str(candidate_dir),
+                    "-o",
+                    str(output_plan),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            self.assertEqual(output, "")
+            self.assertIn("ambiguous case files", error)
+            self.assertFalse(output_plan.exists())
+
     def test_attach_review_case_candidates_rejects_incomplete_plan_before_side_effects(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

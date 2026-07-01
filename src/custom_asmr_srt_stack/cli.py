@@ -16,6 +16,7 @@ from custom_asmr_srt_stack.audio import normalize_audio_to_wav, slice_wav, split
 from custom_asmr_srt_stack.case_batch import (
     EVAL_MANIFEST_BUILD_FORMAT,
     attach_review_case_candidates,
+    build_case_candidate_attach_plan,
     build_review_case_pack,
     build_eval_manifest_from_case_index,
     freeze_case_references as freeze_case_references_batch,
@@ -352,6 +353,20 @@ def attach_review_case_candidates_command(args: argparse.Namespace) -> None:
         args,
         report,
         f"review case candidates attached: cases={report['candidate_count']} replace={report['replace']}",
+    )
+
+
+def build_case_candidate_attach_plan_command(args: argparse.Namespace) -> None:
+    report = build_case_candidate_attach_plan(
+        args.case_index,
+        args.candidate_dir,
+        output=args.output,
+        candidate_id=args.candidate_id,
+    )
+    emit(
+        args,
+        report,
+        f"candidate attach plan built: {args.output} candidates={report['candidate_count']}",
     )
 
 
@@ -1113,6 +1128,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Overwrite existing candidate entries and candidate files.",
     )
     attach_review_case_candidates_parser.set_defaults(func=attach_review_case_candidates_command)
+
+    build_case_candidate_attach_plan_parser = subcommands.add_parser(
+        "build-candidate-attach-plan",
+        parents=[output_parent],
+        help="Build a candidate attach plan by matching candidate files to review case ids.",
+    )
+    build_case_candidate_attach_plan_parser.add_argument("case_index", type=Path)
+    build_case_candidate_attach_plan_parser.add_argument("candidate_dir", type=Path)
+    build_case_candidate_attach_plan_parser.add_argument("-o", "--output", type=Path, required=True)
+    build_case_candidate_attach_plan_parser.add_argument(
+        "--candidate-id",
+        help="Candidate id to store at the plan level for every matched case.",
+    )
+    build_case_candidate_attach_plan_parser.set_defaults(func=build_case_candidate_attach_plan_command)
 
     freeze_case_references_parser = subcommands.add_parser(
         "freeze-case-references",

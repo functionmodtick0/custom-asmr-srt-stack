@@ -413,6 +413,10 @@ uv run casrt save-review-case-reference cases/case-index.json case-id edited.mas
 이미 준비된 case set에 case-local candidate transcript를 붙일 때는 `attach-review-case-candidates`를 사용한다.
 
 ```bash
+uv run casrt build-candidate-attach-plan cases/case-index.json candidate-outputs \
+  -o attach-candidates.json \
+  --candidate-id granite-base-filtered \
+  --json
 uv run casrt attach-review-case-candidates cases/case-index.json attach-candidates.json --json
 ```
 
@@ -433,6 +437,10 @@ uv run casrt attach-review-case-candidates cases/case-index.json attach-candidat
 
 동작:
 
+- `build-candidate-attach-plan`은 prepared `case-index.json`의 case id를 candidate directory의 `<case-id>.master.json`, `<case-id>.json`, `<case-id>.srt`와 매칭해 `custom-asmr-case-candidate-attach-plan-v1` file을 만든다.
+- 생성 plan의 candidate path는 plan file 위치 기준 상대경로로 기록한다.
+- 모든 case id가 정확히 하나의 candidate file과 매칭되어야 한다. 누락이나 같은 case의 `.json`/`.srt` 중복처럼 모호한 매칭이 있으면 output file을 만들기 전에 실패한다.
+- `--candidate-id`는 plan-level candidate id로 저장되어 attach 시 모든 case의 기본 candidate id가 된다.
 - 입력 candidate는 이미 해당 case audio 기준으로 생성된 SRT 또는 master JSON이다. 긴 원본 transcript를 slice하지 않는다.
 - plan은 prepared `case-index.json`의 모든 case id를 정확히 한 번씩 포함해야 한다. 누락/중복/알 수 없는 case id가 있으면 실패한다.
 - 모든 candidate 입력과 기존 candidate overwrite 가능 여부를 먼저 검증하고, 그 다음 `candidates/<case-id>.master.json`과 `case-index.json`을 쓴다.
