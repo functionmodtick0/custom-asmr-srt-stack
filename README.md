@@ -449,11 +449,12 @@ uv run casrt freeze-case-references cases/case-index.json \
   --reference-type human-reviewed \
   --reference-notes "manual review pass" \
   --fail-on-review \
+  --fail-on-reference-audit \
   -o cases-frozen \
   --json
 ```
 
-`freeze-case-references`는 reference id를 안정화하고 `needs_review=false`로 저장한 새 case set을 만듭니다. 사람이 실제로 검수한 경우에만 `--reference-type human-reviewed`를 사용합니다. `--fail-on-review`를 같이 쓰면 검수 flag가 남아 있을 때 output을 만들기 전에 실패합니다. 입력 case set에 candidate가 있으면 `eval-manifest.json`도 함께 생성합니다.
+`freeze-case-references`는 reference id를 안정화하고 `needs_review=false`로 저장한 새 case set을 만듭니다. 사람이 실제로 검수한 경우에만 `--reference-type human-reviewed`를 사용합니다. `--fail-on-review`를 같이 쓰면 검수 flag가 남아 있을 때 output을 만들기 전에 실패하고, `--fail-on-reference-audit`은 same-channel overlap, exact-boundary overlap, long segment 같은 구조 검수 항목이 남아 있을 때 output을 만들기 전에 실패합니다. 입력 case set에 candidate가 있으면 `eval-manifest.json`도 함께 생성합니다.
 
 candidate가 포함된 case set에서 평가 manifest 재생성:
 
@@ -461,11 +462,12 @@ candidate가 포함된 case set에서 평가 manifest 재생성:
 uv run casrt build-eval-manifest cases/case-index.json \
   --reference-type human-reviewed \
   --fail-on-review \
+  --fail-on-reference-audit \
   -o cases/eval-manifest.human-reviewed.json \
   --json
 ```
 
-`build-eval-manifest`는 파일 누락이나 stale count가 있으면 manifest를 쓰지 않고 실패합니다. 사람이 검수한 기준본을 모델 승격에 쓸 때는 `--reference-type human-reviewed`와 `eval-manifest --require-reference-type human-reviewed`를 함께 사용합니다.
+`build-eval-manifest`는 파일 누락이나 stale count가 있으면 manifest를 쓰지 않고 실패합니다. 사람이 검수한 기준본을 모델 승격에 쓸 때는 `--reference-type human-reviewed`, `--fail-on-review`, `--fail-on-reference-audit`, `eval-manifest --require-reference-type human-reviewed`를 함께 사용합니다.
 
 기존 SRT 또는 master JSON을 고정 aligner로 재정렬:
 

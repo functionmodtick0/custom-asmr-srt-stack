@@ -2428,6 +2428,62 @@ class ProjectCliTests(unittest.TestCase):
             self.assertIn("reference review_count=1", error)
             self.assertFalse(frozen_dir.exists())
 
+    def test_freeze_case_references_can_fail_on_reference_audit_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_dir = root / "cases"
+            audio_dir = case_dir / "audio"
+            reference_dir = case_dir / "references"
+            audio_dir.mkdir(parents=True)
+            reference_dir.mkdir()
+            (audio_dir / "front.wav").write_bytes(b"RIFFcaseWAVE")
+            reference = MasterDocument(
+                source_language="ja",
+                source_file="front.wav",
+                duration_ms=2000,
+                segments=(
+                    Segment("seg_000001", 0, 1000, "L", "speech", "あ"),
+                    Segment("seg_000002", 500, 1500, "L", "speech", "い"),
+                ),
+            )
+            (reference_dir / "front.master.json").write_text(
+                json.dumps(reference.to_json(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            case_index = case_dir / "case-index.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [
+                            {
+                                "id": "front",
+                                "audio": "audio/front.wav",
+                                "reference": "references/front.master.json",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            frozen_dir = root / "frozen"
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "freeze-case-references",
+                    "--fail-on-reference-audit",
+                    str(case_index),
+                    "-o",
+                    str(frozen_dir),
+                ]
+            )
+
+        self.assertEqual(result, 1)
+        self.assertEqual(output, "")
+        self.assertIn("reference_audit_item_count=1", error)
+        self.assertIn("reference-same-channel-overlap", error)
+        self.assertFalse(frozen_dir.exists())
+
     def test_freeze_case_references_writes_clean_case_set_and_manifest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -2512,6 +2568,75 @@ class ProjectCliTests(unittest.TestCase):
             )
             self.assertEqual(status_result, 0)
             self.assertEqual(json.loads(status_output)["reference_review_count"], 0)
+
+    def test_build_eval_manifest_can_fail_on_reference_audit_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_dir = root / "cases"
+            audio_dir = case_dir / "audio"
+            reference_dir = case_dir / "references"
+            candidate_dir = case_dir / "candidates"
+            audio_dir.mkdir(parents=True)
+            reference_dir.mkdir()
+            candidate_dir.mkdir()
+            (audio_dir / "front.wav").write_bytes(b"RIFFcaseWAVE")
+            reference = MasterDocument(
+                source_language="ja",
+                source_file="front.wav",
+                duration_ms=2000,
+                segments=(
+                    Segment("seg_000001", 0, 1000, "L", "speech", "あ"),
+                    Segment("seg_000002", 500, 1500, "L", "speech", "い"),
+                ),
+            )
+            candidate = MasterDocument(
+                source_language="ja",
+                source_file="front.wav",
+                duration_ms=2000,
+                segments=(Segment("seg_000001", 0, 1500, "MIX", "speech", "あい"),),
+            )
+            (reference_dir / "front.master.json").write_text(
+                json.dumps(reference.to_json(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (candidate_dir / "front.master.json").write_text(
+                json.dumps(candidate.to_json(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            case_index = case_dir / "case-index.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [
+                            {
+                                "id": "front",
+                                "audio": "audio/front.wav",
+                                "reference": "references/front.master.json",
+                                "candidate": "candidates/front.master.json",
+                                "candidate_id": "draft",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            manifest = root / "eval-manifest.json"
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "build-eval-manifest",
+                    "--fail-on-reference-audit",
+                    str(case_index),
+                    "-o",
+                    str(manifest),
+                ]
+            )
+
+        self.assertEqual(result, 1)
+        self.assertEqual(output, "")
+        self.assertIn("reference_audit_item_count=1", error)
+        self.assertFalse(manifest.exists())
 
     def test_freeze_case_references_rejects_missing_sources_before_output_side_effects(self):
         with tempfile.TemporaryDirectory() as tmpdir:

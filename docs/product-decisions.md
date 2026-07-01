@@ -173,8 +173,8 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 - `align-review-case-candidates`: prepared case set의 기존 candidate들을 `CASRT_ALIGNER_COMMAND`로 일괄 재정렬해 aligned candidate directory, diagnostics, attach plan, eval manifest를 만든다. 원본 case set과 원본 candidate는 수정하지 않는다.
 - `build-candidate-attach-plan`: candidate directory에서 case id와 같은 이름의 SRT/master JSON을 찾아 `custom-asmr-case-candidate-attach-plan-v1`을 생성한다. 모든 case가 정확히 하나의 candidate file과 매칭되어야 하며, 누락/모호한 중복은 output 없이 실패한다.
 - `attach-review-case-candidates`: 이미 준비된 review case set에 case-local candidate SRT/master를 붙여 `candidates/*.master.json`과 `case-index.json` candidate fields를 만든다. Reference는 수정하지 않고, candidate 없는 human-reviewed set을 eval manifest로 넘기기 위한 CLI-only 단계다.
-- `freeze-case-references`: 준비된 case set의 reference들을 batch로 stable id와 `needs_review=false` 상태로 고정하고 새 case set을 만든다. 사람이 실제 검수한 reference에만 `--reference-type human-reviewed`를 사용하며, 승격 전에는 `--fail-on-review`로 남은 검수 flag를 막는다.
-- `build-eval-manifest`: candidate가 포함된 준비 case set에서 `custom-asmr-eval-manifest-v1`을 다시 만든다. 사람이 reference를 검수한 뒤 `--reference-type human-reviewed --fail-on-review`로 모델 승격 평가 manifest를 만들 때 사용한다.
+- `freeze-case-references`: 준비된 case set의 reference들을 batch로 stable id와 `needs_review=false` 상태로 고정하고 새 case set을 만든다. 사람이 실제 검수한 reference에만 `--reference-type human-reviewed`를 사용하며, 승격 전에는 `--fail-on-review`와 `--fail-on-reference-audit`로 남은 검수 flag와 구조 검수 queue를 막는다.
+- `build-eval-manifest`: candidate가 포함된 준비 case set에서 `custom-asmr-eval-manifest-v1`을 다시 만든다. 사람이 reference를 검수한 뒤 `--reference-type human-reviewed --fail-on-review --fail-on-reference-audit`로 모델 승격 평가 manifest를 만들 때 사용한다.
 
 구현 세부 값, 실험 결과, 다음 작업 계획은 [local-asr-pipeline.md](local-asr-pipeline.md)에 기록한다.
 
