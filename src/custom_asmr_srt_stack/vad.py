@@ -125,10 +125,11 @@ def vad_coverage_report(
         ],
         duration_ms=audio_duration_ms,
     )
-    detected_intervals = merged_intervals(intervals, duration_ms=audio_duration_ms)
+    detected_chunks = normalized_intervals(intervals, duration_ms=audio_duration_ms)
+    detected_intervals = merged_intervals(detected_chunks, duration_ms=audio_duration_ms)
     reference_duration_ms = interval_duration_ms(reference_intervals)
     detected_duration_ms = interval_duration_ms(detected_intervals)
-    detected_duration_stats = interval_duration_stats(detected_intervals)
+    detected_duration_stats = interval_duration_stats(detected_chunks)
     overlap_duration_ms = interval_overlap_duration_ms(reference_intervals, detected_intervals)
     missed_reference_duration_ms = max(0, reference_duration_ms - overlap_duration_ms)
     extra_detected_duration_ms = max(0, detected_duration_ms - overlap_duration_ms)
@@ -140,7 +141,7 @@ def vad_coverage_report(
         "audio_duration_ms": audio_duration_ms,
         "reference_segment_count": sum(1 for segment in reference.segments if segment.kind == "speech" and segment.text),
         "reference_interval_count": len(reference_intervals),
-        "detected_interval_count": len(detected_intervals),
+        "detected_interval_count": len(detected_chunks),
         "detected_max_interval_ms": detected_duration_stats["max_interval_ms"],
         "detected_mean_interval_ms": detected_duration_stats["mean_interval_ms"],
         "reference_speech_duration_ms": reference_duration_ms,
@@ -331,6 +332,23 @@ def vad_coverage_interval_count(report: dict[str, Any], key: str) -> int | None:
 
 
 def merged_intervals(intervals: list[dict[str, int]] | tuple[dict[str, int], ...], *, duration_ms: int) -> tuple[dict[str, int], ...]:
+    normalized = normalized_intervals(intervals, duration_ms=duration_ms)
+    if not normalized:
+        return ()
+    merged: list[dict[str, int]] = []
+    for interval in normalized:
+        if not merged or interval["start_ms"] > merged[-1]["end_ms"]:
+            merged.append({"index": len(merged), "start_ms": interval["start_ms"], "end_ms": interval["end_ms"]})
+            continue
+        merged[-1]["end_ms"] = max(merged[-1]["end_ms"], interval["end_ms"])
+    return tuple({"index": index, "start_ms": item["start_ms"], "end_ms": item["end_ms"]} for index, item in enumerate(merged))
+
+
+def normalized_intervals(
+    intervals: list[dict[str, int]] | tuple[dict[str, int], ...],
+    *,
+    duration_ms: int,
+) -> tuple[dict[str, int], ...]:
     if duration_ms < 0:
         raise ValueError("VAD coverage duration_ms must be non-negative")
     normalized = []
@@ -346,15 +364,7 @@ def merged_intervals(intervals: list[dict[str, int]] | tuple[dict[str, int], ...
             raise ValueError("VAD coverage interval.end_ms must not exceed audio duration")
         normalized.append({"start_ms": start_ms, "end_ms": end_ms})
     normalized.sort(key=lambda item: (item["start_ms"], item["end_ms"]))
-    if not normalized:
-        return ()
-    merged: list[dict[str, int]] = []
-    for interval in normalized:
-        if not merged or interval["start_ms"] > merged[-1]["end_ms"]:
-            merged.append({"index": len(merged), "start_ms": interval["start_ms"], "end_ms": interval["end_ms"]})
-            continue
-        merged[-1]["end_ms"] = max(merged[-1]["end_ms"], interval["end_ms"])
-    return tuple({"index": index, "start_ms": item["start_ms"], "end_ms": item["end_ms"]} for index, item in enumerate(merged))
+    return tuple({"index": index, "start_ms": item["start_ms"], "end_ms": item["end_ms"]} for index, item in enumerate(normalized))
 
 
 def interval_duration_ms(intervals: tuple[dict[str, int], ...]) -> int:

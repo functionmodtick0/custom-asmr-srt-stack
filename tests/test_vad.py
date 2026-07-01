@@ -143,6 +143,31 @@ class VadTests(unittest.TestCase):
         self.assertAlmostEqual(summary["reference_recall"], 200 / 400)
         self.assertAlmostEqual(summary["detected_precision"], 200 / 350)
 
+    def test_vad_coverage_report_keeps_contiguous_split_chunks_for_duration_stats(self):
+        reference = MasterDocument(
+            source_language="ja",
+            source_file="voice.wav",
+            duration_ms=1000,
+            segments=(Segment("seg_000001", 0, 1000, "MIX", "speech", "声"),),
+        )
+
+        report = vad_coverage_report(
+            reference=reference,
+            intervals=(
+                {"start_ms": 0, "end_ms": 500},
+                {"start_ms": 500, "end_ms": 1000},
+            ),
+            audio_duration_ms=1000,
+            source="unit-test",
+        )
+
+        self.assertEqual(report["detected_interval_count"], 2)
+        self.assertEqual(report["detected_speech_duration_ms"], 1000)
+        self.assertEqual(report["detected_max_interval_ms"], 500)
+        self.assertEqual(report["detected_mean_interval_ms"], 500)
+        self.assertEqual(report["missed_reference_duration_ms"], 0)
+        self.assertEqual(report["extra_detected_duration_ms"], 0)
+
     def test_run_vad_command_strips_sensitive_environment(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             script = Path(tmpdir) / "vad.py"
