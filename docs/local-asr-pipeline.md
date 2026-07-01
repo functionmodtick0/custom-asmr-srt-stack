@@ -655,6 +655,8 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - Qwen3-ForcedAligner는 official Qwen 3-case에서 text를 바꾸지 않고 time-aligned 500ms 29.5% -> 36.6%, channel time-aligned 73.1% -> 75.0%로 개선했다. `CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS=80` guard 적용 후 80ms 미만 span은 제거됐고 time-aligned 500ms는 36.1%, channel time-aligned는 75.0%다. practical CER 29.5%가 여전히 기준 미달이므로 text 병목은 별도 모델/전처리/후처리로 풀어야 한다.
 - 2026-06-30 audit에서 01/04/07 front120 reference가 stable-ts 기반 pseudo-gold임을 확인했다. `eval-manifest`는 `reference_type`과 `reference_notes`를 report에 보존한다. 제품 기본 모델 승격은 `reference_type=human-reviewed` gold에서 다시 판단해야 한다.
 - 현재 Qwen3-ASR 1.7B 경로만으로는 품질 기준을 만족하지 못한다.
+- 2026-07-01 official Qwen3-ASR all8 batch CLI benchmark: candidates `.casrt/experiments/all8-front120-qwen-official-candidates`, projects `.casrt/experiments/all8-front120-qwen-official-projects`, attach plan `.casrt/experiments/all8-front120-qwen-official-attach-plan.json`, eval case copy `.casrt/experiments/all8-front120-qwen-official-eval-cases`, report `.casrt/experiments/all8-front120-qwen-official-eval-report.json`, product gate report `.casrt/experiments/all8-front120-qwen-official-product-gate-report.json`. Command used `CASRT_LOCAL_WORKER_ENV_MODE=offline`, qwen-asr venv worker, local snapshot `/home/brain-offloaded/.cache/huggingface/hub/models--Qwen--Qwen3-ASR-1.7B/snapshots/7278e1e70fe206f11671096ffdd38061171dd6e5`, local path-only, `local_files_only`, and Python network block. Summary: reference segments 82, candidate segments 192, practical CER 59.7%, Japanese relaxed CER 58.7%, time-aligned 500ms ratio 16.0%, channel time-aligned accuracy 53.3%, candidate MIX ratio 63.0%, candidate review ratio 100%, review effort 82 segments / 100%. Product gate failed on pseudo-gold reference type, practical CER, timing, channel accuracy, MIX ratio, review effort, and candidate review ratio.
+- 2026-07-01 all8 local model comparison: output `.casrt/experiments/all8-front120-local-model-comparison.json`. Ranking is Qwen official then Granite base because Qwen has lower practical CER 59.7% vs Granite 63.8%; both fail every promotion-relevant gate and remain below the stable-ts pseudo-gold baseline. 판단: current local Qwen/Granite open models do not solve ASMR quality by themselves; human-reviewed gold, review-first candidate selection, and possibly a stronger local model/runtime remain necessary.
 - `neosophie/Qwen3-ASR-1.7B-JA`는 다운로드 재시도 후 점수화했다. 120초 gold 기준 Qwen3-ASR 1.7B보다 약간 낫지만 practical CER 20.4%라 기본 승격하지 않는다.
 - 01/04/07 front120 확장 gold에서도 Neosophie/Qwen3-ASR-JA는 practical CER 29.6%라 기본 승격하지 않는다. 특히 07의 whisper/침대 ASMR 구간에서 텍스트 인식이 크게 무너졌다.
 - Neosophie full-window와 1.5초 silence 병합 실험은 text와 timing이 모두 악화됐다. 이 샘플에서는 chunk를 길게 잡는 것이 해결책이 아니다.
@@ -774,7 +776,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
    - word/char alignment는 번역용 JSON에 넣지 않는다.
 
 6. 모델 비교
-   - `Qwen/Qwen3-ASR-1.7B`를 주력으로 둔다.
+   - `Qwen/Qwen3-ASR-1.7B`는 현재 로컬 주력 비교 후보지만 all8 batch CLI 기준 practical CER 59.7%, review effort 100%로 기본 승격하지 않는다.
    - `zhifeixie/Mega-ASR`는 검증 완료 후보지만 기본 승격하지 않는다.
    - `neosophie/Qwen3-ASR-1.7B-JA`는 검증 완료 후보지만 기본 승격하지 않는다.
    - `Qwen/Qwen3-ASR-1.7B-hf`는 Transformers main에서 검증했지만 기본 승격하지 않는다. 공식 release에 `qwen3_asr`가 들어오면 runtime 안정성만 재확인하고, 품질 재평가는 human-reviewed gold가 늘어난 뒤에 한다.
