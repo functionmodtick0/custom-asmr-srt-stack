@@ -254,10 +254,12 @@ uv run casrt project transcribe PROJECT_ID \
 
 - `casrt`가 내부적으로 `python -m custom_asmr_srt_stack.granite_asr_worker` subprocess를 시작한다.
 - worker는 `AutoModelForSpeechSeq2Seq`와 `AutoProcessor`를 사용하고 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로 로드한다.
+- Granite `AutoProcessor`의 `GraniteSpeechFeatureExtractor`는 `torchaudio`를 요구하므로 `local` extra에 `torchaudio`를 포함한다.
 - `--model-id`는 safetensors weight가 있는 existing local snapshot directory여야 한다. repo id나 cache miss fallback은 실패한다.
 - Granite는 timestamp를 반환하지 않으므로 chunk bounds를 segment timing으로 사용하고, 기존 MIX-first energy chunking과 L/R channel attribution을 적용한다.
 - 기본 prompt는 `<|audio|>transcribe the speech with proper punctuation and capitalization.`이고 `CASRT_GRANITE_ASR_PROMPT`로만 내부 override할 수 있다.
 - 현재 local snapshot은 `.casrt/models/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546`이고 digest report는 `.casrt/model-digests/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546-digest.json`이다. snapshot SHA-256은 `67c7d69184b53bae7a2bec077fbc88d8695a72f043fd70831f4e4830dc4752ca`다.
+- 2026-07-01 실데이터 01/04/07 front120 pseudo-gold 평가에서 practical CER 24.7%, time-aligned 500ms 23.7%, candidate MIX 54.4%, candidate review ratio 100%, review effort 100%로 product gate를 실패했다. 기본 ASMR 경로로 승격하지 않는다.
 
 고정 VAD command contract:
 

@@ -34,7 +34,7 @@ SRT import는 선두의 `[L]`, `[R]`, `[LR]`, `[MIX]`, `[L:SPEAKER_00]`, `[R:SPE
 - Node.js: `web/app.js` 구문 검사용
 - ffmpeg: WAV가 아니거나 채널 분리에 맞지 않는 WAV를 16-bit PCM WAV로 정규화할 때 필요
 
-로컬 Transformers worker를 사용하려면 추가 의존성을 설치합니다.
+로컬 Transformers/ASR worker를 사용하려면 추가 의존성을 설치합니다. 이 extra에는 Granite processor가 요구하는 `torchaudio`도 포함됩니다.
 
 ```bash
 uv sync --extra local
@@ -132,7 +132,7 @@ Qwen3-ForcedAligner는 `CASRT_QWEN_ASR_ALIGNER_MODEL_ID`로 내부 실험할 수
 
 `local-cohere-asr`는 Cohere Transcribe 03-2026을 위한 로컬 후보입니다. repo id가 아니라 exact revision의 local snapshot directory를 `--model-id`로 받아야 하며, worker는 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로만 로드합니다. 실제 모델 다운로드/평가는 revision pin과 `casrt model digest` report 기록 전까지 실행하지 않습니다.
 
-`local-granite-asr`는 `ibm-granite/granite-speech-4.1-2b`를 위한 로컬 후보입니다. 현재 Transformers 5.12.1이 `granite_speech`를 native 지원하므로 remote model code 없이 실행할 수 있습니다. repo id가 아니라 exact revision의 local snapshot directory를 `--model-id`로 받아야 하며, worker는 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로만 로드합니다. 실제 모델 다운로드/평가는 revision pin과 `casrt model digest` report 기록 전까지 실행하지 않습니다.
+`local-granite-asr`는 `ibm-granite/granite-speech-4.1-2b`를 위한 로컬 후보입니다. 현재 Transformers 5.12.1이 `granite_speech`를 native 지원하므로 remote model code 없이 실행할 수 있습니다. repo id가 아니라 exact revision의 local snapshot directory를 `--model-id`로 받아야 하며, worker는 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로만 로드합니다. 2026-07-01 01/04/07 front120 pseudo-gold 평가에서는 practical CER 24.7%, time-aligned 500ms 23.7%, review effort 100%라 기본 승격하지 않습니다.
 
 ```bash
 uv run casrt model digest /path/to/model/snapshots/<commit> \
