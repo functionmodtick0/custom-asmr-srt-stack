@@ -363,7 +363,8 @@ function renderReviewPack() {
 function renderReviewCaseSet() {
   const items = state.reviewCaseSet.items || [];
   const reviewFlagCount = items.reduce((total, item) => total + (item.review_count || 0), 0);
-  els.segmentCount.textContent = `${items.length} review cases · ${reviewFlagCount} flags`;
+  const reviewDurationMs = items.reduce((total, item) => total + (item.review_duration_ms || 0), 0);
+  els.segmentCount.textContent = `${items.length} review cases · ${reviewFlagCount} flags · ${formatDuration(reviewDurationMs)}`;
   els.selectedLabel.textContent = "case 선택";
   els.retranscribeButton.disabled = true;
   els.retranscribeButton.hidden = false;
@@ -436,6 +437,7 @@ function renderReviewCaseItem(item, index) {
   counts.append(
     textBlock("review-detail", `${item.segments ?? 0} segments`),
     textBlock("reason-list", `${item.review_count ?? 0} review flags`),
+    textBlock("review-detail", formatDuration(item.review_duration_ms)),
   );
 
   const source = document.createElement("div");
@@ -787,6 +789,7 @@ function syncReviewCaseItemAfterSave(result) {
   if (!item) return;
   item.segments = result.segments;
   item.review_count = result.review_count;
+  item.review_duration_ms = result.review_duration_ms;
   item.reference_master = state.master;
 }
 

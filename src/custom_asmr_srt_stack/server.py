@@ -258,9 +258,11 @@ def load_review_case_set_response(path: Path) -> dict[str, Any]:
         review_case_item_path(case_index_path, audio, "audio")
         reference_path = review_case_item_path(case_index_path, reference, "reference")
         normalized_item = dict(item_mapping)
+        reference_master = load_review_case_reference(reference_path)
         normalized_item["id"] = case_id
         normalized_item["audio_url"] = review_case_audio_url(case_index_path, audio)
-        normalized_item["reference_master"] = load_review_case_reference(reference_path)
+        normalized_item["reference_master"] = reference_master
+        normalized_item["review_duration_ms"] = master_review_duration_ms(reference_master)
         normalized_items.append(normalized_item)
     response = dict(case_index)
     response["kind"] = "review-case-set"
@@ -332,6 +334,21 @@ def review_case_audio_url(index_path: Path, audio: str) -> str:
 
 def load_review_case_reference(reference_path: Path) -> dict[str, Any]:
     return MasterDocument.from_json(json.loads(reference_path.read_text(encoding="utf-8"))).to_json()
+
+
+def master_review_duration_ms(master: dict[str, Any]) -> int:
+    segments = master.get("segments")
+    if not isinstance(segments, list):
+        return 0
+    total = 0
+    for segment in segments:
+        if not isinstance(segment, dict) or not segment.get("needs_review"):
+            continue
+        start_ms = segment.get("start_ms")
+        end_ms = segment.get("end_ms")
+        if isinstance(start_ms, int) and isinstance(end_ms, int):
+            total += max(0, end_ms - start_ms)
+    return total
 
 
 class AppRequestHandler(SimpleHTTPRequestHandler):

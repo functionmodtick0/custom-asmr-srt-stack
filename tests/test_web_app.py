@@ -152,6 +152,71 @@ class WebAppBehaviorTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_review_case_list_shows_remaining_review_duration(self):
+        result = self.run_app_assertions(
+            r"""
+            (async () => {
+              const pathInput = elements.get("reviewPackPathInput");
+              pathInput.value = "/cases";
+              context.fetch = async (path, options) => {
+                assert.strictEqual(path, "/api/review/load");
+                assert.deepStrictEqual(JSON.parse(options.body), { path: "/cases" });
+                return {
+                  ok: true,
+                  async json() {
+                    return {
+                      kind: "review-case-set",
+                      items: [
+                        {
+                          id: "front-a",
+                          reference_type: "pseudo-gold",
+                          duration_ms: 120000,
+                          segments: 3,
+                          review_count: 2,
+                          review_duration_ms: 3222,
+                          audio: "audio/front-a.wav",
+                          reference: "references/front-a.master.json",
+                          reference_master: {
+                            segments: [
+                              { id: "seg_000001", start_ms: 0, end_ms: 1000, channel: "MIX", text: "済み", needs_review: false },
+                              { id: "seg_000002", start_ms: 1234, end_ms: 3456, channel: "L", text: "確認する", needs_review: true },
+                            ],
+                          },
+                        },
+                        {
+                          id: "front-b",
+                          reference_type: "pseudo-gold",
+                          duration_ms: 120000,
+                          segments: 1,
+                          review_count: 0,
+                          review_duration_ms: 0,
+                          audio: "audio/front-b.wav",
+                          reference: "references/front-b.master.json",
+                          reference_master: { segments: [] },
+                        },
+                      ],
+                    };
+                  },
+                };
+              };
+
+              await context.loadReviewPath();
+
+              assert.strictEqual(elements.get("segmentCount").textContent, "2 review cases · 2 flags · 0:03.222");
+              const firstRow = elements.get("segmentList").children[0];
+              const counts = firstRow.children[1];
+              assert.strictEqual(counts.children[0].textContent, "3 segments");
+              assert.strictEqual(counts.children[1].textContent, "2 review flags");
+              assert.strictEqual(counts.children[2].textContent, "0:03.222");
+            })().catch((error) => {
+              console.error(error);
+              process.exit(1);
+            });
+        """,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_review_pack_item_hides_candidate_row_when_candidate_is_absent(self):
         result = self.run_app_assertions(
             r"""

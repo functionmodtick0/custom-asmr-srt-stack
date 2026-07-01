@@ -11,7 +11,7 @@ from custom_asmr_srt_stack.alignment import alignment_diagnostics, run_alignment
 from custom_asmr_srt_stack.audio import analyze_wav, normalize_audio_to_wav, slice_wav
 from custom_asmr_srt_stack.case_slicing import slice_master_document
 from custom_asmr_srt_stack.evaluation import EVAL_MANIFEST_FORMAT, load_transcript_document
-from custom_asmr_srt_stack.models import MasterDocument
+from custom_asmr_srt_stack.models import MasterDocument, Segment
 from custom_asmr_srt_stack.review_pack import (
     DEFAULT_REVIEW_CONTEXT_MS,
     REVIEW_AUDIO_MAP_FORMAT,
@@ -416,6 +416,7 @@ def save_review_case_reference(
         raw_item["segments"] = len(master.segments)
         raw_item["review_count"] = sum(1 for segment in master.segments if segment.needs_review)
         resolved_index_path.write_text(json.dumps(case_index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        review_duration_ms = review_duration_ms_for_segments(master.segments)
         return {
             "format": REVIEW_CASE_REFERENCE_SAVE_FORMAT,
             "ok": True,
@@ -423,6 +424,7 @@ def save_review_case_reference(
             "reference": str(reference_path),
             "segments": raw_item["segments"],
             "review_count": raw_item["review_count"],
+            "review_duration_ms": review_duration_ms,
         }
     raise ValueError(f"review case id is missing: {case_id}")
 
@@ -1150,9 +1152,13 @@ def transcript_status(path: Path, *, source_language: str) -> tuple[dict[str, An
     return {
         "segments": len(master.segments),
         "review_count": len(review_segments),
-        "review_duration_ms": sum(max(0, segment.end_ms - segment.start_ms) for segment in review_segments),
+        "review_duration_ms": review_duration_ms_for_segments(review_segments),
         "first_review_segment": first_review_segment,
     }, None
+
+
+def review_duration_ms_for_segments(segments: tuple[Segment, ...] | list[Segment]) -> int:
+    return sum(max(0, segment.end_ms - segment.start_ms) for segment in segments if segment.needs_review)
 
 
 def validate_case_slice_plan(plan: dict[str, Any]) -> list[dict[str, Any]]:
