@@ -565,6 +565,7 @@ uv run casrt sweep-channel-attribution eval-manifest.json \
   --threshold-db 6 \
   --threshold-db 8 \
   --threshold-db 10 \
+  --reset-speech-channels-to-mix \
   --product-gate \
   -o channel-sweep \
   --json
@@ -572,12 +573,14 @@ uv run casrt sweep-channel-attribution eval-manifest.json \
 
 동작:
 
-- 입력 manifest는 `custom-asmr-eval-manifest-v1`이고 candidate transcript는 channel attribution 전 draft여야 한다.
+- 입력 manifest는 `custom-asmr-eval-manifest-v1`이다. 기본적으로 candidate transcript는 channel attribution 전 draft라고 본다.
 - `audio-map`은 `custom-asmr-review-audio-map-v1` 또는 `{ "case_id": "audio.wav" }` object를 받는다.
 - audio/reference/candidate source file이 없으면 output directory를 만들기 전에 실패한다.
 - 각 threshold/quiet-side setting별로 attributed candidate master, generated eval manifest, eval report를 만든다.
 - output root에는 `custom-asmr-channel-attribution-sweep-v1` `index.json`과 `comparison.json`을 쓴다.
 - `--threshold-db`와 `--quiet-channel-max-dbfs`는 반복 가능하다. 지정하지 않으면 제품 기본값 8dB와 -40dBFS를 사용한다.
+- `--reset-speech-channels-to-mix`는 각 setting의 candidate copy에서 speech segment channel을 먼저 `MIX`로 되돌린 뒤 attribution을 적용한다. 이미 project workflow에서 L/R/MIX가 붙은 후보를 threshold별로 다시 비교할 때 사용하며, 원본 candidate는 수정하지 않는다.
+- setting manifest의 reference path는 setting directory 기준 상대경로로 저장해 relative manifest input도 같은 방식으로 재평가되게 한다.
 - `--product-gate` 또는 개별 gate 인자를 지정하면 `comparison.json`의 각 item에 `gate_passed`와 `gate_failures`를 붙이고, 같은 `quality_gate` metadata를 `index.json`에도 보존한다. Sweep 자체는 gate 실패 때문에 실패 exit code를 반환하지 않는다.
 - 이 명령은 threshold를 자동 승격하지 않는다. 사람이 `comparison.json`과 product gate를 보고 기본값 변경 여부를 결정한다.
 - WebUI 옵션으로 노출하지 않는 benchmark/운영 도구다.

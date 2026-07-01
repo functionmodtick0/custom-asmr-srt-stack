@@ -703,6 +703,10 @@ class ProjectCliTests(unittest.TestCase):
             self.assertTrue(
                 any("channel time-aligned MIX ratio" in failure for failure in comparison["items"][1]["gate_failures"])
             )
+            setting_manifest = json.loads(
+                (output_dir / "th3_quietm40" / "th3_quietm40.eval-manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(setting_manifest["cases"][0]["reference"], "../../reference.srt")
             self.assertTrue((output_dir / "th3_quietm40" / "candidates" / "front-a.master.json").exists())
 
     def test_sweep_channel_attribution_rejects_missing_sources_before_output_side_effects(self):
@@ -754,6 +758,72 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(result, 1)
             self.assertIn("candidate file does not exist", error)
             self.assertFalse(output_dir.exists())
+
+    def test_sweep_channel_attribution_can_reset_existing_speech_channels(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "stereo.wav"
+            reference = root / "reference.srt"
+            candidate = root / "candidate.srt"
+            audio_map = root / "audio-map.json"
+            manifest = root / "manifest.json"
+            output_dir = root / "sweep"
+            write_stereo_samples(audio, [(100, 6000)] * 1000)
+            reference.write_text("1\n00:00:00,000 --> 00:00:01,000\n[R] 右\n", encoding="utf-8")
+            candidate.write_text("1\n00:00:00,000 --> 00:00:01,000\n[L] 右\n", encoding="utf-8")
+            audio_map.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-audio-map-v1",
+                        "items": [{"case_id": "front-a", "audio": "stereo.wav"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-manifest-v1",
+                        "reference_type": "human-reviewed",
+                        "cases": [
+                            {
+                                "id": "front-a",
+                                "reference": "reference.srt",
+                                "candidate": "candidate.srt",
+                                "candidate_id": "already-attributed",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "sweep-channel-attribution",
+                    "--json",
+                    str(manifest),
+                    "--audio-map",
+                    str(audio_map),
+                    "-o",
+                    str(output_dir),
+                    "--threshold-db",
+                    "3",
+                    "--reset-speech-channels-to-mix",
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertTrue(report["reset_speech_channels_to_mix"])
+            self.assertTrue(report["items"][0]["reset_speech_channels_to_mix"])
+            self.assertEqual(report["items"][0]["changed_segments"], 1)
+            attributed = json.loads(
+                (output_dir / "th3_quietm40" / "candidates" / "front-a.master.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(attributed["segments"][0]["channel"], "R")
+            comparison = json.loads((output_dir / "comparison.json").read_text(encoding="utf-8"))
+            self.assertEqual(comparison["items"][0]["segments_needing_edit"], 0.0)
 
     def test_slice_case_writes_rebased_audio_and_transcript(self):
         with tempfile.TemporaryDirectory() as tmpdir:

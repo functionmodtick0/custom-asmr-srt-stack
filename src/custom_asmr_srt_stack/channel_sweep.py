@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +18,7 @@ from custom_asmr_srt_stack.evaluation import (
     resolve_manifest_path,
     validate_eval_manifest,
 )
+from custom_asmr_srt_stack.models import MasterDocument
 from custom_asmr_srt_stack.review_pack import load_audio_by_case
 
 CHANNEL_ATTRIBUTION_SWEEP_FORMAT = "custom-asmr-channel-attribution-sweep-v1"
@@ -29,6 +32,7 @@ def sweep_channel_attribution(
     threshold_db_values: list[float],
     quiet_channel_max_dbfs_values: list[float],
     source_language: str = "ja",
+    reset_speech_channels_to_mix: bool = False,
 ) -> dict[str, Any]:
     if not threshold_db_values:
         raise ValueError("channel attribution sweep requires at least one threshold")
@@ -76,6 +80,8 @@ def sweep_channel_attribution(
                     raise ValueError(f"channel attribution sweep case {case_id!r} requires stereo audio")
                 candidate_path = resolve_manifest_path(manifest_base_dir, case["candidate"])
                 candidate = load_transcript_document(candidate_path, source_language=source_language)
+                if reset_speech_channels_to_mix:
+                    candidate = reset_speech_channels(candidate)
                 attributed = attribute_master_channels_by_energy(
                     candidate,
                     left_audio=channels["L"],
@@ -92,7 +98,10 @@ def sweep_channel_attribution(
                 )
                 setting_case = {
                     "id": case_id,
-                    "reference": str(resolve_manifest_path(manifest_base_dir, case["reference"])),
+                    "reference": relative_path_value(
+                        resolve_manifest_path(manifest_base_dir, case["reference"]),
+                        base_dir=setting_dir,
+                    ),
                     "candidate": str(candidate_relative),
                     "candidate_id": f"{case.get('candidate_id') or Path(case['candidate']).stem}-{setting_id}",
                     "reference_type": case.get("reference_type") or source_reference_type,
@@ -122,6 +131,7 @@ def sweep_channel_attribution(
                     "setting_id": setting_id,
                     "threshold_db": threshold_db,
                     "quiet_channel_max_dbfs": quiet_channel_max_dbfs,
+                    "reset_speech_channels_to_mix": reset_speech_channels_to_mix,
                     "changed_segments": changed_segments,
                     "total_segments": total_segments,
                     "eval_manifest": str(setting_manifest_file),
@@ -140,6 +150,7 @@ def sweep_channel_attribution(
         "output": str(output_dir),
         "case_count": len(cases),
         "setting_count": len(items),
+        "reset_speech_channels_to_mix": reset_speech_channels_to_mix,
         "items": items,
         "comparison": str(comparison_file),
     }
@@ -151,6 +162,19 @@ def prepare_output_dir(output_dir: Path) -> None:
     if output_dir.exists() and any(output_dir.iterdir()):
         raise ValueError("channel attribution sweep output directory must be empty")
     output_dir.mkdir(parents=True, exist_ok=True)
+
+
+def reset_speech_channels(master: MasterDocument) -> MasterDocument:
+    return replace(
+        master,
+        segments=tuple(
+            replace(segment, channel="MIX") if segment.kind == "speech" else segment for segment in master.segments
+        ),
+    )
+
+
+def relative_path_value(path: Path, *, base_dir: Path) -> str:
+    return Path(os.path.relpath(path.expanduser().resolve(), base_dir.expanduser().resolve())).as_posix()
 
 
 def validate_sweep_source_files(

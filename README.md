@@ -476,12 +476,13 @@ uv run casrt sweep-channel-attribution eval-manifest.json \
   --threshold-db 6 \
   --threshold-db 8 \
   --threshold-db 10 \
+  --reset-speech-channels-to-mix \
   --product-gate \
   -o channel-sweep \
   --json
 ```
 
-`sweep-channel-attribution`은 setting별 attributed candidates, eval reports, `comparison.json`을 생성합니다. `--product-gate` 또는 개별 gate 인자를 함께 넣으면 `comparison.json`과 `index.json`에 gate 결과를 주석으로 남깁니다. 이 명령은 WebUI 옵션을 늘리지 않는 CLI-only benchmark 도구이며 threshold를 자동 승격하지 않습니다.
+`sweep-channel-attribution`은 setting별 attributed candidates, eval reports, `comparison.json`을 생성합니다. 이미 L/R이 붙은 candidate를 threshold별로 공정하게 다시 채점할 때는 `--reset-speech-channels-to-mix`로 speech channel을 sweep copy 안에서만 MIX로 되돌립니다. `--product-gate` 또는 개별 gate 인자를 함께 넣으면 `comparison.json`과 `index.json`에 gate 결과를 주석으로 남깁니다. 이 명령은 WebUI 옵션을 늘리지 않는 CLI-only benchmark 도구이며 threshold를 자동 승격하지 않습니다.
 
 전사 결과 평가:
 

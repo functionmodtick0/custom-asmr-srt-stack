@@ -248,6 +248,7 @@ def sweep_channel_attribution_command(args: argparse.Namespace) -> None:
         threshold_db_values=args.threshold_db or [CHANNEL_ATTRIBUTION_THRESHOLD_DB],
         quiet_channel_max_dbfs_values=args.quiet_channel_max_dbfs or [CHANNEL_ATTRIBUTION_QUIET_MAX_DBFS],
         source_language=args.source_language,
+        reset_speech_channels_to_mix=args.reset_speech_channels_to_mix,
     )
     comparison_path = Path(report["comparison"])
     comparison = json.loads(read_text(comparison_path))
@@ -1088,6 +1089,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         action="append",
         help="Quiet-side gate to test. Repeat for multiple values; default is the product quiet-side gate.",
+    )
+    sweep_channel_attribution_parser.add_argument(
+        "--reset-speech-channels-to-mix",
+        action="store_true",
+        help="Reset every speech candidate channel to MIX before applying each attribution setting.",
     )
     sweep_channel_attribution_parser.add_argument("--source-language", default="ja")
     add_quality_gate_args(sweep_channel_attribution_parser, action_verb="Annotate comparison")
