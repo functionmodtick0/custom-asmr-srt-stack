@@ -128,7 +128,9 @@ function getModelSettings() {
 }
 
 function isLocalAdapter(adapter) {
-  return ["local-transformers", "local-qwen-asr", "local-qwen-hf-asr", "local-cohere-asr"].includes(adapter);
+  return ["local-transformers", "local-qwen-asr", "local-qwen-hf-asr", "local-cohere-asr", "local-granite-asr"].includes(
+    adapter,
+  );
 }
 
 function modelSettingsReady(model) {
@@ -159,6 +161,7 @@ function modelPlaceholderForAdapter(adapter) {
   if (adapter === "local-qwen-asr") return "Qwen/Qwen3-ASR-1.7B";
   if (adapter === "local-qwen-hf-asr") return "/models/qwen3-asr-1.7b-hf";
   if (adapter === "local-cohere-asr") return "/models/cohere-transcribe-03-2026";
+  if (adapter === "local-granite-asr") return ".casrt/models/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546";
   if (adapter === "local-transformers") return "google/gemma-4-E4B-it";
   return "gemma-4-e4b";
 }
