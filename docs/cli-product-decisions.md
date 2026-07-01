@@ -259,7 +259,12 @@ uv run casrt project transcribe PROJECT_ID \
 - Granite는 timestamp를 반환하지 않으므로 chunk bounds를 segment timing으로 사용하고, 기존 MIX-first energy chunking과 L/R channel attribution을 적용한다.
 - 기본 prompt는 `<|audio|>transcribe the speech with proper punctuation and capitalization.`이고 `CASRT_GRANITE_ASR_PROMPT`로만 내부 override할 수 있다.
 - 현재 local snapshot은 `.casrt/models/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546`이고 digest report는 `.casrt/model-digests/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546-digest.json`이다. snapshot SHA-256은 `67c7d69184b53bae7a2bec077fbc88d8695a72f043fd70831f4e4830dc4752ca`다.
-- 2026-07-01 실데이터 01/04/07 front120 pseudo-gold 평가에서 practical CER 24.7%, time-aligned 500ms 23.7%, candidate MIX 54.4%, candidate review ratio 100%, review effort 100%로 product gate를 실패했다. 기본 ASMR 경로로 승격하지 않는다.
+- 2026-07-01 실데이터 01/04/07 front120 pseudo-gold 평가에서 non-Japanese hallucination filter 적용 후 practical CER 23.6%, time-aligned 500ms 21.8%, candidate MIX 56.4%, candidate review ratio 100%, review effort 100%로 product gate를 실패했다. 기본 ASMR 경로로 승격하지 않는다.
+
+로컬 일본어 ASR worker 공통 후처리:
+
+- 정리 후 일본어 문자가 하나도 없는 segment는 hallucination으로 보고 버린다.
+- 이 필터는 punctuation-only, English-only, 기타 비일본어-only 출력에 한정한다. 일본어 문자가 포함된 혼합 출력은 이 단계에서 제거하지 않는다.
 
 고정 VAD command contract:
 

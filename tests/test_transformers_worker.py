@@ -111,6 +111,12 @@ class TransformersWorkerTests(unittest.TestCase):
             "みつかっちゃった。ねえねえ、魔女ちゃん、こいつ強い?えっと",
         )
 
+    def test_clean_transcription_text_drops_non_japanese_hallucination_segments(self):
+        self.assertEqual(clean_transcription_text("!"), "")
+        self.assertEqual(clean_transcription_text(",yes,I know.I know."), "")
+        self.assertEqual(clean_transcription_text("you and your men!"), "")
+        self.assertEqual(clean_transcription_text("ねえ!"), "ねえ!")
+
     def test_prepare_audio_for_asr_boosts_quiet_pcm16_audio(self):
         prepared = prepare_audio_for_asr(mono_wav_from_samples([100, -100, 100]))
 

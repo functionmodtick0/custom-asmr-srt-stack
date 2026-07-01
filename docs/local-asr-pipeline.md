@@ -223,6 +223,19 @@ CASRT_QWEN_ENERGY_MAX_CHUNK_MS
 - ForcedAligner 단독보다 먼저 발화 단위 chunking을 해야 timing이 안정된다.
 - WebUI에는 이 값을 옵션으로 노출하지 않는다. 필요하면 config/env 또는 developer setting으로 분리한다.
 
+## ASR Text Cleanup
+
+로컬 일본어 ASR worker는 모델 출력 텍스트를 segment 저장 전에 정리한다.
+
+현재 동작:
+
+- common prefix(`Transcription:`, `Transcript:`, `文字起こし:`, `書き起こし:`)를 제거한다.
+- 일본어 문자 사이의 불필요한 공백과 punctuation 주변 공백을 압축한다.
+- 앞뒤의 비일본어 noise를 제거한다.
+- 정리 후 일본어 문자가 하나도 없으면 hallucination segment로 보고 버린다.
+
+이 필터는 punctuation-only/English-only 같은 비일본어-only 출력에 한정한다. 일본어 문자가 포함된 segment는 여기서 버리지 않고 평가와 human review에서 다룬다.
+
 ## Channel Attribution
 
 Qwen은 `MIX`를 전사한다. 생성된 speech segment에 대해 같은 시간 범위의 L/R RMS를 비교해 channel을 판정한다. 같은 구현은 기존 SRT/master 후처리 CLI에서도 사용한다.
@@ -662,7 +675,8 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
   - `ibm-granite/granite-speech-4.1-2b`: revision `de575db64086f84fdc79da4932d1076e965bc546`, tags `transformers`, `safetensors`, `granite_speech`, `automatic-speech-recognition`, `ja`, license Apache-2.0. Model card는 2026-04-29 release, Japanese ASR support, native `transformers>=4.52.1`, and Japanese-tailored synthetic data를 명시한다. 현재 repo env Transformers 5.12.1에서 `transformers.models.granite_speech`와 `AutoModelForSpeechSeq2Seq` import가 가능해 `local-granite-asr` adapter를 추가했다. Persistent cache는 `.casrt/models/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546`, digest report는 `.casrt/model-digests/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546-digest.json`, snapshot SHA-256은 `67c7d69184b53bae7a2bec077fbc88d8695a72f043fd70831f4e4830dc4752ca`다. 실제 evaluation은 이 exact local snapshot digest 기준으로 수행한다.
   - Granite runtime note: `AutoProcessor` 생성 시 `GraniteSpeechFeatureExtractor`가 `torchaudio`를 요구한다. 첫 실제 smoke는 model load 후 `torchaudio` missing으로 실패했고, `local` extra에 `torchaudio`를 추가한 뒤 `torch 2.12.1+cu130` / `torchaudio 2.11.0+cu130` import smoke와 실제 전사를 통과했다.
   - 2026-07-01 Granite 10초 smoke: input `.casrt/experiments/upload-real-crop/01-front10.wav`, project root `.casrt/experiments/granite-smoke/projects`, project `52cf1cc9379a484e97cb866a3ec48399`, command env `CASRT_LOCAL_WORKER_ENV_MODE=offline CASRT_GRANITE_ASR_MAX_NEW_TOKENS=128`. Result: 3 speech segments, first text `やばい、見つかっちゃった`, all `needs_review=true`.
-  - 2026-07-01 Granite 01/04/07 front120 pseudo-gold benchmark: regenerated references/audio under `.casrt/experiments/granite-front120-eval`, manifest `.casrt/experiments/granite-front120-eval/granite-front120-3case-manifest.json`, report `.casrt/experiments/granite-front120-eval/reports/granite-front120-3case-report.json`. Summary: reference segments 60, candidate segments 69, practical CER 24.7%, Japanese relaxed CER 23.8%, time-aligned 500ms ratio 23.7%, candidate MIX ratio 54.4%, candidate review ratio 100%, review effort 67 segments / 100%. `--product-gate` failed on practical CER, timing, unavailable L/R channel accuracy, MIX ratio, review effort, and unresolved review flags. Granite is useful as a 2026 local candidate but does not beat the current best practical baseline and is not promoted.
+  - 2026-07-01 Granite 01/04/07 front120 pseudo-gold benchmark before non-Japanese hallucination filter: regenerated references/audio under `.casrt/experiments/granite-front120-eval`, manifest `.casrt/experiments/granite-front120-eval/granite-front120-3case-manifest.json`, report `.casrt/experiments/granite-front120-eval/reports/granite-front120-3case-report.json`. Summary: reference segments 60, candidate segments 69, practical CER 24.7%, Japanese relaxed CER 23.8%, time-aligned 500ms ratio 23.7%, candidate MIX ratio 54.4%, candidate review ratio 100%, review effort 67 segments / 100%.
+  - 2026-07-01 Granite non-Japanese hallucination filter benchmark: manifest `.casrt/experiments/granite-front120-eval/granite-filtered-front120-3case-manifest.json`, report `.casrt/experiments/granite-front120-eval/reports/granite-filtered-front120-3case-report.json`. Summary: reference segments 60, candidate segments 61, practical CER 23.6%, Japanese relaxed CER 22.5%, time-aligned 500ms ratio 21.8%, candidate MIX ratio 56.4%, candidate review ratio 100%, review effort 62 segments / 100%. The filter removed punctuation-only/English-only hallucinations and slightly improved text/review effort, but `--product-gate` still failed on practical CER, timing, unavailable L/R channel accuracy, MIX ratio, review effort, and unresolved review flags. Granite is useful as a 2026 local candidate but does not beat the current best practical baseline and is not promoted.
   - `ibm-granite/granite-speech-4.1-2b-plus`: revision `1454e6e1e33845ca9280ff65f52cf1141ba6e6e2`, tags `transformers`, `safetensors`, `granite_speech_plus`, multilingual ASR지만 HF card language metadata에 `ja`가 없다. Plus variant는 word-level timestamps/speaker attribution 가능성이 있어 후속 후보로 남기되, 일본어 tag와 worker contract를 먼저 확인한다.
   - `efwkjn/cohere-asr-ja`: revision `8f1794e22b802731bdbf8ce53ff08f96a5af2bb4`, tags `safetensors`, `cohere_asr`, `custom_code`, `ja`, base model `CohereLabs/cohere-transcribe-03-2026`. Current Transformers 5.12.1 has `cohere_asr`, but metadata includes `custom_code`; execution priority는 official Cohere snapshot과 Granite 이후로 둔다.
   - `AutoArk-AI/ARK-ASR-3B`: revision `1e28271b79edc97635783bea65abc89195a09ed3`, tags include `ja`, `safetensors`, `custom_code`; current Transformers 5.12.1 has no `arkasr`, so still external code/runtime review 대상이다.
@@ -750,7 +764,7 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
    - `Qwen/Qwen3-ASR-1.7B-hf`는 Transformers main에서 검증했지만 기본 승격하지 않는다. 공식 release에 `qwen3_asr`가 들어오면 runtime 안정성만 재확인하고, 품질 재평가는 human-reviewed gold가 늘어난 뒤에 한다.
    - `microsoft/VibeVoice-ASR`와 `microsoft/VibeVoice-ASR-HF`는 일본어 tag가 있는 최신 로컬 후보지만 현재 repo env의 Transformers 5.12.1에서 전용 class가 없어 보류한다. 공식 release 지원 또는 별도 runtime 검토 후 exact revision local snapshot으로만 평가한다.
    - `mistralai/Voxtral-Mini-4B-Realtime-2602`는 remote code 없이 검증했지만 07 whisper 구간에서 실패해 기본 승격하지 않는다.
-   - `ibm-granite/granite-speech-4.1-2b`는 native Transformers/safetensors/ja 후보로 `local-granite-asr` adapter, exact snapshot download, `casrt model digest`, 10초 smoke, 01/04/07 front120 pseudo-gold 평가를 완료했다. Practical CER 24.7%, timing/review gate 실패로 기본 승격하지 않는다.
+   - `ibm-granite/granite-speech-4.1-2b`는 native Transformers/safetensors/ja 후보로 `local-granite-asr` adapter, exact snapshot download, `casrt model digest`, 10초 smoke, 01/04/07 front120 pseudo-gold 평가를 완료했다. Non-Japanese hallucination filter 후 practical CER 23.6%, timing/review gate 실패로 기본 승격하지 않는다.
    - `Atotti/llm-jp-4-8b-speech-asr`는 ASR 특화 일본어 후보지만 third-party runtime package가 필요하므로 사용자 명시 승인 후 비교한다.
    - `AutoArk-AI/ARK-ASR-3B`, `CohereLabs/cohere-transcribe-03-2026`, `OpenMOSS-Team/MOSS-Transcribe-preview-2B`는 성능 후보로 남기되, custom code/gated/runtime 접근 조건을 먼저 해결해야 한다.
    - `Qwen/Qwen3-ASR-0.6B`는 속도/저사양 후보로 비교한다.

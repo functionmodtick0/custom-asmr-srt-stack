@@ -124,7 +124,7 @@ ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한
 - `Atotti/llm-jp-4-8b-speech-asr`: 일본어 ASR 특화 8B 후보. 현재 official Transformers에서 `LlamaForSpeechLM`을 제공하지 않고 model card의 third-party runtime package가 필요하므로 사용자 명시 승인 전에는 자동 검증하지 않는다.
 - `AutoArk-AI/ARK-ASR-3B`: 최신 로컬 후보. model metadata상 custom code가 필요하므로 사용자 명시 승인 또는 first-party package 경로가 확인된 뒤 실제 benchmark 대상으로 삼는다.
 - `CohereLabs/cohere-transcribe-03-2026`: 2026년 2B ASR 후보. 공식 card는 일본어 포함 14개 언어, Transformers native, safetensors, no timestamps/diarization을 명시한다. Root Transformers 5.12.1에 `CohereAsrForConditionalGeneration`와 `CohereAsrProcessor`가 있어 remote model code 없이 구현 가능하다. 다만 gated/custom_code repo라 실제 download/evaluation은 exact revision pin과 file digest 기록 후, local snapshot path + `trust_remote_code=False` + `local_files_only=True` 조건에서만 수행한다.
-- `ibm-granite/granite-speech-4.1-2b`: 2026-04-29 공개된 multilingual ASR/AST 후보. HF metadata 기준 `transformers`, `safetensors`, `ja`, Apache-2.0이고 root Transformers 5.12.1에 `granite_speech` native class가 있어 remote model code 없이 실행 가능하다. Exact revision은 `de575db64086f84fdc79da4932d1076e965bc546`다. `local-granite-asr` adapter로 추가했고 local snapshot은 gitignored `.casrt/models/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546`에 둔다. Snapshot SHA-256은 `67c7d69184b53bae7a2bec077fbc88d8695a72f043fd70831f4e4830dc4752ca`다. 2026-07-01 01/04/07 front120 pseudo-gold 평가에서는 practical CER 24.7%, time-aligned 500ms 23.7%, review effort 100%라 기본 승격하지 않는다. Human-reviewed manifest에서는 최신 후보 비교 때 다시 평가할 수 있지만 현재 기본값은 아니다.
+- `ibm-granite/granite-speech-4.1-2b`: 2026-04-29 공개된 multilingual ASR/AST 후보. HF metadata 기준 `transformers`, `safetensors`, `ja`, Apache-2.0이고 root Transformers 5.12.1에 `granite_speech` native class가 있어 remote model code 없이 실행 가능하다. Exact revision은 `de575db64086f84fdc79da4932d1076e965bc546`다. `local-granite-asr` adapter로 추가했고 local snapshot은 gitignored `.casrt/models/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546`에 둔다. Snapshot SHA-256은 `67c7d69184b53bae7a2bec077fbc88d8695a72f043fd70831f4e4830dc4752ca`다. 2026-07-01 01/04/07 front120 pseudo-gold 평가에서는 non-Japanese hallucination filter 후 practical CER 23.6%, time-aligned 500ms 21.8%, review effort 100%라 기본 승격하지 않는다. Human-reviewed manifest에서는 최신 후보 비교 때 다시 평가할 수 있지만 현재 기본값은 아니다.
 - stable-ts/Whisper계 산출물은 2026-06-28 01/04/07 front120 pseudo-gold에서 practical CER 16.1%, time-aligned 500ms ratio 56.7%였다. reference 자체가 stable-ts 유래이므로 실제 품질 근거로 승격하지 않고, 비교 baseline으로만 유지한다.
 - `google/gemma-4-E4B-it`: 공식 오디오 입력을 지원하는 최신 로컬 multimodal 후보. 2026-06-28 smoke 전사는 성공했지만 01/04/07 front120 gold에서 4-bit practical CER 42.3%, 8-bit practical CER 46.1%라 기본 승격하지 않는다.
 - `zhifeixie/Mega-ASR`: Qwen3-ASR-1.7B 기반 robust ASR 후보. 2026-06-28 01/04/07 front120 gold에서 routed practical CER 30.9%, base-only threshold 1.1 practical CER 30.8%, forced LoRA practical CER 77.6%라 기본 승격하지 않는다.
@@ -144,6 +144,8 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 
 모델 승격용 `eval-manifest` 실행에는 `--require-reference-type human-reviewed`를 함께 사용한다. pseudo-gold manifest는 regression/상대 비교 report를 남길 수 있지만 이 gate를 통과하지 못해야 정상이다.
 반복 실험에서는 `--product-gate`를 사용해 human-reviewed reference gate와 문서화된 metric threshold를 한 번에 적용한다. 개별 threshold 인자를 같이 주면 그 값이 product 기본값보다 우선한다.
+
+로컬 일본어 ASR worker는 정리 후 일본어 문자가 하나도 없는 segment를 hallucination으로 보고 버린다. 이 필터는 `!`, `?`, English-only fragment처럼 일본어 전사로 볼 수 없는 출력에 한정하며, 일본어 문자가 포함된 segment의 문장 품질 판단은 평가/검수 단계에 맡긴다.
 
 최소 평가 기준은 다음이다.
 

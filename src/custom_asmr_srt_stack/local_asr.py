@@ -13,6 +13,7 @@ ASR_MAX_PEAK_DBFS = -3.0
 ASR_MAX_GAIN = 4.0
 JAPANESE_CHAR_CLASS = r"\u3040-\u30ff\u3400-\u9fff々〆〤ヶー"
 JAPANESE_OR_PUNCTUATION_CLASS = JAPANESE_CHAR_CLASS + r"。、，,.！？!?…「」『』（）【】《》〈〉"
+JAPANESE_TEXT_RE = re.compile(fr"[{JAPANESE_CHAR_CLASS}]")
 
 
 def clean_transcription_text(value: str) -> str:
@@ -27,7 +28,10 @@ def clean_transcription_text(value: str) -> str:
     text = re.sub(fr"([{JAPANESE_CHAR_CLASS}])\s+([{JAPANESE_CHAR_CLASS}])", r"\1\2", text)
     text = re.sub(fr"\s+([{JAPANESE_OR_PUNCTUATION_CLASS}])", r"\1", text)
     text = re.sub(fr"([{JAPANESE_OR_PUNCTUATION_CLASS}])\s+", r"\1", text)
-    return text.strip()
+    text = text.strip()
+    if text and not JAPANESE_TEXT_RE.search(text):
+        return ""
+    return text
 
 
 def strip_non_japanese_noise_edges(text: str) -> str:
