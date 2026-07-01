@@ -12,6 +12,7 @@ from custom_asmr_srt_stack.models import MasterDocument, require_int, require_ma
 
 DEFAULT_VAD_TIMEOUT_SECONDS = 300.0
 VAD_COVERAGE_FORMAT = "custom-asmr-vad-coverage-v1"
+VAD_COVERAGE_SUITE_FORMAT = "custom-asmr-vad-coverage-suite-v1"
 
 
 def run_vad_command(audio_bytes: bytes, *, command: list[str]) -> tuple[dict[str, int], ...]:
@@ -141,6 +142,46 @@ def vad_coverage_report(
         "overlap_duration_ms": overlap_duration_ms,
         "missed_reference_duration_ms": missed_reference_duration_ms,
         "extra_detected_duration_ms": extra_detected_duration_ms,
+        "reference_recall": None if reference_duration_ms == 0 else overlap_duration_ms / reference_duration_ms,
+        "detected_precision": None if detected_duration_ms == 0 else overlap_duration_ms / detected_duration_ms,
+    }
+
+
+def aggregate_vad_coverage_reports(reports: list[dict[str, Any]] | tuple[dict[str, Any], ...]) -> dict[str, Any]:
+    totals = {
+        "case_count": 0,
+        "audio_duration_ms": 0,
+        "reference_segment_count": 0,
+        "reference_interval_count": 0,
+        "detected_interval_count": 0,
+        "reference_speech_duration_ms": 0,
+        "detected_speech_duration_ms": 0,
+        "overlap_duration_ms": 0,
+        "missed_reference_duration_ms": 0,
+        "extra_detected_duration_ms": 0,
+    }
+    for index, raw_report in enumerate(reports):
+        report = require_mapping(raw_report, "VAD coverage report")
+        if report.get("format") != VAD_COVERAGE_FORMAT:
+            raise ValueError(f"VAD coverage report {index} format must be {VAD_COVERAGE_FORMAT}")
+        totals["case_count"] += 1
+        for key in (
+            "audio_duration_ms",
+            "reference_segment_count",
+            "reference_interval_count",
+            "detected_interval_count",
+            "reference_speech_duration_ms",
+            "detected_speech_duration_ms",
+            "overlap_duration_ms",
+            "missed_reference_duration_ms",
+            "extra_detected_duration_ms",
+        ):
+            totals[key] += require_int(report.get(key), f"VAD coverage report {index}.{key}")
+    reference_duration_ms = totals["reference_speech_duration_ms"]
+    detected_duration_ms = totals["detected_speech_duration_ms"]
+    overlap_duration_ms = totals["overlap_duration_ms"]
+    return {
+        **totals,
         "reference_recall": None if reference_duration_ms == 0 else overlap_duration_ms / reference_duration_ms,
         "detected_precision": None if detected_duration_ms == 0 else overlap_duration_ms / detected_duration_ms,
     }

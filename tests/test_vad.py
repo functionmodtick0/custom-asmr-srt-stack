@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 from custom_asmr_srt_stack.models import MasterDocument, Segment
-from custom_asmr_srt_stack.vad import parse_vad_intervals, run_vad_command, vad_coverage_report
+from custom_asmr_srt_stack.vad import aggregate_vad_coverage_reports, parse_vad_intervals, run_vad_command, vad_coverage_report
 
 
 def make_wav_bytes(duration_ms: int = 100) -> bytes:
@@ -88,6 +88,43 @@ class VadTests(unittest.TestCase):
         self.assertEqual(report["extra_detected_duration_ms"], 300)
         self.assertAlmostEqual(report["reference_recall"], 400 / 600)
         self.assertAlmostEqual(report["detected_precision"], 400 / 700)
+
+    def test_aggregate_vad_coverage_reports_uses_duration_weighted_totals(self):
+        reports = [
+            {
+                "format": "custom-asmr-vad-coverage-v1",
+                "audio_duration_ms": 100,
+                "reference_segment_count": 1,
+                "reference_interval_count": 1,
+                "detected_interval_count": 1,
+                "reference_speech_duration_ms": 100,
+                "detected_speech_duration_ms": 50,
+                "overlap_duration_ms": 50,
+                "missed_reference_duration_ms": 50,
+                "extra_detected_duration_ms": 0,
+            },
+            {
+                "format": "custom-asmr-vad-coverage-v1",
+                "audio_duration_ms": 300,
+                "reference_segment_count": 2,
+                "reference_interval_count": 2,
+                "detected_interval_count": 1,
+                "reference_speech_duration_ms": 300,
+                "detected_speech_duration_ms": 300,
+                "overlap_duration_ms": 150,
+                "missed_reference_duration_ms": 150,
+                "extra_detected_duration_ms": 150,
+            },
+        ]
+
+        summary = aggregate_vad_coverage_reports(reports)
+
+        self.assertEqual(summary["case_count"], 2)
+        self.assertEqual(summary["reference_speech_duration_ms"], 400)
+        self.assertEqual(summary["detected_speech_duration_ms"], 350)
+        self.assertEqual(summary["overlap_duration_ms"], 200)
+        self.assertAlmostEqual(summary["reference_recall"], 200 / 400)
+        self.assertAlmostEqual(summary["detected_precision"], 200 / 350)
 
     def test_run_vad_command_strips_sensitive_environment(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -21,8 +21,11 @@ from custom_asmr_srt_stack.case_batch import (
     build_review_case_pack,
     build_eval_manifest_from_case_index,
     freeze_case_references as freeze_case_references_batch,
+    load_review_case_index,
     prepare_review_cases,
+    require_index_string,
     review_case_status,
+    resolve_plan_path,
     save_review_case_reference,
 )
 from custom_asmr_srt_stack.case_transcription import transcribe_review_case_candidates
@@ -930,22 +933,49 @@ def vad_whisper_asmr_onnx(args: argparse.Namespace) -> None:
     print(json.dumps({"intervals": list(intervals)}, ensure_ascii=False))
 
 
-def vad_coverage(args: argparse.Namespace) -> None:
-    from custom_asmr_srt_stack.audio import analyze_wav, speech_intervals_by_energy
-    from custom_asmr_srt_stack.vad import parse_vad_intervals, vad_coverage_report
+def vad_coverage_interval_source(
+    audio_bytes: bytes,
+    *,
+    audio_duration_ms: int,
+    intervals_path: Path | None,
+    vad_adapter_command: str | None,
+) -> tuple[str, tuple[dict[str, int], ...]]:
+    from custom_asmr_srt_stack.audio import speech_intervals_by_energy
+    from custom_asmr_srt_stack.vad import parse_vad_intervals, run_vad_command
     from custom_asmr_srt_stack.workflow import qwen_energy_chunk_kwargs, qwen_energy_max_chunk_ms, split_long_chunks
+
+    if intervals_path is not None and vad_adapter_command is not None:
+        raise ValueError("--intervals and --vad-command cannot be used together")
+    if intervals_path is not None:
+        return str(intervals_path), parse_vad_intervals(
+            json.loads(read_text(intervals_path)),
+            duration_ms=audio_duration_ms,
+        )
+    if vad_adapter_command is not None:
+        return f"command:{vad_adapter_command}", run_vad_command(
+            audio_bytes,
+            command=shlex.split(vad_adapter_command),
+        )
+
+    intervals = speech_intervals_by_energy(audio_bytes, **qwen_energy_chunk_kwargs())
+    max_energy_chunk_ms = qwen_energy_max_chunk_ms()
+    if max_energy_chunk_ms is not None:
+        intervals = split_long_chunks(intervals, max_energy_chunk_ms)
+    return "energy", intervals
+
+
+def vad_coverage(args: argparse.Namespace) -> None:
+    from custom_asmr_srt_stack.audio import analyze_wav
+    from custom_asmr_srt_stack.vad import vad_coverage_report
 
     audio_bytes = args.audio.read_bytes()
     audio_info = analyze_wav(audio_bytes)
-    if args.intervals is not None:
-        interval_source = str(args.intervals)
-        intervals = parse_vad_intervals(json.loads(read_text(args.intervals)), duration_ms=audio_info.duration_ms)
-    else:
-        interval_source = "energy"
-        intervals = speech_intervals_by_energy(audio_bytes, **qwen_energy_chunk_kwargs())
-        max_energy_chunk_ms = qwen_energy_max_chunk_ms()
-        if max_energy_chunk_ms is not None:
-            intervals = split_long_chunks(intervals, max_energy_chunk_ms)
+    interval_source, intervals = vad_coverage_interval_source(
+        audio_bytes,
+        audio_duration_ms=audio_info.duration_ms,
+        intervals_path=args.intervals,
+        vad_adapter_command=args.vad_adapter_command,
+    )
 
     reference = load_transcript_document(args.reference, source_language=args.source_language)
     report = vad_coverage_report(
@@ -962,6 +992,77 @@ def vad_coverage(args: argparse.Namespace) -> None:
         (
             f"vad coverage: recall={report['reference_recall']} "
             f"precision={report['detected_precision']} intervals={report['detected_interval_count']}"
+        ),
+    )
+
+
+def vad_coverage_cases(args: argparse.Namespace) -> None:
+    from custom_asmr_srt_stack.audio import analyze_wav
+    from custom_asmr_srt_stack.vad import (
+        VAD_COVERAGE_SUITE_FORMAT,
+        aggregate_vad_coverage_reports,
+        vad_coverage_report,
+    )
+
+    case_index = load_review_case_index(args.case_index)
+    raw_items = case_index.get("items")
+    if not isinstance(raw_items, list):
+        raise ValueError("review case index items must be an array")
+
+    case_reports = []
+    reports = []
+    interval_source = f"command:{args.vad_adapter_command}" if args.vad_adapter_command is not None else "energy"
+    for index, raw_item in enumerate(raw_items):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"review case index item {index} must be an object")
+        case_id = require_index_string(raw_item, "id", index)
+        audio_value = require_index_string(raw_item, "audio", index)
+        reference_value = require_index_string(raw_item, "reference", index)
+        audio_path = resolve_plan_path(args.case_index.parent, audio_value)
+        reference_path = resolve_plan_path(args.case_index.parent, reference_value)
+        audio_bytes = audio_path.read_bytes()
+        audio_info = analyze_wav(audio_bytes)
+        case_interval_source, intervals = vad_coverage_interval_source(
+            audio_bytes,
+            audio_duration_ms=audio_info.duration_ms,
+            intervals_path=None,
+            vad_adapter_command=args.vad_adapter_command,
+        )
+        interval_source = case_interval_source
+        reference = load_transcript_document(reference_path, source_language=args.source_language)
+        report = vad_coverage_report(
+            reference=reference,
+            intervals=intervals,
+            audio_duration_ms=audio_info.duration_ms,
+            source=case_interval_source,
+        )
+        reports.append(report)
+        case_reports.append(
+            {
+                "id": case_id,
+                "audio": audio_value,
+                "reference": reference_value,
+                "report": report,
+            }
+        )
+
+    summary = aggregate_vad_coverage_reports(reports)
+    suite_report = {
+        "format": VAD_COVERAGE_SUITE_FORMAT,
+        "case_index": str(args.case_index),
+        "source": interval_source,
+        "case_count": len(case_reports),
+        "summary": summary,
+        "cases": case_reports,
+    }
+    if args.output is not None:
+        write_text(args.output, json.dumps(suite_report, ensure_ascii=False, indent=2) + "\n")
+    emit(
+        args,
+        suite_report,
+        (
+            f"vad coverage cases: cases={summary['case_count']} "
+            f"recall={summary['reference_recall']} precision={summary['detected_precision']}"
         ),
     )
 
@@ -1421,9 +1522,29 @@ def build_parser() -> argparse.ArgumentParser:
     vad_coverage_parser.add_argument("audio", type=Path)
     vad_coverage_parser.add_argument("reference", type=Path)
     vad_coverage_parser.add_argument("--source-language", default="ja")
-    vad_coverage_parser.add_argument("--intervals", type=Path, help="JSON file with {intervals:[{start_ms,end_ms}]}.")
+    vad_coverage_source = vad_coverage_parser.add_mutually_exclusive_group()
+    vad_coverage_source.add_argument("--intervals", type=Path, help="JSON file with {intervals:[{start_ms,end_ms}]}.")
+    vad_coverage_source.add_argument(
+        "--vad-command",
+        dest="vad_adapter_command",
+        help="CASRT VAD command to run for this audio instead of built-in energy intervals.",
+    )
     vad_coverage_parser.add_argument("-o", "--output", type=Path)
     vad_coverage_parser.set_defaults(func=vad_coverage)
+    vad_coverage_cases_parser = vad_subcommands.add_parser(
+        "coverage-cases",
+        parents=[output_parent],
+        help="Compare VAD/chunk intervals against every reference in a prepared review case set.",
+    )
+    vad_coverage_cases_parser.add_argument("case_index", type=Path)
+    vad_coverage_cases_parser.add_argument("--source-language", default="ja")
+    vad_coverage_cases_parser.add_argument(
+        "--vad-command",
+        dest="vad_adapter_command",
+        help="CASRT VAD command to run for each case instead of built-in energy intervals.",
+    )
+    vad_coverage_cases_parser.add_argument("-o", "--output", type=Path)
+    vad_coverage_cases_parser.set_defaults(func=vad_coverage_cases)
 
     project = subcommands.add_parser("project", help="Manage transcript projects.")
     project_subcommands = project.add_subparsers(dest="project_command", required=True)

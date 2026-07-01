@@ -329,6 +329,64 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["detected_precision"], 1.0)
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["reference_recall"], 0.5)
 
+    def test_vad_coverage_cases_outputs_aggregate_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "front.wav"
+            reference = root / "reference.srt"
+            case_index = root / "case-index.json"
+            report_path = root / "vad-coverage-suite.json"
+            vad_script = root / "vad.py"
+            write_mono_wav(audio)
+            reference.write_text("1\n00:00:00,000 --> 00:00:00,002\nねえ\n", encoding="utf-8")
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [{"id": "front", "audio": "front.wav", "reference": "reference.srt"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            vad_script.write_text(
+                "\n".join(
+                    [
+                        "import json",
+                        "import sys",
+                        "request = json.loads(sys.stdin.read())",
+                        "assert request['audio_info']['duration_ms'] == 2",
+                        "print(json.dumps({'intervals': [{'start_ms': 0, 'end_ms': 1}]}))",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "vad",
+                    "coverage-cases",
+                    "--json",
+                    "-o",
+                    str(report_path),
+                    "--vad-command",
+                    f"{sys.executable} {vad_script}",
+                    str(case_index),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["format"], "custom-asmr-vad-coverage-suite-v1")
+            self.assertEqual(report["case_count"], 1)
+            self.assertEqual(report["source"], f"command:{sys.executable} {vad_script}")
+            self.assertEqual(report["summary"]["reference_speech_duration_ms"], 2)
+            self.assertEqual(report["summary"]["detected_speech_duration_ms"], 1)
+            self.assertEqual(report["summary"]["overlap_duration_ms"], 1)
+            self.assertEqual(report["summary"]["reference_recall"], 0.5)
+            self.assertEqual(report["summary"]["detected_precision"], 1.0)
+            self.assertEqual(report["cases"][0]["id"], "front")
+            self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["case_count"], 1)
+
     def test_eval_transcript_outputs_json_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

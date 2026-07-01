@@ -280,7 +280,8 @@ uv run casrt project transcribe PROJECT_ID \
 - 모델 디렉터리는 `model.onnx`와 `model_metadata.json` 두 파일만 허용한다. wrapper는 metadata/shape/provider 계약이 맞지 않으면 실패한다.
 - VAD subprocess는 timeout과 최소 env로 실행하며 HF/API/W&B token을 상속하지 않는다.
 - `--energy-rescue-min-ms`는 energy interval을 유지하고 ONNX-only gap만 추가하는 내부 실험 옵션이다. 2026-06-28 gold 결과에서 text가 악화되어 기본값으로 쓰지 않는다.
-- `casrt vad coverage AUDIO REFERENCE --json -o vad-coverage.json`은 built-in energy intervals 또는 `--intervals {intervals:[...]}` JSON을 reference transcript speech union과 비교해 `custom-asmr-vad-coverage-v1` report를 만든다. Report는 reference recall, detected precision, missed reference duration, extra detected duration을 포함한다. 이 명령은 VAD/chunking 후보를 비교하기 위한 CLI-only 진단 도구이며 WebUI 옵션을 늘리지 않는다.
+- `casrt vad coverage AUDIO REFERENCE --json -o vad-coverage.json`은 built-in energy intervals, `--intervals {intervals:[...]}` JSON, 또는 `--vad-command` CASRT VAD command를 reference transcript speech union과 비교해 `custom-asmr-vad-coverage-v1` report를 만든다.
+- `casrt vad coverage-cases CASE_INDEX --json -o vad-coverage-suite.json`은 prepared review case set 전체에 같은 VAD source를 적용하고 `custom-asmr-vad-coverage-suite-v1` report를 만든다. Suite summary는 duration-weighted reference recall, detected precision, missed reference duration, extra detected duration을 포함한다. 이 명령은 VAD/chunking 후보를 비교하기 위한 CLI-only 진단 도구이며 WebUI 옵션을 늘리지 않는다.
 
 ### 기준본 고정
 
