@@ -561,9 +561,30 @@ def eval_comparison_item(path: Path, report: dict[str, Any]) -> dict[str, Any]:
         if asr_artifacts is None
         else require_report_number(asr_artifacts, "non_japanese_text_segment_ratio", path)
     )
+    reason_ranking = review_effort_reason_ranking(item)
+    dominant_reason = reason_ranking[0] if reason_ranking and float(reason_ranking[0]["ratio"]) > 0 else None
+    item["review_effort_reason_ranking"] = reason_ranking
+    item["dominant_review_effort_reason"] = None if dominant_reason is None else dominant_reason["reason"]
+    item["dominant_review_effort_ratio"] = None if dominant_reason is None else dominant_reason["ratio"]
     if reference_type is not None:
         item["reference_type"] = reference_type
     return item
+
+
+def review_effort_reason_ranking(item: dict[str, Any]) -> list[dict[str, float | str]]:
+    reason_fields = (
+        ("text", "text_edit_segment_ratio"),
+        ("channel", "channel_edit_segment_ratio"),
+        ("timing", "timing_edit_segment_ratio"),
+        ("missing_reference", "missing_reference_segment_ratio"),
+        ("extra_candidate", "extra_candidate_segment_ratio"),
+    )
+    ranked = [
+        {"reason": reason, "ratio": float(item[field]), "order": index}
+        for index, (reason, field) in enumerate(reason_fields)
+    ]
+    ranked = sorted(ranked, key=lambda entry: (-float(entry["ratio"]), int(entry["order"])))
+    return [{"reason": str(entry["reason"]), "ratio": float(entry["ratio"])} for entry in ranked]
 
 
 def require_report_mapping(metrics: dict[str, Any], key: str, path: Path) -> dict[str, Any]:

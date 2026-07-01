@@ -407,6 +407,18 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(item["timing_edit_segment_ratio"], 3 / 5)
         self.assertEqual(item["missing_reference_segment_ratio"], 1 / 5)
         self.assertEqual(item["extra_candidate_segment_ratio"], 1 / 5)
+        self.assertEqual(item["dominant_review_effort_reason"], "timing")
+        self.assertEqual(item["dominant_review_effort_ratio"], 3 / 5)
+        self.assertEqual(
+            item["review_effort_reason_ranking"],
+            [
+                {"reason": "timing", "ratio": 3 / 5},
+                {"reason": "text", "ratio": 2 / 5},
+                {"reason": "channel", "ratio": 1 / 5},
+                {"reason": "missing_reference", "ratio": 1 / 5},
+                {"reason": "extra_candidate", "ratio": 1 / 5},
+            ],
+        )
         self.assertIsNone(item["asr_artifact_segment_ratio"])
 
     def test_compare_review_effort_reports_groups_candidate_failures_by_reference_segment(self):

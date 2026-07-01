@@ -706,7 +706,7 @@ uv run casrt compare-evals qwen-report.json stable-report.json quiet8-report.jso
 
 - 입력은 `eval-transcript` 단일 report 또는 `eval-manifest` suite report JSON이다.
 - output format은 `custom-asmr-eval-comparison-v1`이다.
-- 각 report의 practical CER, optional Japanese relaxed CER, time-aligned 500ms ratio, channel time-aligned accuracy, candidate MIX ratio, candidate `needs_review` 비율, `review_effort` 수정 비율과 text/channel/timing/missing/extra breakdown ratio, optional `asr_artifacts` ratio를 한 줄 summary로 뽑는다.
+- 각 report의 practical CER, optional Japanese relaxed CER, time-aligned 500ms ratio, channel time-aligned accuracy, candidate MIX ratio, candidate `needs_review` 비율, `review_effort` 수정 비율과 text/channel/timing/missing/extra breakdown ratio, dominant review-effort reason/ranking, optional `asr_artifacts` ratio를 한 줄 summary로 뽑는다.
 - `compare-evals` item은 새 report에서 `asr_artifact_segment_ratio`, `asr_repeated_text_segment_ratio`, `asr_high_text_density_segment_ratio`, `asr_non_japanese_text_segment_ratio`를 표시하고, legacy report에는 `null`로 둔다.
 - ranking은 `segments_needing_edit_ratio`, practical CER, time-aligned 500ms ratio desc, channel time-aligned accuracy desc 순서다.
 - `--product-gate` 또는 개별 gate 인자를 지정하면 각 item에 `gate_passed`와 `gate_failures`를 표시한다. `compare-evals` 자체는 gate 실패 때문에 실패 exit code를 반환하지 않는다.
