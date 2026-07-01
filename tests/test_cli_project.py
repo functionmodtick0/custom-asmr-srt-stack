@@ -3369,6 +3369,197 @@ class ProjectCliTests(unittest.TestCase):
             self.assertFalse(comparison["items"][0]["gate_passed"])
             self.assertIn("reference_type", comparison["items"][0]["gate_failures"][0])
 
+    def test_pipeline_readiness_fails_when_pipeline_stages_still_block_asr_only_work(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference_audit = root / "reference-audit.json"
+            vad_comparison = root / "vad-comparison.json"
+            eval_comparison = root / "eval-comparison.json"
+            readiness_path = root / "readiness.json"
+            reference_audit.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-reference-audit-suite-v1",
+                        "case_count": 1,
+                        "summary": {
+                            "segment_count": 2,
+                            "review_count": 1,
+                            "same_channel_overlap_pair_count": 1,
+                            "exact_boundary_overlap_pair_count": 0,
+                            "long_segment_count": 0,
+                            "speech_coverage_ratio": 0.5,
+                            "flag_type_counts": {"review_flag_segments": 1},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            vad_comparison.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-vad-coverage-comparison-v1",
+                        "quality_gate": {"max_detected_interval_ms": 60000},
+                        "items": [
+                            {
+                                "label": "energy",
+                                "gate_passed": True,
+                                "gate_failures": [],
+                                "missed_reference_duration_ms": 25,
+                                "extra_detected_duration_ms": 0,
+                                "reference_recall": 0.95,
+                                "detected_precision": 1.0,
+                                "detected_max_interval_ms": 30000,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            eval_comparison.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-comparison-v1",
+                        "items": [
+                            {
+                                "label": "candidate",
+                                "timing_edit_segment_ratio": 0.50,
+                                "time_aligned_500ms_ratio": 0.50,
+                                "channel_edit_segment_ratio": 0.25,
+                                "channel_time_aligned_accuracy": 0.75,
+                                "channel_time_aligned_mix_ratio": 0.60,
+                                "text_edit_segment_ratio": 1.0,
+                                "segments_needing_edit_ratio": 1.0,
+                                "practical_cer": 0.20,
+                                "dominant_review_effort_reason": "text",
+                                "dominant_review_effort_ratio": 1.0,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "pipeline-readiness",
+                    "--json",
+                    "--fail-unless-asr-only-ready",
+                    "--reference-audit",
+                    str(reference_audit),
+                    "--vad-comparison",
+                    str(vad_comparison),
+                    "--eval-comparison",
+                    str(eval_comparison),
+                    "-o",
+                    str(readiness_path),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            report = json.loads(output)
+            self.assertEqual(report["format"], "custom-asmr-pipeline-readiness-v1")
+            self.assertFalse(report["summary"]["asr_only_ready"])
+            self.assertEqual(
+                report["summary"]["asr_only_blocking_stages"],
+                ["reference", "vad_chunking", "alignment", "channel_attribution"],
+            )
+            self.assertEqual(report["summary"]["next_stage"], "reference")
+            self.assertIn("pipeline is not ASR-only ready", error)
+            self.assertEqual(
+                json.loads(readiness_path.read_text(encoding="utf-8"))["stages"]["vad_chunking"]["status"],
+                "fail",
+            )
+
+    def test_pipeline_readiness_can_report_that_only_text_asr_remains(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference_audit = root / "reference-audit.json"
+            vad_comparison = root / "vad-comparison.json"
+            eval_comparison = root / "eval-comparison.json"
+            reference_audit.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-reference-audit-suite-v1",
+                        "case_count": 1,
+                        "summary": {
+                            "segment_count": 1,
+                            "review_count": 0,
+                            "same_channel_overlap_pair_count": 0,
+                            "exact_boundary_overlap_pair_count": 0,
+                            "long_segment_count": 0,
+                            "speech_coverage_ratio": 0.3,
+                            "flag_type_counts": {},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            vad_comparison.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-vad-coverage-comparison-v1",
+                        "items": [
+                            {
+                                "label": "chunked",
+                                "gate_passed": True,
+                                "gate_failures": [],
+                                "missed_reference_duration_ms": 0,
+                                "extra_detected_duration_ms": 10,
+                                "reference_recall": 1.0,
+                                "detected_precision": 0.95,
+                                "detected_max_interval_ms": 30000,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            eval_comparison.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-comparison-v1",
+                        "items": [
+                            {
+                                "label": "candidate",
+                                "timing_edit_segment_ratio": 0.0,
+                                "time_aligned_500ms_ratio": 1.0,
+                                "channel_edit_segment_ratio": 0.0,
+                                "channel_time_aligned_accuracy": 1.0,
+                                "channel_time_aligned_mix_ratio": 0.0,
+                                "text_edit_segment_ratio": 0.5,
+                                "segments_needing_edit_ratio": 0.5,
+                                "practical_cer": 0.12,
+                                "dominant_review_effort_reason": "text",
+                                "dominant_review_effort_ratio": 0.5,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "pipeline-readiness",
+                    "--json",
+                    "--fail-unless-asr-only-ready",
+                    "--reference-audit",
+                    str(reference_audit),
+                    "--vad-comparison",
+                    str(vad_comparison),
+                    "--eval-comparison",
+                    str(eval_comparison),
+                ]
+            )
+
+            self.assertEqual(result, 0, error)
+            report = json.loads(output)
+            self.assertTrue(report["summary"]["asr_only_ready"])
+            self.assertFalse(report["summary"]["production_ready"])
+            self.assertEqual(report["summary"]["asr_only_blocking_stages"], [])
+            self.assertEqual(report["summary"]["quality_blocking_stages"], ["text_asr"])
+            self.assertEqual(report["summary"]["next_stage"], "text_asr")
+
     def test_review_effort_outputs_items_from_eval_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

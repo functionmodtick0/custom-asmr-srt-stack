@@ -735,6 +735,28 @@ uv run casrt compare-review-effort qwen-report.json neosophie-report.json granit
 - candidate status 순서는 입력 report 순서를 유지한다. 같은 파일 stem이 반복되면 label은 `report`, `report#2`처럼 자동으로 분리한다.
 - 이 명령은 transcript를 수정하지 않고, WebUI 옵션을 늘리지 않는다. 후보 간 보완 가능성과 공통 실패 segment를 찾기 위한 CLI-only 진단 도구다.
 
+### Pipeline Readiness
+
+```bash
+uv run casrt pipeline-readiness \
+  --reference-audit cases/reference-audit.json \
+  --vad-comparison cases/vad-coverage-comparison.json \
+  --eval-comparison cases/eval-comparison.json \
+  --fail-unless-asr-only-ready \
+  --json \
+  -o cases/pipeline-readiness.json
+```
+
+동작:
+
+- 입력은 `audit-review-case-references`의 `custom-asmr-reference-audit-suite-v1`, `vad compare-coverage`의 `custom-asmr-vad-coverage-comparison-v1`, `compare-evals`의 `custom-asmr-eval-comparison-v1` report다. 모두 선택 입력이지만 빠진 stage는 `unknown`으로 표시된다.
+- output format은 `custom-asmr-pipeline-readiness-v1`이다.
+- `reference`, `vad_chunking`, `alignment`, `channel_attribution`, `text_asr` stage별 `pass`/`fail`/`unknown`, reason, 핵심 metric을 저장한다.
+- `asr_only_ready`는 `reference`, `vad_chunking`, `alignment`, `channel_attribution`이 모두 pass일 때만 true다. `text_asr` 실패는 제품 품질 blocker지만 ASR-only readiness blocker로 세지 않는다.
+- `production_ready`는 ASR-only stage와 `text_asr`가 모두 pass일 때만 true다.
+- `--fail-unless-asr-only-ready`는 report 출력/저장 후 `asr_only_ready=false`이면 실패한다.
+- 이 명령은 기존 report를 읽기만 하며 transcript, candidate, reference, model 선택을 수정하지 않는다. WebUI 옵션을 늘리지 않고 CLI-only 상태 요약으로 둔다.
+
 ### Review Pack
 
 ```bash

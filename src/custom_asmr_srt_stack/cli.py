@@ -47,6 +47,7 @@ from custom_asmr_srt_stack.evaluation import (
 )
 from custom_asmr_srt_stack.model_snapshot import snapshot_digest
 from custom_asmr_srt_stack.models import MasterDocument
+from custom_asmr_srt_stack.pipeline_readiness import build_pipeline_readiness
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.reference_audit import (
     DEFAULT_REFERENCE_AUDIT_HIGH_SPEECH_COVERAGE_RATIO,
@@ -614,6 +615,29 @@ def compare_review_effort(args: argparse.Namespace) -> None:
             f"reports={report['report_count']}"
         ),
     )
+
+
+def pipeline_readiness_command(args: argparse.Namespace) -> None:
+    report = build_pipeline_readiness(
+        reference_audit_file=args.reference_audit,
+        vad_comparison_file=args.vad_comparison,
+        eval_comparison_file=args.eval_comparison,
+    )
+    if args.output is not None:
+        write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    summary = report["summary"]
+    emit(
+        args,
+        report,
+        (
+            f"asr_only_ready={summary['asr_only_ready']} "
+            f"production_ready={summary['production_ready']} "
+            f"next_stage={summary['next_stage']}"
+        ),
+    )
+    if args.fail_unless_asr_only_ready and not summary["asr_only_ready"]:
+        blockers = ",".join(summary["asr_only_blocking_stages"] + summary["asr_only_unknown_stages"])
+        raise ValueError(f"pipeline is not ASR-only ready: {blockers}")
 
 
 def annotate_comparison_quality_gates(report: dict[str, Any], args: argparse.Namespace) -> None:
@@ -1708,6 +1732,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print machine-readable JSON output.",
     )
     compare_review_effort_parser.set_defaults(func=compare_review_effort)
+
+    pipeline_readiness_parser = subcommands.add_parser(
+        "pipeline-readiness",
+        help="Summarize whether reference/VAD/alignment/channel stages are ready for ASR-only tuning.",
+    )
+    pipeline_readiness_parser.add_argument("--reference-audit", type=Path)
+    pipeline_readiness_parser.add_argument("--vad-comparison", type=Path)
+    pipeline_readiness_parser.add_argument("--eval-comparison", type=Path)
+    pipeline_readiness_parser.add_argument("-o", "--output", type=Path)
+    pipeline_readiness_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
+    pipeline_readiness_parser.add_argument(
+        "--fail-unless-asr-only-ready",
+        action="store_true",
+        help="Return a failing exit code unless reference, VAD, alignment, and channel stages all pass.",
+    )
+    pipeline_readiness_parser.set_defaults(func=pipeline_readiness_command)
 
     review_pack_parser = subcommands.add_parser(
         "review-pack",

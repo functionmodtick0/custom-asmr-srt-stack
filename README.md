@@ -590,6 +590,20 @@ uv run casrt compare-review-effort qwen-report.json neosophie-report.json granit
 
 `compare-review-effort`는 여러 eval report의 실패 item을 reference segment 기준으로 묶어 후보별 pass/fail과 text/channel/timing/missing/extra reason을 비교합니다. 후보끼리 서로 보완되는지, 아니면 같은 구간에서 함께 실패하는지 확인하는 CLI-only 진단 도구입니다.
 
+현재 파이프라인이 ASR text 모델만 남은 단계인지 확인:
+
+```bash
+uv run casrt pipeline-readiness \
+  --reference-audit cases/reference-audit.json \
+  --vad-comparison cases/vad-coverage-comparison.json \
+  --eval-comparison cases/eval-comparison.json \
+  --fail-unless-asr-only-ready \
+  --json \
+  -o cases/pipeline-readiness.json
+```
+
+`pipeline-readiness`는 reference audit, VAD coverage comparison, eval comparison을 읽어 `custom-asmr-pipeline-readiness-v1`을 만듭니다. `asr_only_ready`는 reference, VAD/chunking, alignment, channel attribution stage가 모두 pass일 때만 true입니다. Text ASR은 별도 `text_asr` stage라서, “텍스트 모델만 남았는지”와 “제품 품질이 끝났는지”를 분리해 봅니다. `--fail-unless-asr-only-ready`는 report를 출력/저장한 뒤 아직 ASR-only 단계가 아니면 실패합니다.
+
 평가 report에서 사람이 바로 볼 수정 큐 JSON도 만들 수 있습니다.
 
 ```bash
