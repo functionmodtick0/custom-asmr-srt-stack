@@ -384,6 +384,21 @@ uv run casrt review-case-status cases/case-index.json --fail-on-issues --fail-on
 - `--fail-on-candidate-review`는 candidate에 `needs_review=true`가 남아 있으면 report 출력/저장 후 실패한다.
 - 이 명령도 human-reviewed 여부를 추정하지 않는다. `reference_type`은 index에 기록된 값을 집계할 뿐이며, 모델 승격 평가는 여전히 `eval-manifest --require-reference-type human-reviewed`가 담당한다.
 
+Prepared reference의 구조 문제는 `audit-review-case-references`로 확인한다.
+
+```bash
+uv run casrt audit-review-case-references cases/case-index.json --json -o cases/reference-audit.json
+```
+
+동작:
+
+- 입력은 `custom-asmr-review-case-set-v1` `case-index.json`이다.
+- output format은 `custom-asmr-reference-audit-suite-v1`이다.
+- 각 case와 summary에 segment count, channel counts, speech union coverage, overlap pair count, same-channel/cross-channel/exact-boundary overlap count, long segment count, review flag count를 저장한다.
+- `overlap_pairs`, `long_segments`, `review_segments`는 segment id/time/channel 중심으로 저장하고 transcript text는 저장하지 않는다.
+- 기본 threshold는 overlap `1ms` 이상, long segment `30000ms` 이상, near-full speech coverage `0.95` 이상이다. CLI 옵션으로 바꿀 수 있지만 WebUI 옵션으로 노출하지 않는다.
+- 이 명령은 reference를 수정하거나 human-reviewed 여부를 추정하지 않는다. Pseudo-gold를 human-reviewed로 올리기 전 구조 검수 우선순위를 정하는 CLI-only 진단 도구다.
+
 준비된 case set의 남은 reference 검수 구간은 `review-case-pack`으로 clip queue를 만든다.
 
 ```bash

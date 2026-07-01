@@ -11,7 +11,7 @@ from unittest import mock
 
 from custom_asmr_srt_stack.audio import analyze_wav
 from custom_asmr_srt_stack.cli import main
-from custom_asmr_srt_stack.models import Segment
+from custom_asmr_srt_stack.models import MasterDocument, Segment
 
 
 def run_cli(argv):
@@ -1382,6 +1382,56 @@ class ProjectCliTests(unittest.TestCase):
                 1,
             )
             self.assertIn("missing_candidate_count=1", fail_error)
+
+    def test_audit_review_case_references_reports_overlap_diagnostics(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            references = root / "references"
+            references.mkdir()
+            master = MasterDocument(
+                source_language="ja",
+                source_file="voice.wav",
+                duration_ms=2000,
+                segments=(
+                    Segment("seg_000001", 0, 1000, "L", "speech", "あ"),
+                    Segment("seg_000002", 500, 1200, "L", "speech", "い"),
+                ),
+            )
+            (references / "front.master.json").write_text(
+                json.dumps(master.to_json(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            case_index = root / "case-index.json"
+            output_path = root / "audit.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "reference_type": "pseudo-gold",
+                        "items": [{"id": "front", "reference": "references/front.master.json"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "audit-review-case-references",
+                    "--json",
+                    "-o",
+                    str(output_path),
+                    str(case_index),
+                ]
+            )
+            saved_report = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 0)
+        report = json.loads(output)
+        self.assertEqual(report["format"], "custom-asmr-reference-audit-suite-v1")
+        self.assertEqual(saved_report["format"], "custom-asmr-reference-audit-suite-v1")
+        self.assertEqual(report["summary"]["overlap_pair_count"], 1)
+        self.assertEqual(report["summary"]["same_channel_overlap_pair_count"], 1)
+        self.assertEqual(report["summary"]["flag_type_counts"], {"same_channel_overlap": 1})
 
     def test_review_case_status_can_fail_after_reporting_candidate_review_flags(self):
         with tempfile.TemporaryDirectory() as tmpdir:

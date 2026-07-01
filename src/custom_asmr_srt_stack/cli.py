@@ -47,6 +47,12 @@ from custom_asmr_srt_stack.evaluation import (
 from custom_asmr_srt_stack.model_snapshot import snapshot_digest
 from custom_asmr_srt_stack.models import MasterDocument
 from custom_asmr_srt_stack.projects import ProjectStore
+from custom_asmr_srt_stack.reference_audit import (
+    DEFAULT_REFERENCE_AUDIT_HIGH_SPEECH_COVERAGE_RATIO,
+    DEFAULT_REFERENCE_AUDIT_LONG_SEGMENT_MS,
+    DEFAULT_REFERENCE_AUDIT_OVERLAP_MIN_MS,
+    audit_review_case_references,
+)
 from custom_asmr_srt_stack.review_pack import DEFAULT_REVIEW_CONTEXT_MS, build_review_pack
 from custom_asmr_srt_stack.server import run_server
 from custom_asmr_srt_stack.srt import format_srt, parse_srt
@@ -342,6 +348,29 @@ def review_case_status_command(args: argparse.Namespace) -> None:
         )
     if args.fail_on_candidate_review and report["candidate_review_count"] > 0:
         raise ValueError(f"review case status failed: candidate_review_count={report['candidate_review_count']}")
+
+
+def audit_review_case_references_command(args: argparse.Namespace) -> None:
+    report = audit_review_case_references(
+        args.case_index,
+        source_language=args.source_language,
+        overlap_min_ms=args.overlap_min_ms,
+        long_segment_ms=args.long_segment_ms,
+        high_speech_coverage_ratio=args.high_speech_coverage_ratio,
+    )
+    if args.output is not None:
+        write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    summary = report["summary"]
+    emit(
+        args,
+        report,
+        (
+            f"reference audit: cases={report['case_count']} "
+            f"flags={summary['flagged_case_count']} "
+            f"overlap_pairs={summary['overlap_pair_count']} "
+            f"same_channel_overlap_pairs={summary['same_channel_overlap_pair_count']}"
+        ),
+    )
 
 
 def save_review_case_reference_command(args: argparse.Namespace) -> None:
@@ -1419,6 +1448,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Return a failing exit code after emitting the report if candidate segments still need review.",
     )
     review_case_status_parser.set_defaults(func=review_case_status_command)
+
+    audit_review_case_references_parser = subcommands.add_parser(
+        "audit-review-case-references",
+        parents=[output_parent],
+        help="Audit prepared review case references for overlap and segmentation diagnostics.",
+    )
+    audit_review_case_references_parser.add_argument("case_index", type=Path)
+    audit_review_case_references_parser.add_argument("-o", "--output", type=Path)
+    audit_review_case_references_parser.add_argument("--source-language", default="ja")
+    audit_review_case_references_parser.add_argument(
+        "--overlap-min-ms",
+        type=int,
+        default=DEFAULT_REFERENCE_AUDIT_OVERLAP_MIN_MS,
+        help="Minimum positive overlap to report as a reference overlap pair.",
+    )
+    audit_review_case_references_parser.add_argument(
+        "--long-segment-ms",
+        type=int,
+        default=DEFAULT_REFERENCE_AUDIT_LONG_SEGMENT_MS,
+        help="Speech segment duration at or above this value is flagged for review.",
+    )
+    audit_review_case_references_parser.add_argument(
+        "--high-speech-coverage-ratio",
+        type=float,
+        default=DEFAULT_REFERENCE_AUDIT_HIGH_SPEECH_COVERAGE_RATIO,
+        help="Speech union coverage ratio at or above this value is flagged as near-full coverage.",
+    )
+    audit_review_case_references_parser.set_defaults(func=audit_review_case_references_command)
 
     save_review_case_reference_parser = subcommands.add_parser(
         "save-review-case-reference",
