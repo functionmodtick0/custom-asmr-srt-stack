@@ -669,6 +669,7 @@ def compare_review_effort(args: argparse.Namespace) -> None:
 def pipeline_readiness_command(args: argparse.Namespace) -> None:
     report = build_pipeline_readiness(
         reference_audit_file=args.reference_audit,
+        reference_channel_audit_file=args.reference_channel_audit,
         vad_comparison_file=args.vad_comparison,
         eval_comparison_file=args.eval_comparison,
         channel_comparison_file=args.channel_comparison,
@@ -1903,6 +1904,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Summarize whether reference/VAD/alignment/channel stages are ready for ASR-only tuning.",
     )
     pipeline_readiness_parser.add_argument("--reference-audit", type=Path)
+    pipeline_readiness_parser.add_argument("--reference-channel-audit", type=Path)
     pipeline_readiness_parser.add_argument("--vad-comparison", type=Path)
     pipeline_readiness_parser.add_argument("--eval-comparison", type=Path)
     pipeline_readiness_parser.add_argument(

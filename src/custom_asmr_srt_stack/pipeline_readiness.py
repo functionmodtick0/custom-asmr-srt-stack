@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from custom_asmr_srt_stack.channel_reference_audit import REFERENCE_CHANNEL_AUDIT_SUITE_FORMAT
 from custom_asmr_srt_stack.evaluation import EVAL_COMPARISON_FORMAT
 from custom_asmr_srt_stack.reference_audit import REFERENCE_AUDIT_FORMAT, REFERENCE_AUDIT_SUITE_FORMAT
 from custom_asmr_srt_stack.vad import VAD_COVERAGE_COMPARISON_FORMAT
@@ -27,6 +28,7 @@ ASR_ONLY_STAGE_ORDER = (
 def build_pipeline_readiness(
     *,
     reference_audit_file: Path | None = None,
+    reference_channel_audit_file: Path | None = None,
     vad_comparison_file: Path | None = None,
     eval_comparison_file: Path | None = None,
     channel_comparison_file: Path | None = None,
@@ -34,7 +36,12 @@ def build_pipeline_readiness(
 ) -> dict[str, Any]:
     reference_type = readiness_reference_type(eval_comparison_file, channel_comparison_file)
     stages = {
-        "reference": reference_stage(reference_audit_file, quality_gate=quality_gate, reference_type=reference_type),
+        "reference": reference_stage(
+            reference_audit_file,
+            reference_channel_audit_file=reference_channel_audit_file,
+            quality_gate=quality_gate,
+            reference_type=reference_type,
+        ),
         "vad_chunking": vad_stage(vad_comparison_file),
     }
     stages.update(eval_stages(eval_comparison_file, quality_gate=quality_gate))
@@ -73,6 +80,7 @@ def build_pipeline_readiness(
 def reference_stage(
     path: Path | None,
     *,
+    reference_channel_audit_file: Path | None = None,
     quality_gate: dict[str, Any] | None = None,
     reference_type: str | None = None,
 ) -> dict[str, Any]:
@@ -104,6 +112,14 @@ def reference_stage(
             reasons.append("reference_type is unavailable")
         elif reference_type != required_reference_type:
             reasons.append(f"reference_type {reference_type!r} != {required_reference_type!r}")
+    channel_metrics = reference_channel_audit_metrics(reference_channel_audit_file)
+    if channel_metrics is not None:
+        mismatch_count = channel_metrics["mismatch_count"]
+        uncertain_count = channel_metrics["energy_uncertain_count"]
+        if mismatch_count > 0:
+            reasons.append(f"reference channel labels conflict with energy: {mismatch_count}")
+        if uncertain_count > 0:
+            reasons.append(f"reference channel labels have uncertain energy evidence: {uncertain_count}")
 
     warnings = []
     flag_type_counts = metrics.get("flag_type_counts")
@@ -135,9 +151,44 @@ def reference_stage(
                 f"{path}: reference audit speech_coverage_ratio",
             ),
             "reference_type": reference_type,
+            **({} if channel_metrics is None else {"channel_audit": channel_metrics}),
         },
         quality_gate=gate,
     )
+
+
+def reference_channel_audit_metrics(path: Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    report = read_json_report(path)
+    if report.get("format") != REFERENCE_CHANNEL_AUDIT_SUITE_FORMAT:
+        raise ValueError(f"{path}: reference channel audit report format must be {REFERENCE_CHANNEL_AUDIT_SUITE_FORMAT}")
+    summary = require_mapping(report.get("summary"), f"{path}: reference channel audit summary")
+    return {
+        "report": str(path),
+        "eligible_reference_channel_count": require_int(
+            summary.get("eligible_reference_channel_count"),
+            f"{path}: reference channel audit eligible_reference_channel_count",
+        ),
+        "energy_labeled_count": require_int(
+            summary.get("energy_labeled_count"),
+            f"{path}: reference channel audit energy_labeled_count",
+        ),
+        "energy_uncertain_count": require_int(
+            summary.get("energy_uncertain_count"),
+            f"{path}: reference channel audit energy_uncertain_count",
+        ),
+        "match_count": require_int(summary.get("match_count"), f"{path}: reference channel audit match_count"),
+        "mismatch_count": require_int(
+            summary.get("mismatch_count"),
+            f"{path}: reference channel audit mismatch_count",
+        ),
+        "match_ratio": optional_number(summary.get("match_ratio"), f"{path}: reference channel audit match_ratio"),
+        "energy_labeled_ratio": optional_number(
+            summary.get("energy_labeled_ratio"),
+            f"{path}: reference channel audit energy_labeled_ratio",
+        ),
+    }
 
 
 def vad_stage(path: Path | None) -> dict[str, Any]:

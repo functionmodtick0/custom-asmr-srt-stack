@@ -4197,6 +4197,129 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["stages"]["text_asr"]["status"], "pass")
             self.assertIn("reference", error)
 
+    def test_pipeline_readiness_reference_stage_uses_reference_channel_audit(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference_audit = root / "reference-audit.json"
+            reference_channel_audit = root / "reference-channel-audit.json"
+            vad_comparison = root / "vad-comparison.json"
+            eval_comparison = root / "eval-comparison.json"
+            reference_audit.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-reference-audit-suite-v1",
+                        "case_count": 1,
+                        "summary": {
+                            "segment_count": 10,
+                            "review_count": 0,
+                            "same_channel_overlap_pair_count": 0,
+                            "exact_boundary_overlap_pair_count": 0,
+                            "long_segment_count": 0,
+                            "speech_coverage_ratio": 0.4,
+                            "flag_type_counts": {},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            reference_channel_audit.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-reference-channel-audit-suite-v1",
+                        "case_count": 1,
+                        "summary": {
+                            "speech_segment_count": 3,
+                            "eligible_reference_channel_count": 3,
+                            "reference_mix_segment_count": 0,
+                            "eligible_count": 3,
+                            "energy_labeled_count": 2,
+                            "energy_uncertain_count": 1,
+                            "match_count": 1,
+                            "mismatch_count": 1,
+                            "match_ratio": 0.5,
+                            "mismatch_ratio": 0.5,
+                            "energy_labeled_ratio": 2 / 3,
+                            "status_counts": {"match": 1, "mismatch": 1, "uncertain": 1},
+                            "reason_counts": {"below_threshold": 1, "left_dominant": 1, "right_dominant": 1},
+                            "reference_channel_counts": {"L": 2, "R": 1},
+                            "energy_channel_counts": {"L": 1, "MIX": 1, "R": 1},
+                        },
+                        "cases": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            vad_comparison.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-vad-coverage-comparison-v1",
+                        "quality_gate": {"max_missed_reference_ms": 0},
+                        "items": [
+                            {
+                                "label": "chunked",
+                                "gate_passed": True,
+                                "gate_failures": [],
+                                "missed_reference_duration_ms": 0,
+                                "extra_detected_duration_ms": 10,
+                                "reference_recall": 1.0,
+                                "detected_precision": 0.99,
+                                "detected_max_interval_ms": 30000,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            eval_comparison.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-eval-comparison-v1",
+                        "items": [
+                            {
+                                "label": "candidate",
+                                "reference_type": "human-reviewed",
+                                "timing_edit_segment_ratio": 0.0,
+                                "time_aligned_500ms_ratio": 1.0,
+                                "channel_edit_segment_ratio": 0.0,
+                                "channel_time_aligned_accuracy": 1.0,
+                                "channel_time_aligned_mix_ratio": 0.0,
+                                "text_edit_segment_ratio": 0.0,
+                                "segments_needing_edit_ratio": 0.0,
+                                "practical_cer": 0.0,
+                                "candidate_review_ratio": 0.0,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output, error = run_cli_with_stderr(
+                [
+                    "pipeline-readiness",
+                    "--json",
+                    "--product-gate",
+                    "--fail-unless-asr-only-ready",
+                    "--reference-audit",
+                    str(reference_audit),
+                    "--reference-channel-audit",
+                    str(reference_channel_audit),
+                    "--vad-comparison",
+                    str(vad_comparison),
+                    "--eval-comparison",
+                    str(eval_comparison),
+                ]
+            )
+
+            self.assertEqual(result, 1)
+            report = json.loads(output)
+            self.assertEqual(report["summary"]["asr_only_blocking_stages"], ["reference"])
+            self.assertEqual(report["stages"]["reference"]["status"], "fail")
+            self.assertEqual(report["stages"]["reference"]["metrics"]["channel_audit"]["mismatch_count"], 1)
+            self.assertEqual(report["stages"]["reference"]["metrics"]["channel_audit"]["energy_uncertain_count"], 1)
+            self.assertIn("reference channel labels conflict", report["stages"]["reference"]["reasons"][0])
+            self.assertIn("reference", error)
+
     def test_pipeline_readiness_rejects_gated_vad_without_gate_status(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
