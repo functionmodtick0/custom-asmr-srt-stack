@@ -714,7 +714,7 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 - speech text strict CER, practical CER, Japanese relaxed CER를 계산한다.
 - `text_practical_channel_aware`는 L/R/MIX별 practical text를 각각 이어 붙여 편집거리를 계산한 뒤 micro-average한다. 겹치는 L/R segment의 전역 시간순 interleave가 달라도 같은 채널 안의 문장 순서가 맞으면 불필요한 순서 벌점을 피한다. 반대로 같은 text를 잘못된 채널이나 MIX에 두면 원 채널 deletion과 잘못된 채널 insertion을 모두 반영하므로 1.0을 넘을 수 있다. 기존 `text_practical` product gate를 대체하지 않는 stereo/channel diagnostics다.
 - segment index 기준 mean start/end/boundary error를 계산한다.
-- segment 수나 split이 다른 후보를 평가하기 위해 time-overlap 기반 `timing_time_aligned`를 계산한다.
+- segment 수나 split이 다른 후보를 평가하기 위해 time-overlap 기반 `timing_time_aligned`를 계산한다. Reference별 candidate 선택은 positive overlap 최대, boundary absolute error 최소, practical-normalized text edit ratio 최소 순이며, 모두 같으면 입력 순서를 유지한다. Text tie-break는 동일 bounds의 L/R 후보가 첫 channel에만 편향되는 것을 막되 reference channel label 자체는 사용하지 않는다.
 - `timing_time_aligned_channel_aware`는 reference와 같은 L/R/MIX channel 후보 안에서만 최대 overlap을 찾아 boundary error를 계산한다. 겹친 반대 채널 후보를 잘못 선택하지 않기 위한 stereo alignment 진단이며, channel attribution accuracy나 기존 timing product gate를 대체하지 않는다.
 - forced alignment 재평가를 위해 boundary sample 수, max/mean boundary delta, 250ms/500ms 이내 boundary ratio를 계산한다.
 - channel attribution 튜닝을 위해 index 기반 `channel`과 time-overlap 기반 `channel_time_aligned`의 L/R/MIX confusion, candidate MIX 유지 비율, L/R channel accuracy를 계산한다.

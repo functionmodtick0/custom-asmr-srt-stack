@@ -1090,11 +1090,18 @@ def time_aligned_segment_pairs(
     pairs: list[tuple[Segment, Segment]] = []
     for reference in reference_segments:
         best_candidate = None
-        best_overlap = 0
+        best_score: tuple[int, int, float] | None = None
         for candidate in candidate_segments:
             current_overlap = overlap_ms(reference, candidate)
-            if current_overlap > best_overlap:
-                best_overlap = current_overlap
+            if current_overlap <= 0:
+                continue
+            boundary_error = abs(reference.start_ms - candidate.start_ms) + abs(
+                reference.end_ms - candidate.end_ms
+            )
+            text_edit_ratio = practical_text_edit_ratio(reference.text, candidate.text)
+            score = (current_overlap, -boundary_error, -text_edit_ratio)
+            if best_score is None or score > best_score:
+                best_score = score
                 best_candidate = candidate
         if best_candidate is not None:
             pairs.append((reference, best_candidate))
@@ -1123,6 +1130,16 @@ def channel_aware_time_aligned_segment_pairs(
 
 def overlap_ms(reference: Segment, candidate: Segment) -> int:
     return max(0, min(reference.end_ms, candidate.end_ms) - max(reference.start_ms, candidate.start_ms))
+
+
+def practical_text_edit_ratio(reference_text: str, candidate_text: str) -> float:
+    normalized_reference = normalize_for_cer(reference_text, mode="practical")
+    normalized_candidate = normalize_for_cer(candidate_text, mode="practical")
+    return levenshtein_distance(normalized_reference, normalized_candidate) / max(
+        1,
+        len(normalized_reference),
+        len(normalized_candidate),
+    )
 
 
 def time_aligned_timing_summary(

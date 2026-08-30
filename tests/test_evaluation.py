@@ -188,6 +188,27 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(channel_aware["within_500ms_count"], 3)
         self.assertEqual(channel_aware["within_500ms_ratio"], 0.75)
 
+    def test_time_aligned_tie_breaks_equal_bounds_by_practical_text(self):
+        reference = master_with_segments(
+            [
+                Segment("ref_l", 0, 1000, "L", "speech", "左の声"),
+                Segment("ref_r", 0, 1000, "R", "speech", "右の声"),
+            ]
+        )
+        candidate = master_with_segments(
+            [
+                Segment("cand_r", 0, 1000, "R", "speech", "右の声"),
+                Segment("cand_l", 0, 1000, "L", "speech", "左の声"),
+            ]
+        )
+
+        report = evaluate_transcripts(reference, candidate)
+
+        self.assertEqual(report["timing_time_aligned"]["within_500ms_ratio"], 1.0)
+        self.assertEqual(report["channel_time_aligned"]["accuracy"], 1.0)
+        self.assertEqual(report["review_effort"]["text_edit_segments"], 0)
+        self.assertEqual(report["review_effort"]["channel_edit_segments"], 0)
+
     def test_review_effort_items_report_missing_reference_segments(self):
         reference = master_with_segments(
             [
