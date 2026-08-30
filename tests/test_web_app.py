@@ -1,3 +1,4 @@
+import json
 import subprocess
 import textwrap
 import unittest
@@ -22,14 +23,32 @@ class AdapterSelectParser(HTMLParser):
             self.in_adapter_select = False
 
 
+class ElementIdParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.ids = set()
+
+    def handle_starttag(self, tag, attrs):
+        del tag
+        element_id = dict(attrs).get("id")
+        if element_id:
+            self.ids.add(element_id)
+
+
 class WebAppBehaviorTests(unittest.TestCase):
-    def run_app_assertions(self, assertions: str) -> subprocess.CompletedProcess[str]:
+    def run_app_assertions(
+        self,
+        assertions: str,
+        *,
+        missing_element_ids: tuple[str, ...] = (),
+    ) -> subprocess.CompletedProcess[str]:
         script = r"""
             const assert = require("assert");
             const fs = require("fs");
             const vm = require("vm");
 
             const elements = new Map();
+            const missingElementIds = new Set(MISSING_ELEMENT_IDS);
             function element(id) {
               if (!elements.has(id)) {
                 elements.set(id, {
@@ -85,7 +104,9 @@ class WebAppBehaviorTests(unittest.TestCase):
                 URL: { createObjectURL() { return "blob:test"; }, revokeObjectURL() {} },
               },
               document: {
-                getElementById: element,
+                getElementById(id) {
+                  return missingElementIds.has(id) ? null : element(id);
+                },
                 createElement(tag) {
                   const node = element(`created-${tag}-${Math.random()}`);
                   node.tagName = tag.toUpperCase();
@@ -100,7 +121,7 @@ class WebAppBehaviorTests(unittest.TestCase):
             context.window.document = context.document;
             vm.createContext(context);
             vm.runInContext(fs.readFileSync("web/app.js", "utf8"), context);
-        """
+        """.replace("MISSING_ELEMENT_IDS", json.dumps(missing_element_ids))
         result = subprocess.run(
             ["node", "-e", textwrap.dedent(script + "\n" + assertions)],
             check=False,
@@ -108,6 +129,48 @@ class WebAppBehaviorTests(unittest.TestCase):
             capture_output=True,
         )
         return result
+
+    def test_primary_app_starts_without_diagnostics_controls(self):
+        diagnostics_ids = (
+            "reviewPackPathInput",
+            "loadReviewPackButton",
+            "sourceCaseButton",
+            "applyEnergyChannelButton",
+            "reviewDoneButton",
+            "caseListButton",
+            "nextCaseButton",
+        )
+        result = self.run_app_assertions(
+            r"""
+            assert.strictEqual(elements.get("segmentCount").textContent, "0 segments");
+            for (const id of missingElementIds) {
+              assert.strictEqual(elements.has(id), false);
+            }
+        """,
+            missing_element_ids=diagnostics_ids,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_review_controls_are_isolated_to_diagnostics_page(self):
+        primary = ElementIdParser()
+        diagnostics = ElementIdParser()
+        with open("web/index.html", encoding="utf-8") as html_file:
+            primary.feed(html_file.read())
+        with open("web/diagnostics.html", encoding="utf-8") as html_file:
+            diagnostics.feed(html_file.read())
+
+        review_ids = {
+            "reviewPackPathInput",
+            "loadReviewPackButton",
+            "sourceCaseButton",
+            "applyEnergyChannelButton",
+            "reviewDoneButton",
+            "caseListButton",
+            "nextCaseButton",
+        }
+        self.assertTrue(review_ids.isdisjoint(primary.ids))
+        self.assertTrue(review_ids.issubset(diagnostics.ids))
 
     def test_local_granite_adapter_does_not_require_endpoint_settings(self):
         result = self.run_app_assertions(

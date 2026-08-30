@@ -50,6 +50,13 @@ button {
     transform 140ms ease;
 }
 
+.button-link {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  text-decoration: none;
+}
+
 button:hover {
   border-color: var(--accent);
 }

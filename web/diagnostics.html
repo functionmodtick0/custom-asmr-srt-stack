@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ASMR JSON Studio</title>
+    <title>ASMR Diagnostics</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -11,9 +11,10 @@
       <header class="topbar">
         <div>
           <p class="eyebrow">custom-asmr-srt-stack</p>
-          <h1>ASMR JSON Studio</h1>
+          <h1>ASMR Diagnostics</h1>
         </div>
         <div class="topbar-actions">
+          <a href="/" class="button-link secondary">제품 화면</a>
           <button id="modelButton" type="button" class="secondary">모델</button>
           <button id="startButton" type="button" class="primary">전사 시작</button>
         </div>
@@ -29,6 +30,14 @@
 
           <audio id="audioPlayer" controls></audio>
 
+          <div class="review-pack-loader">
+            <label for="reviewPackPathInput">Review path</label>
+            <div class="path-row">
+              <input id="reviewPackPathInput" type="text" autocomplete="off" placeholder=".casrt/experiments/.../review-pack or cases" />
+              <button id="loadReviewPackButton" type="button">열기</button>
+            </div>
+          </div>
+
           <div class="action-stack">
             <button id="exportMasterButton" type="button">master.json</button>
             <button id="exportTranslationButton" type="button">translation.json</button>
@@ -39,11 +48,11 @@
 
           <div class="status-block">
             <span id="statusLabel">대기</span>
-            <output id="statusText">파일을 불러오세요.</output>
+            <output id="statusText">검수 산출물 경로를 여세요.</output>
           </div>
         </aside>
 
-        <section class="main-panel" aria-label="transcript workspace">
+        <section class="main-panel" aria-label="diagnostics workspace">
           <div class="waveform-strip">
             <canvas id="waveformCanvas" width="1200" height="220"></canvas>
           </div>
@@ -54,6 +63,11 @@
               <span id="selectedLabel">선택 없음</span>
             </div>
             <div class="segment-toolbar-actions">
+              <button id="sourceCaseButton" type="button" class="secondary" hidden>case 열기</button>
+              <button id="applyEnergyChannelButton" type="button" class="secondary" hidden>ENERGY 적용</button>
+              <button id="reviewDoneButton" type="button" class="secondary" hidden>검수 완료</button>
+              <button id="caseListButton" type="button" class="secondary" hidden>case 목록</button>
+              <button id="nextCaseButton" type="button" class="secondary" hidden>다음 case</button>
               <button id="retranscribeButton" type="button" class="secondary">선택 재전사</button>
             </div>
           </div>

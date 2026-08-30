@@ -15,13 +15,25 @@ const state = {
   reviewCaseReference: null,
 };
 
+function optionalElement(id) {
+  return (
+    document.getElementById(id) || {
+      value: "",
+      disabled: true,
+      hidden: true,
+      textContent: "",
+      addEventListener() {},
+    }
+  );
+}
+
 const els = {
   fileInput: document.getElementById("fileInput"),
   translatedInput: document.getElementById("translatedInput"),
   dropZone: document.getElementById("dropZone"),
   audioPlayer: document.getElementById("audioPlayer"),
-  reviewPackPathInput: document.getElementById("reviewPackPathInput"),
-  loadReviewPackButton: document.getElementById("loadReviewPackButton"),
+  reviewPackPathInput: optionalElement("reviewPackPathInput"),
+  loadReviewPackButton: optionalElement("loadReviewPackButton"),
   waveformCanvas: document.getElementById("waveformCanvas"),
   segmentList: document.getElementById("segmentList"),
   segmentCount: document.getElementById("segmentCount"),
@@ -31,11 +43,11 @@ const els = {
   modelButton: document.getElementById("modelButton"),
   startButton: document.getElementById("startButton"),
   retranscribeButton: document.getElementById("retranscribeButton"),
-  sourceCaseButton: document.getElementById("sourceCaseButton"),
-  applyEnergyChannelButton: document.getElementById("applyEnergyChannelButton"),
-  reviewDoneButton: document.getElementById("reviewDoneButton"),
-  caseListButton: document.getElementById("caseListButton"),
-  nextCaseButton: document.getElementById("nextCaseButton"),
+  sourceCaseButton: optionalElement("sourceCaseButton"),
+  applyEnergyChannelButton: optionalElement("applyEnergyChannelButton"),
+  reviewDoneButton: optionalElement("reviewDoneButton"),
+  caseListButton: optionalElement("caseListButton"),
+  nextCaseButton: optionalElement("nextCaseButton"),
   exportMasterButton: document.getElementById("exportMasterButton"),
   exportTranslationButton: document.getElementById("exportTranslationButton"),
   importTranslatedButton: document.getElementById("importTranslatedButton"),

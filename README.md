@@ -104,7 +104,7 @@ translated.json 가져오기
 SRT 내보내기
 ```
 
-검수 큐를 볼 때는 CLI로 만든 `review-pack` directory, `index.json`, review case directory, `case-index.json` 경로를 WebUI의 Review path 입력에 넣고 엽니다. Review pack은 priority 순서와 evidence를 보여주고 `case 열기`로 source reference를 편집합니다. 다시 열면 source reference의 최신 content/channel evidence를 읽어 완료 항목을 숨기고 남은 clip 수와 청취 시간만 표시합니다. Audio API는 HTTP byte Range를 지원하므로 긴 WAV의 선택 segment로 바로 seek합니다. Content/channel 검수 상태는 reference file과 `case-index.json` count에 자동 저장됩니다.
+Primary WebUI에는 개발용 review/evaluation control을 노출하지 않습니다. CLI로 만든 `review-pack`이나 review case set을 점검할 때만 `http://127.0.0.1:5173/diagnostics.html`을 열어 Review path를 입력합니다. 이 화면은 제품 전사 완료에 필요하지 않습니다.
 
 모델 설정은 UI에서 직접 입력합니다.
 오디오를 먼저 연 뒤 SRT 또는 `master.json`을 열면, 아직 transcript가 없는 현재 오디오 project에 해당 transcript를 연결합니다.

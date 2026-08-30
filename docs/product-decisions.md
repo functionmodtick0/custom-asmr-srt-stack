@@ -409,11 +409,9 @@ SRT export는 `master.json`의 segment timing과 원문 또는 번역 JSON의 te
 JSON 내보내기
 translated JSON 가져오기
 SRT 내보내기
-review-pack path 열기
-review-pack priority clip 재생
-review case set path 열기
-review case reference 편집/자동 저장
 ```
+
+Review pack/case loader와 검수 전용 control은 primary WebUI에 두지 않는다. 개발·평가 산출물 검수는 별도 `/diagnostics.html` 화면에서만 제공한다.
 
 기본 UI에 노출하지 않을 항목은 다음이다.
 
