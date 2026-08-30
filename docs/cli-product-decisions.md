@@ -164,10 +164,10 @@ uv run casrt project transcribe PROJECT_ID \
 
 - project가 아직 분석되지 않았다면 실패한다.
 - OpenAI-compatible/Gemini endpoint는 L/R 채널이 있으면 각각 전사하고, mono/MIX만 있으면 MIX를 전사한다.
-- 로컬 ASR adapter인 `local-transformers`, `local-qwen-asr`, `local-qwen-hf-asr`, `local-cohere-asr`는 L/R이 있어도 MIX-first로 전사한다.
-- 로컬 ASR adapter는 silence/energy 기반 chunk interval별로 MIX 오디오를 잘라 모델에 보낸다.
+- 로컬 ASR adapter인 `local-transformers`, `local-qwen-asr`, `local-qwen-hf-asr`, `local-cohere-asr`, `local-granite-asr`는 L/R이 있어도 기본적으로 MIX-first로 전사한다. `CASRT_LOCAL_ASR_CHANNEL_MODE=stereo`는 같은 VAD/ASR 경로를 L/R 각각에 적용해 overlap/bleed 영향을 비교하는 CLI-only benchmark mode다. 기본값은 `mix`이며 WebUI 옵션으로 노출하지 않는다. `mix`, `stereo` 외 값과 L/R이 없는 stereo 요청은 fallback 없이 실패한다.
+- 로컬 ASR adapter는 silence/energy 기반 chunk interval별로 선택된 채널 오디오를 잘라 모델에 보낸다. 기본 선택은 MIX이고 stereo benchmark에서만 L/R 각각이다.
 - `local-transformers` adapter는 worker 모델의 audio limit을 고려해 chunk를 30초 이하 subchunk로 다시 자른다.
-- 로컬 ASR adapter가 반환한 MIX segment는 L/R energy 기반 channel attribution을 적용한다.
+- 로컬 ASR adapter가 반환한 MIX segment는 L/R energy 기반 channel attribution을 적용한다. Stereo benchmark가 이미 L/R로 반환한 segment는 channel attribution이 다시 덮어쓰지 않는다.
 - 모델이 반환한 chunk-relative timing을 원본 timeline timing으로 offset한다.
 - 결과를 시간순으로 정렬하고 stable segment id를 다시 부여한다.
 - `master.json`을 project에 저장한다.

@@ -89,7 +89,7 @@ worker는 첫 전사 요청 때 lazy start하며, 같은 애플리케이션 프�
 
 Gemma 4 E2B/E4B 계열처럼 audio clip 길이 제한이 있는 모델을 고려해, `local-transformers` adapter는 silence/energy 기반 chunk를 내부적으로 30초 이하 subchunk로 나눠 보낸다. worker가 세부 timestamp를 안정적으로 만들 수 없으면 clip 전체를 하나의 speech segment로 반환하고 `needs_review`를 표시한다. 필요한 경우 고정 alignment 계층이 후속 timing을 정리한다.
 
-로컬 ASR adapter인 `local-transformers`, `local-qwen-asr`, `local-qwen-hf-asr`, `local-cohere-asr`, `local-granite-asr`는 모두 MIX-first로 전사한다. L/R 단독 전사는 조용한 ASMR에서 bleed와 low-SNR 문제를 키우므로, L/R은 텍스트 입력이 아니라 channel attribution 근거로 사용한다.
+로컬 ASR adapter인 `local-transformers`, `local-qwen-asr`, `local-qwen-hf-asr`, `local-cohere-asr`, `local-granite-asr`는 모두 기본적으로 MIX-first로 전사한다. L/R 단독 전사는 조용한 ASMR에서 bleed와 low-SNR 문제를 키울 수 있으므로, 기본 경로에서 L/R은 텍스트 입력이 아니라 channel attribution 근거로 사용한다. 다만 동시 L/R reference와 MIX 한 줄 transcript의 계약 mismatch를 측정하기 위해 `CASRT_LOCAL_ASR_CHANNEL_MODE=stereo` CLI-only benchmark mode를 허용한다. 이 mode는 같은 VAD/ASR 경로를 L/R 각각에 적용하며 WebUI 옵션이나 자동 fallback으로 만들지 않는다. 실데이터 gate를 이길 때만 기본 정책 변경을 검토한다.
 
 `google/gemma-4-E4B-it`의 full HF `model.safetensors`는 약 16GB라 16GB VRAM 환경에서 full precision 로딩을 기본값으로 쓰기 부적절하다. Gemma 4 E4B 로컬 실행은 `CASRT_TRANSFORMERS_QUANTIZATION=4bit` runtime quantization을 권장한다. VRAM 여유가 있으면 `8bit`도 품질 비교 대상으로 사용한다.
 

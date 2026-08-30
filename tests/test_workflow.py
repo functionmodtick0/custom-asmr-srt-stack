@@ -190,6 +190,82 @@ class WorkflowTests(unittest.TestCase):
                 self.assertEqual(calls, [("MIX", 10_000)])
                 self.assertEqual([(segment.channel, segment.text) for segment in master.segments], [("MIX", "MIX-first")])
 
+    def test_local_qwen_asr_stereo_benchmark_transcribes_both_channels(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "qwen-stereo.wav"
+            write_stereo_samples(audio_path, [(2000, 1000)] * 10_000)
+            store = ProjectStore(root / "projects")
+            created = store.create_from_audio(
+                "qwen-stereo.wav",
+                "audio/wav",
+                base64.b64encode(audio_path.read_bytes()).decode("ascii"),
+            )
+            analyzed = analyze_project(store, created["project_id"])
+            calls = []
+
+            def fake_transcribe(endpoint, audio_bytes, *, mime_type, channel, source_language):
+                del endpoint, mime_type, source_language
+                duration_ms = analyze_wav(audio_bytes).duration_ms
+                calls.append((channel, duration_ms))
+                return (
+                    Segment(
+                        id="ignored",
+                        start_ms=0,
+                        end_ms=duration_ms,
+                        channel=channel,
+                        kind="speech",
+                        text=f"{channel}-speech",
+                    ),
+                )
+
+            with mock.patch.dict(os.environ, {"CASRT_LOCAL_ASR_CHANNEL_MODE": "stereo"}):
+                master = transcribe_project(
+                    store,
+                    created["project_id"],
+                    ModelEndpoint(
+                        adapter="local-qwen-hf-asr",
+                        endpoint_url=None,
+                        model_id="/models/qwen3-asr-1.7b-hf",
+                    ),
+                    analyzed["metadata"],
+                    source_language="ja",
+                    transcribe_audio_func=fake_transcribe,
+                )
+
+            self.assertEqual(calls, [("L", 10_000), ("R", 10_000)])
+            self.assertEqual(
+                [(segment.channel, segment.text) for segment in master.segments],
+                [("L", "L-speech"), ("R", "R-speech")],
+            )
+
+    def test_local_qwen_asr_channel_mode_rejects_invalid_or_mono_stereo_requests(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "qwen-stereo.wav"
+            write_stereo_samples(audio_path, [(2000, 1000)] * 1000)
+            store = ProjectStore(root / "projects")
+            created = store.create_from_audio(
+                "qwen-stereo.wav",
+                "audio/wav",
+                base64.b64encode(audio_path.read_bytes()).decode("ascii"),
+            )
+            analyzed = analyze_project(store, created["project_id"])
+            endpoint = ModelEndpoint(
+                adapter="local-qwen-hf-asr",
+                endpoint_url=None,
+                model_id="/models/qwen3-asr-1.7b-hf",
+            )
+
+            with mock.patch.dict(os.environ, {"CASRT_LOCAL_ASR_CHANNEL_MODE": "unknown"}):
+                with self.assertRaisesRegex(ValueError, "must be one of: mix, stereo"):
+                    transcribe_project(store, created["project_id"], endpoint, analyzed["metadata"], source_language="ja")
+
+            mono_metadata = {**analyzed["metadata"], "channels": {"MIX": "audio/mix.wav"}}
+            with mock.patch.dict(os.environ, {"CASRT_LOCAL_ASR_CHANNEL_MODE": "stereo"}):
+                with self.assertRaisesRegex(ValueError, "requires analyzed L/R audio"):
+                    transcribe_project(store, created["project_id"], endpoint, mono_metadata, source_language="ja")
+
     def test_local_qwen_asr_transcribe_project_uses_energy_chunks(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

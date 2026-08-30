@@ -224,13 +224,26 @@ def split_long_chunks(
 def transcription_channel_names(channels: Any, model_endpoint: ModelEndpoint) -> list[str]:
     if not isinstance(channels, dict):
         return []
-    if model_endpoint.adapter in MIX_FIRST_LOCAL_ASR_ADAPTERS and "MIX" in channels:
-        return ["MIX"]
+    if model_endpoint.adapter in MIX_FIRST_LOCAL_ASR_ADAPTERS:
+        channel_mode = local_asr_channel_mode()
+        if channel_mode == "mix" and "MIX" in channels:
+            return ["MIX"]
+        if channel_mode == "stereo":
+            if {"L", "R"}.issubset(channels):
+                return ["L", "R"]
+            raise ValueError("CASRT_LOCAL_ASR_CHANNEL_MODE=stereo requires analyzed L/R audio")
     if {"L", "R"}.issubset(channels):
         return ["L", "R"]
     if "MIX" in channels:
         return ["MIX"]
     return []
+
+
+def local_asr_channel_mode() -> str:
+    value = os.environ.get("CASRT_LOCAL_ASR_CHANNEL_MODE", "mix").strip().lower()
+    if value not in {"mix", "stereo"}:
+        raise ValueError("CASRT_LOCAL_ASR_CHANNEL_MODE must be one of: mix, stereo")
+    return value
 
 
 def apply_channel_attribution(
