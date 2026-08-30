@@ -324,8 +324,10 @@ function render() {
   els.caseListButton.hidden = !state.reviewCaseReference;
   els.caseListButton.textContent = state.reviewCaseReference?.returnReviewPack ? "pack 목록" : "case 목록";
   els.nextCaseButton.hidden = !state.reviewCaseReference;
-  els.nextCaseButton.textContent = "다음 case";
-  els.nextCaseButton.disabled = nextReviewCaseIndex() === null;
+  els.nextCaseButton.textContent = state.reviewCaseReference?.returnReviewPack ? "다음 issue" : "다음 case";
+  els.nextCaseButton.disabled = state.reviewCaseReference?.returnReviewPack
+    ? nextReviewPackSourceIndex() === null
+    : nextReviewCaseIndex() === null;
   updateSelectedActionState();
   els.exportMasterButton.disabled = !state.master;
   els.exportTranslationButton.disabled = !state.master;
@@ -579,8 +581,8 @@ function formatDb(value) {
   return Number.isFinite(value) ? `${value.toFixed(1)} dB` : null;
 }
 
-function reviewPackSourceTarget(item) {
-  const caseIndexPath = item?.source_case_index || state.reviewPack?.source_case_index;
+function reviewPackSourceTarget(item, reviewPack = state.reviewPack) {
+  const caseIndexPath = item?.source_case_index || reviewPack?.source_case_index;
   if (!caseIndexPath || !item?.case_id || !item?.reference_id) return null;
   return {
     caseIndexPath,
@@ -1177,17 +1179,23 @@ function loadReviewCaseItem(
 }
 
 async function openSelectedReviewPackSourceCase() {
+  const reviewPack = state.reviewPack;
   const item = reviewPackSelectedOrDefaultSourceItem();
-  const target = reviewPackSourceTarget(item);
+  const target = reviewPackSourceTarget(item, reviewPack);
   if (!target) return;
   const caseSet = await apiPost("/api/review-case/load", { path: target.caseIndexPath });
   const caseIndex = (caseSet.items || []).findIndex((caseItem) => caseItem.id === target.caseId);
   if (caseIndex < 0) {
     throw new Error(`source case를 찾을 수 없습니다: ${target.caseId}`);
   }
+  const selectedIndex = (reviewPack?.items || []).indexOf(item);
+  if (selectedIndex < 0) {
+    throw new Error("source review item을 pack에서 찾을 수 없습니다.");
+  }
   const returnReviewPack = {
-    reviewPack: state.reviewPack,
-    selectedIndex: state.reviewPackSelectedIndex,
+    reviewPack,
+    selectedIndex,
+    caseIndexPath: target.caseIndexPath,
   };
   state.reviewCaseSet = caseSet;
   loadReviewCaseItem(caseIndex, target.segmentId, reviewPackSecondaryReferenceId(item), item, returnReviewPack);
@@ -1236,7 +1244,47 @@ async function openNextAction() {
     openNextReviewPackItem();
     return;
   }
+  if (state.reviewCaseReference?.returnReviewPack) {
+    await openNextReviewPackSourceCase();
+    return;
+  }
   await openNextReviewCase();
+}
+
+async function openNextReviewPackSourceCase() {
+  const returnReviewPack = state.reviewCaseReference?.returnReviewPack;
+  const nextIndex = nextReviewPackSourceIndex(returnReviewPack);
+  if (!returnReviewPack?.reviewPack || nextIndex === null) return;
+  await saveCurrentMasterNow();
+
+  const item = returnReviewPack.reviewPack.items[nextIndex];
+  const target = reviewPackSourceTarget(item, returnReviewPack.reviewPack);
+  if (!target) return;
+  let caseSet = state.reviewCaseSet;
+  if (returnReviewPack.caseIndexPath !== target.caseIndexPath) {
+    caseSet = await apiPost("/api/review-case/load", { path: target.caseIndexPath });
+  }
+  const caseIndex = (caseSet?.items || []).findIndex((caseItem) => caseItem.id === target.caseId);
+  if (caseIndex < 0) {
+    throw new Error(`source case를 찾을 수 없습니다: ${target.caseId}`);
+  }
+  const nextReturnReviewPack = {
+    reviewPack: returnReviewPack.reviewPack,
+    selectedIndex: nextIndex,
+    caseIndexPath: target.caseIndexPath,
+  };
+  state.reviewCaseSet = caseSet;
+  loadReviewCaseItem(
+    caseIndex,
+    target.segmentId,
+    reviewPackSecondaryReferenceId(item),
+    item,
+    nextReturnReviewPack,
+  );
+  const sourceHint = reviewPackSourceHintText(item);
+  if (sourceHint) {
+    setStatus("Review case", sourceHint);
+  }
 }
 
 function openNextReviewPackItem() {
@@ -1251,6 +1299,17 @@ function nextReviewPackIndex() {
   if (state.reviewPackSelectedIndex === null || state.reviewPackSelectedIndex === undefined) return 0;
   const nextIndex = state.reviewPackSelectedIndex + 1;
   return nextIndex < items.length ? nextIndex : null;
+}
+
+function nextReviewPackSourceIndex(returnReviewPack = state.reviewCaseReference?.returnReviewPack) {
+  const reviewPack = returnReviewPack?.reviewPack;
+  const items = reviewPack?.items || [];
+  const currentIndex = returnReviewPack?.selectedIndex;
+  if (!Number.isInteger(currentIndex)) return null;
+  for (let index = currentIndex + 1; index < items.length; index += 1) {
+    if (reviewPackSourceTarget(items[index], reviewPack)) return index;
+  }
+  return null;
 }
 
 function nextReviewCaseIndex() {

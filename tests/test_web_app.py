@@ -575,6 +575,117 @@ class WebAppBehaviorTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_review_pack_source_editor_advances_directly_to_next_issue(self):
+        result = self.run_app_assertions(
+            r"""
+            (async () => {
+              const pathInput = elements.get("reviewPackPathInput");
+              pathInput.value = "/packs/channel-audit-pack";
+              context.fetch = async (path) => {
+                assert.strictEqual(path, "/api/review/load");
+                return {
+                  ok: true,
+                  async json() {
+                    return {
+                      kind: "review-pack",
+                      source_case_index: "/cases/case-index.json",
+                      items: [
+                        {
+                          priority_rank: 1,
+                          case_id: "front-a",
+                          reference_id: "seg_000001",
+                          start_ms: 0,
+                          end_ms: 1000,
+                          reasons: ["reference-channel-energy-mismatch"],
+                          reference_channel: "L",
+                          candidate_channel: "R",
+                          clip_url: "/api/review-pack/clip?x=1",
+                        },
+                        {
+                          priority_rank: 2,
+                          case_id: "front-b",
+                          reference_id: "seg_000002",
+                          start_ms: 1000,
+                          end_ms: 2000,
+                          reasons: ["reference-channel-energy-uncertain"],
+                          reference_channel: "R",
+                          candidate_channel: "MIX",
+                          clip_url: "/api/review-pack/clip?x=2",
+                        },
+                      ],
+                    };
+                  },
+                };
+              };
+              await context.loadReviewPath();
+              context.selectReviewPackItem(0, false);
+
+              context.fetch = async (path) => {
+                assert.strictEqual(path, "/api/review-case/load");
+                return {
+                  ok: true,
+                  async json() {
+                    return {
+                      kind: "review-case-set",
+                      case_index_path: "/cases/case-index.json",
+                      items: [
+                        {
+                          id: "front-a",
+                          audio_url: "/api/review-case/audio?a=1",
+                          reference_master: {
+                            segments: [
+                              { id: "seg_000001", start_ms: 0, end_ms: 1000, channel: "L", kind: "speech", text: "前", needs_review: false },
+                            ],
+                          },
+                        },
+                        {
+                          id: "front-b",
+                          audio_url: "/api/review-case/audio?b=1",
+                          reference_master: {
+                            segments: [
+                              { id: "seg_000002", start_ms: 1000, end_ms: 2000, channel: "R", kind: "speech", text: "次", needs_review: false },
+                            ],
+                          },
+                        },
+                      ],
+                    };
+                  },
+                };
+              };
+              await context.openSelectedReviewPackSourceCase();
+              assert.strictEqual(elements.get("nextCaseButton").textContent, "다음 issue");
+              assert.strictEqual(elements.get("nextCaseButton").disabled, false);
+
+              context.fetch = async (path, options) => {
+                assert.strictEqual(path, "/api/review-case/save-reference");
+                const payload = JSON.parse(options.body);
+                assert.ok(["front-a", "front-b"].includes(payload.case_id));
+                return {
+                  ok: true,
+                  async json() {
+                    return { segments: 1, review_count: 0, review_duration_ms: 0 };
+                  },
+                };
+              };
+              await context.openNextAction();
+
+              assert.strictEqual(elements.get("audioPlayer").src, "/api/review-case/audio?b=1");
+              assert.strictEqual(elements.get("segmentCount").textContent, "front-b · 1 segments");
+              assert.strictEqual(elements.get("selectedLabel").textContent, "seg_000002");
+              assert.strictEqual(elements.get("nextCaseButton").textContent, "다음 issue");
+              assert.strictEqual(elements.get("nextCaseButton").disabled, true);
+
+              await context.returnToReviewCases();
+              assert.strictEqual(elements.get("selectedLabel").textContent, "#2 0:01.000 - 0:02.000");
+            })().catch((error) => {
+              console.error(error);
+              process.exit(1);
+            });
+        """,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_review_pack_source_case_keeps_channel_audit_status_hint(self):
         result = self.run_app_assertions(
             r"""
