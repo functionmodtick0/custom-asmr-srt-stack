@@ -98,7 +98,7 @@ translated.json 가져오기
 SRT 내보내기
 ```
 
-검수 큐를 볼 때는 CLI로 만든 `review-pack` directory, `index.json`, review case directory, `case-index.json` 경로를 WebUI의 Review path 입력에 넣고 엽니다. Review pack은 priority 순서와 evidence를 보여주고 `case 열기`로 source reference를 편집합니다. Audio API는 HTTP byte Range를 지원하므로 긴 WAV의 선택 segment로 바로 seek합니다. Content/channel 검수 상태는 reference file과 `case-index.json` count에 자동 저장됩니다.
+검수 큐를 볼 때는 CLI로 만든 `review-pack` directory, `index.json`, review case directory, `case-index.json` 경로를 WebUI의 Review path 입력에 넣고 엽니다. Review pack은 priority 순서와 evidence를 보여주고 `case 열기`로 source reference를 편집합니다. 다시 열면 source reference의 최신 content/channel evidence를 읽어 완료 항목을 숨기고 남은 clip 수와 청취 시간만 표시합니다. Audio API는 HTTP byte Range를 지원하므로 긴 WAV의 선택 segment로 바로 seek합니다. Content/channel 검수 상태는 reference file과 `case-index.json` count에 자동 저장됩니다.
 
 모델 설정은 UI에서 직접 입력합니다.
 오디오를 먼저 연 뒤 SRT 또는 `master.json`을 열면, 아직 transcript가 없는 현재 오디오 project에 해당 transcript를 연결합니다.
@@ -693,7 +693,7 @@ Review path: /path/to/review-pack
 Review path: /path/to/review-cases
 ```
 
-WebUI는 review pack을 priority clip queue로 다루고 source case 정보로 `case 열기`, `pack 목록`, `다음 issue`를 제공합니다. Review case 목록은 content pending 수/duration, 자동 flag 수, 첫 미검수 segment를 표시합니다. `검수 완료`가 content evidence를 저장하고 text/time 재편집은 이를 무효화합니다. Channel-only 완료는 channel evidence만 저장합니다. Audio Range/206 지원으로 120초 source case에서도 선택 segment timestamp로 즉시 seek합니다. 모델/VAD/threshold 옵션은 추가하지 않습니다.
+WebUI는 review pack을 priority clip queue로 다루고 source case 정보로 `case 열기`, `pack 목록`, `다음 issue`를 제공합니다. Source-linked pack은 현재 reference를 기준으로 완료 항목을 렌더링/다음 탐색에서 제외하며, 저장 직후와 재로드 후 같은 상태를 유지합니다. Review case 목록은 content pending 수/duration, 자동 flag 수, 첫 미검수 segment를 표시합니다. `검수 완료`가 content evidence를 저장하고 text/time 재편집은 이를 무효화합니다. Channel-only 완료는 channel evidence만 저장합니다. Audio Range/206 지원으로 120초 source case에서도 선택 segment timestamp로 즉시 seek합니다. 모델/VAD/threshold 옵션은 추가하지 않습니다.
 
 ## 테스트
 

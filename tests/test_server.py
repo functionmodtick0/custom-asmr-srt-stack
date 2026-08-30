@@ -210,6 +210,137 @@ class ServerApiTests(unittest.TestCase):
             self.assertEqual(status, 400)
             self.assertIn("inside the pack directory", response["error"])
 
+    def test_review_pack_load_reports_live_source_review_completion(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            pack_dir = root / "review-pack"
+            clips_dir = pack_dir / "clips"
+            case_dir = root / "cases"
+            reference_dir = case_dir / "references"
+            clips_dir.mkdir(parents=True)
+            reference_dir.mkdir(parents=True)
+            for name in ("done.wav", "pending.wav"):
+                (clips_dir / name).write_bytes(b"RIFFtestWAVE")
+
+            reference_path = reference_dir / "front.master.json"
+            reference_path.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "front.wav", "duration_ms": 2000},
+                        "segments": [
+                            {
+                                "id": "seg_done",
+                                "start_ms": 0,
+                                "end_ms": 1000,
+                                "channel": "L",
+                                "kind": "speech",
+                                "text": "済み",
+                                "needs_review": False,
+                                "content_reviewed": True,
+                                "channel_reviewed": True,
+                            },
+                            {
+                                "id": "seg_pending",
+                                "start_ms": 1000,
+                                "end_ms": 2000,
+                                "channel": "R",
+                                "kind": "speech",
+                                "text": "確認",
+                                "needs_review": False,
+                                "content_reviewed": True,
+                                "channel_reviewed": False,
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            case_index = case_dir / "case-index.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "reference_type": "pseudo-gold",
+                        "case_count": 1,
+                        "items": [
+                            {
+                                "id": "front",
+                                "audio": "audio/front.wav",
+                                "reference": "references/front.master.json",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            items = [
+                {
+                    "case_id": "front",
+                    "reference_id": "seg_done",
+                    "start_ms": 0,
+                    "end_ms": 1000,
+                    "reasons": [
+                        "reference-content-unreviewed",
+                        "reference-channel-energy-mismatch",
+                    ],
+                    "clip_file": "clips/done.wav",
+                },
+                {
+                    "case_id": "front",
+                    "reference_id": "seg_pending",
+                    "start_ms": 1000,
+                    "end_ms": 2000,
+                    "reasons": [
+                        "reference-content-unreviewed",
+                        "reference-channel-energy-uncertain",
+                    ],
+                    "clip_file": "clips/pending.wav",
+                },
+            ]
+            pack_index = pack_dir / "index.json"
+            pack_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-pack-v1",
+                        "source_case_index": str(case_index),
+                        "items": items,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            status, response = self.post_json("/api/review/load", {"path": str(pack_dir)})
+
+            self.assertEqual(status, 200)
+            self.assertEqual(response["total_item_count"], 2)
+            self.assertEqual(response["pending_item_count"], 1)
+            self.assertEqual(response["resolved_item_count"], 1)
+            self.assertEqual(
+                response["items"][0]["source_review_requirements"],
+                ["content", "channel"],
+            )
+            self.assertTrue(response["items"][0]["source_review_resolved"])
+            self.assertFalse(response["items"][1]["source_review_resolved"])
+            self.assertTrue(response["items"][1]["source_content_reviewed"])
+            self.assertFalse(response["items"][1]["source_channel_reviewed"])
+
+            items[1]["reference_id"] = "seg_missing"
+            pack_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-pack-v1",
+                        "source_case_index": str(case_index),
+                        "items": items,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            missing_status, missing_response = self.post_json("/api/review/load", {"path": str(pack_dir)})
+            self.assertEqual(missing_status, 400)
+            self.assertIn("seg_missing", missing_response["error"])
+
     def test_review_load_route_opens_case_set_and_serves_audio(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

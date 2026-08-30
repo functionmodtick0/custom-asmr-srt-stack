@@ -548,7 +548,7 @@ class WebAppBehaviorTests(unittest.TestCase):
 
               await context.loadReviewPath();
               assert.strictEqual(sourceButton.hidden, false);
-              assert.strictEqual(sourceButton.disabled, true);
+              assert.strictEqual(sourceButton.disabled, false);
 
               context.selectReviewPackItem(0, false);
               assert.strictEqual(sourceButton.disabled, false);
@@ -594,6 +594,91 @@ class WebAppBehaviorTests(unittest.TestCase):
                 elements.get("statusText").textContent,
                 "front-a/seg_000002 · reference-same-channel-overlap · REF L · REF2 L seg_000001 · overlap 0:00.020",
               );
+            })().catch((error) => {
+              console.error(error);
+              process.exit(1);
+            });
+        """,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_review_pack_hides_resolved_items_and_skips_their_priority_slots(self):
+        result = self.run_app_assertions(
+            r"""
+            (async () => {
+              elements.get("reviewPackPathInput").value = "/packs/resumable";
+              context.fetch = async () => ({
+                ok: true,
+                async json() {
+                  return {
+                    kind: "review-pack",
+                    source_case_index: "/cases/case-index.json",
+                    total_item_count: 3,
+                    pending_item_count: 2,
+                    resolved_item_count: 1,
+                    duration_summary: {
+                      source_item_duration_ms_sum: 3000,
+                      effective_item_duration_ms_sum: 3000,
+                      clip_duration_ms_sum: 3600,
+                      clip_duration_ms_max: 1200,
+                      focus_item_count: 0,
+                    },
+                    items: [
+                      {
+                        priority_rank: 1,
+                        case_id: "front-a",
+                        reference_id: "seg_done",
+                        start_ms: 0,
+                        end_ms: 1000,
+                        clip_start_ms: 0,
+                        clip_end_ms: 1200,
+                        reasons: ["reference-content-unreviewed"],
+                        source_review_resolved: true,
+                        clip_url: "/api/review-pack/clip?x=1",
+                      },
+                      {
+                        priority_rank: 2,
+                        case_id: "front-a",
+                        reference_id: "seg_pending_1",
+                        start_ms: 1000,
+                        end_ms: 2000,
+                        clip_start_ms: 900,
+                        clip_end_ms: 2100,
+                        reasons: ["reference-content-unreviewed"],
+                        source_review_resolved: false,
+                        clip_url: "/api/review-pack/clip?x=2",
+                      },
+                      {
+                        priority_rank: 3,
+                        case_id: "front-b",
+                        reference_id: "seg_pending_2",
+                        start_ms: 2000,
+                        end_ms: 3000,
+                        clip_start_ms: 1900,
+                        clip_end_ms: 3100,
+                        reasons: ["reference-content-unreviewed"],
+                        source_review_resolved: false,
+                        clip_url: "/api/review-pack/clip?x=3",
+                      },
+                    ],
+                  };
+                },
+              });
+
+              await context.loadReviewPath();
+
+              assert.strictEqual(elements.get("segmentCount").textContent, "2 pending · 3 total · listen 0:02.400");
+              assert.strictEqual(elements.get("segmentList").children.length, 2);
+              assert.strictEqual(elements.get("segmentList").children[0].dataset.index, "1");
+              assert.strictEqual(elements.get("segmentList").children[1].dataset.index, "2");
+              assert.strictEqual(context.nextReviewPackIndex(), 1);
+              assert.strictEqual(context.reviewPackSelectedOrDefaultSourceItem().reference_id, "seg_pending_1");
+
+              context.selectReviewPackItem(1, false);
+              assert.strictEqual(context.nextReviewPackIndex(), 2);
+              context.selectReviewPackItem(2, false);
+              assert.strictEqual(context.nextReviewPackIndex(), null);
             })().catch((error) => {
               console.error(error);
               process.exit(1);
@@ -1017,28 +1102,29 @@ class WebAppBehaviorTests(unittest.TestCase):
             (async () => {
               const pathInput = elements.get("reviewPackPathInput");
               pathInput.value = "/packs/channel-audit-pack";
+              const reviewPackItem = {
+                priority_rank: 1,
+                case_id: "front-a",
+                reference_id: "seg_000001",
+                start_ms: 0,
+                end_ms: 1000,
+                reasons: ["reference-channel-energy-mismatch"],
+                reference_channel: "L",
+                candidate_channel: "R",
+                left_dbfs: -32,
+                right_dbfs: -28,
+                delta_db: -4,
+                source_review_requirements: ["channel"],
+                source_review_resolved: false,
+                clip_url: "/api/review-pack/clip?x=1",
+              };
               context.fetch = async () => ({
                 ok: true,
                 async json() {
                   return {
                     kind: "review-pack",
                     source_case_index: "/cases/case-index.json",
-                    items: [
-                      {
-                        priority_rank: 1,
-                        case_id: "front-a",
-                        reference_id: "seg_000001",
-                        start_ms: 0,
-                        end_ms: 1000,
-                        reasons: ["reference-channel-energy-mismatch"],
-                        reference_channel: "L",
-                        candidate_channel: "R",
-                        left_dbfs: -32,
-                        right_dbfs: -28,
-                        delta_db: -4,
-                        clip_url: "/api/review-pack/clip?x=1",
-                      },
-                    ],
+                    items: [reviewPackItem],
                   };
                 },
               });
@@ -1085,14 +1171,16 @@ class WebAppBehaviorTests(unittest.TestCase):
               assert.strictEqual(doneButton.disabled, false);
               assert.strictEqual(doneButton.textContent, "Channel 검수 완료");
 
+              let saveCount = 0;
               context.fetch = async (path, options) => {
                 assert.strictEqual(path, "/api/review-case/save-reference");
                 const payload = JSON.parse(options.body);
                 const segment = payload.master.segments[0];
+                saveCount += 1;
                 assert.strictEqual(segment.channel, "L");
                 assert.strictEqual(segment.needs_review, false);
                 assert.strictEqual(segment.content_reviewed, false);
-                assert.strictEqual(segment.channel_reviewed, true);
+                assert.strictEqual(segment.channel_reviewed, saveCount === 1);
                 return {
                   ok: true,
                   async json() {
@@ -1103,6 +1191,8 @@ class WebAppBehaviorTests(unittest.TestCase):
 
               await context.markSelectedReviewDone();
               assert.strictEqual(doneButton.disabled, true);
+              assert.strictEqual(reviewPackItem.source_review_resolved, true);
+              assert.strictEqual(context.nextReviewPackSourceIndex(), null);
               assert.strictEqual(elements.get("statusLabel").textContent, "Channel 검수 저장됨");
               assert.strictEqual(
                 elements.get("statusText").textContent,
@@ -1113,6 +1203,8 @@ class WebAppBehaviorTests(unittest.TestCase):
               context.commitSegmentTime(segment, "start_ms", { value: "100" });
               assert.strictEqual(segment.start_ms, 100);
               assert.strictEqual(segment.channel_reviewed, false);
+              await context.saveCurrentMasterNow();
+              assert.strictEqual(reviewPackItem.source_review_resolved, false);
             })().catch((error) => {
               console.error(error);
               process.exit(1);

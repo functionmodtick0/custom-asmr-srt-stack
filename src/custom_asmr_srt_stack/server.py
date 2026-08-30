@@ -17,6 +17,11 @@ from custom_asmr_srt_stack.transcription import ModelEndpoint, transcribe_audio
 from custom_asmr_srt_stack.workflow import analyze_project, retranscribe_segment, transcribe_project
 
 WEB_ROOT = Path(__file__).resolve().parents[2] / "web"
+CONTENT_REVIEW_REASONS = {"reference-content-unreviewed", "reference-needs-review"}
+CHANNEL_REVIEW_REASONS = {
+    "reference-channel-energy-mismatch",
+    "reference-channel-energy-uncertain",
+}
 
 
 def json_response(status: HTTPStatus, payload: dict[str, Any]) -> tuple[int, str, bytes]:
@@ -228,19 +233,95 @@ def load_review_pack_response(path: Path) -> dict[str, Any]:
     if not isinstance(items, list):
         raise ValueError("review pack items must be an array")
     normalized_items = []
+    source_segment_cache: dict[Path, dict[tuple[str, str], dict[str, Any]]] = {}
     for item in items:
         item_mapping = require_mapping(item, "review pack item")
         clip_file = require_string(item_mapping.get("clip_file"), "review pack item.clip_file")
         review_pack_clip_path(index_path, clip_file)
         normalized_item = dict(item_mapping)
         normalized_item["clip_url"] = review_pack_clip_url(index_path, clip_file)
+        attach_review_pack_source_state(normalized_item, pack, source_segment_cache)
         normalized_items.append(normalized_item)
+    resolved_item_count = sum(item.get("source_review_resolved") is True for item in normalized_items)
     response = dict(pack)
     response["kind"] = "review-pack"
     response["index_path"] = str(index_path)
     response["pack_dir"] = str(index_path.parent)
     response["items"] = normalized_items
+    response["total_item_count"] = len(normalized_items)
+    response["resolved_item_count"] = resolved_item_count
+    response["pending_item_count"] = len(normalized_items) - resolved_item_count
     return response
+
+
+def attach_review_pack_source_state(
+    item: dict[str, Any],
+    pack: dict[str, Any],
+    source_segment_cache: dict[Path, dict[tuple[str, str], dict[str, Any]]],
+) -> None:
+    reasons = item.get("reasons")
+    reason_values = (
+        {reason for reason in reasons if isinstance(reason, str)} if isinstance(reasons, list) else set()
+    )
+    requirements = []
+    if reason_values & CONTENT_REVIEW_REASONS:
+        requirements.append("content")
+    if "reference-needs-review" in reason_values:
+        requirements.append("review-flag")
+    if reason_values & CHANNEL_REVIEW_REASONS:
+        requirements.append("channel")
+    if not requirements:
+        return
+
+    source_case_index = item.get("source_case_index", pack.get("source_case_index"))
+    if source_case_index is None:
+        return
+    case_index_value = require_string(source_case_index, "review pack source_case_index")
+    case_id = require_string(item.get("case_id"), "review pack item.case_id")
+    reference_id = require_string(item.get("reference_id"), "review pack item.reference_id")
+    case_index_path = review_case_index_path(Path(case_index_value))
+    segments = source_segment_cache.get(case_index_path)
+    if segments is None:
+        segments = load_review_case_reference_segments(case_index_path)
+        source_segment_cache[case_index_path] = segments
+    segment = segments.get((case_id, reference_id))
+    if segment is None:
+        raise ValueError(f"review pack source segment is missing: {case_id}/{reference_id}")
+
+    item["source_review_requirements"] = requirements
+    item["source_content_reviewed"] = segment.get("content_reviewed") is True
+    item["source_channel_reviewed"] = segment.get("channel_reviewed") is True
+    item["source_needs_review"] = segment.get("needs_review") is True
+    item["source_review_resolved"] = all(
+        {
+            "content": item["source_content_reviewed"],
+            "review-flag": not item["source_needs_review"],
+            "channel": item["source_channel_reviewed"],
+        }[requirement]
+        for requirement in requirements
+    )
+
+
+def load_review_case_reference_segments(index_path: Path) -> dict[tuple[str, str], dict[str, Any]]:
+    case_index = read_review_case_index(index_path)
+    raw_items = case_index.get("items")
+    if not isinstance(raw_items, list):
+        raise ValueError("review case index items must be an array")
+    segments: dict[tuple[str, str], dict[str, Any]] = {}
+    for item_index, raw_item in enumerate(raw_items):
+        item = require_mapping(raw_item, f"review case item {item_index}")
+        case_id = require_string(item.get("id"), f"review case item {item_index}.id")
+        reference = require_string(item.get("reference"), f"review case item {item_index}.reference")
+        reference_path = review_case_item_path(index_path, reference, "reference")
+        master = load_review_case_master(reference_path)
+        for segment_index, raw_segment in enumerate(master.get("segments", [])):
+            segment = require_mapping(raw_segment, f"review case {case_id} segment {segment_index}")
+            segment_id = require_string(segment.get("id"), f"review case {case_id} segment {segment_index}.id")
+            key = (case_id, segment_id)
+            if key in segments:
+                raise ValueError(f"duplicate review case source segment: {case_id}/{segment_id}")
+            segments[key] = segment
+    return segments
 
 
 def load_review_case_set_response(path: Path) -> dict[str, Any]:

@@ -351,15 +351,22 @@ function render() {
 
 function renderReviewPack() {
   const items = state.reviewPack.items || [];
+  const pendingEntries = reviewPackPendingEntries();
   const selectedItem = items[state.reviewPackSelectedIndex];
   const sourceItem = reviewPackSelectedOrDefaultSourceItem();
   const caseCount = state.reviewPack.case_count;
-  const nextCaseId = state.reviewPack.next_case_id;
-  const summaryParts = [`${items.length} review clips`];
+  const configuredNextCaseId = state.reviewPack.next_case_id;
+  const nextCaseId = pendingEntries.some(({ item }) => item.case_id === configuredNextCaseId)
+    ? configuredNextCaseId
+    : null;
+  const summaryParts =
+    pendingEntries.length === items.length
+      ? [`${items.length} review clips`]
+      : [`${pendingEntries.length} pending`, `${items.length} total`];
   if (Number.isInteger(caseCount)) {
     summaryParts.push(`${caseCount} cases`);
   }
-  summaryParts.push(...reviewPackDurationSummaryParts(state.reviewPack.duration_summary));
+  summaryParts.push(...reviewPackDurationSummaryParts(reviewPackPendingDurationSummary(state.reviewPack, pendingEntries)));
   if (nextCaseId) {
     summaryParts.push(`next ${nextCaseId}`);
   }
@@ -368,7 +375,7 @@ function renderReviewPack() {
     state.reviewPackSelectedIndex === null ? "선택 없음" : reviewPackSelectedLabel(selectedItem);
   els.retranscribeButton.disabled = true;
   els.retranscribeButton.hidden = false;
-  els.sourceCaseButton.hidden = !items.some((item) => reviewPackSourceTarget(item));
+  els.sourceCaseButton.hidden = !pendingEntries.some(({ item }) => reviewPackSourceTarget(item));
   els.sourceCaseButton.disabled = !reviewPackSourceTarget(sourceItem);
   els.applyEnergyChannelButton.hidden = true;
   els.applyEnergyChannelButton.disabled = true;
@@ -382,12 +389,50 @@ function renderReviewPack() {
   els.exportTranslationButton.disabled = true;
   els.exportSrtButton.disabled = true;
 
-  if (!items.length) {
-    els.segmentList.innerHTML = '<div class="empty-state">review clip 없음</div>';
+  if (!pendingEntries.length) {
+    els.segmentList.innerHTML = '<div class="empty-state">review 완료</div>';
     return;
   }
 
-  els.segmentList.replaceChildren(...items.map(renderReviewPackItem));
+  els.segmentList.replaceChildren(...pendingEntries.map(({ item, index }) => renderReviewPackItem(item, index)));
+}
+
+function reviewPackPendingEntries(reviewPack = state.reviewPack) {
+  return (reviewPack?.items || [])
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item?.source_review_resolved !== true);
+}
+
+function reviewPackPendingDurationSummary(reviewPack, pendingEntries) {
+  const original = reviewPack?.duration_summary;
+  const itemCount = reviewPack?.items?.length || 0;
+  if (!original || typeof original !== "object" || pendingEntries.length === itemCount) return original;
+  const summary = {
+    source_item_duration_ms_sum: 0,
+    effective_item_duration_ms_sum: 0,
+    clip_duration_ms_sum: 0,
+    clip_duration_ms_max: 0,
+    focus_item_count: 0,
+  };
+  for (const { item } of pendingEntries) {
+    const startMs = finiteNumber(item.start_ms);
+    const endMs = finiteNumber(item.end_ms);
+    const clipStartMs = finiteNumber(item.clip_start_ms);
+    const clipEndMs = finiteNumber(item.clip_end_ms);
+    if (![startMs, endMs, clipStartMs, clipEndMs].every(Number.isFinite)) return null;
+    const reviewStartMs = finiteNumber(item.review_clip_start_ms);
+    const reviewEndMs = finiteNumber(item.review_clip_end_ms);
+    const hasFocus = Number.isFinite(reviewStartMs) || Number.isFinite(reviewEndMs);
+    const effectiveStartMs = Number.isFinite(reviewStartMs) ? reviewStartMs : startMs;
+    const effectiveEndMs = Number.isFinite(reviewEndMs) ? reviewEndMs : endMs;
+    summary.source_item_duration_ms_sum += Math.max(0, endMs - startMs);
+    summary.effective_item_duration_ms_sum += Math.max(0, effectiveEndMs - effectiveStartMs);
+    const clipDurationMs = Math.max(0, clipEndMs - clipStartMs);
+    summary.clip_duration_ms_sum += clipDurationMs;
+    summary.clip_duration_ms_max = Math.max(summary.clip_duration_ms_max, clipDurationMs);
+    if (hasFocus) summary.focus_item_count += 1;
+  }
+  return summary;
 }
 
 function renderReviewCaseSet() {
@@ -623,15 +668,15 @@ function reviewPackSourceTarget(item, reviewPack = state.reviewPack) {
 
 function reviewPackSelectedOrDefaultSourceItem() {
   const selected = state.reviewPack?.items?.[state.reviewPackSelectedIndex];
-  if (reviewPackSourceTarget(selected)) return selected;
+  if (selected?.source_review_resolved !== true && reviewPackSourceTarget(selected)) return selected;
   if (state.reviewPackSelectedIndex !== null) return null;
-  const items = state.reviewPack?.items || [];
+  const items = reviewPackPendingEntries().map(({ item }) => item);
   const nextCaseId = state.reviewPack?.next_case_id;
   if (nextCaseId) {
     const nextCaseItem = items.find((item) => item?.case_id === nextCaseId && reviewPackSourceTarget(item));
     if (nextCaseItem) return nextCaseItem;
   }
-  return null;
+  return items.find((item) => reviewPackSourceTarget(item)) || null;
 }
 
 function reviewPackEnergyChannelSuggestion(item) {
@@ -1093,6 +1138,7 @@ async function saveCurrentMasterNow() {
       master: state.master,
     });
     syncReviewCaseItemAfterSave(result);
+    syncReturnReviewPackItemAfterSave();
     return result;
   }
   if (state.projectId) {
@@ -1154,6 +1200,27 @@ async function markSelectedReviewDone() {
       remaining > 0 ? `${remaining}개 내용 검수가 남았습니다.` : "이 case의 내용 검수를 모두 처리했습니다.",
     );
   }
+}
+
+function syncReturnReviewPackItemAfterSave() {
+  const returnReviewPack = state.reviewCaseReference?.returnReviewPack;
+  const item = returnReviewPack?.reviewPack?.items?.[returnReviewPack?.selectedIndex];
+  const segment = state.master?.segments?.find((candidate) => candidate.id === item?.reference_id);
+  if (!item || !segment || !Array.isArray(item.source_review_requirements)) return;
+  item.source_content_reviewed = segment.content_reviewed === true;
+  item.source_channel_reviewed = segment.channel_reviewed === true;
+  item.source_needs_review = segment.needs_review === true;
+  item.source_review_resolved = item.source_review_requirements.every(
+    (requirement) =>
+      ({
+        content: item.source_content_reviewed,
+        "review-flag": !item.source_needs_review,
+        channel: item.source_channel_reviewed,
+      })[requirement] === true,
+  );
+  const pendingCount = reviewPackPendingEntries(returnReviewPack.reviewPack).length;
+  returnReviewPack.reviewPack.pending_item_count = pendingCount;
+  returnReviewPack.reviewPack.resolved_item_count = returnReviewPack.reviewPack.items.length - pendingCount;
 }
 
 async function applyEnergyChannelToSelectedSegment() {
@@ -1344,7 +1411,8 @@ async function returnToReviewCases() {
   state.reviewCaseReference = null;
   if (returnReviewPack?.reviewPack) {
     state.reviewPack = returnReviewPack.reviewPack;
-    state.reviewPackSelectedIndex = returnReviewPack.selectedIndex;
+    const returnedItem = state.reviewPack.items?.[returnReviewPack.selectedIndex];
+    state.reviewPackSelectedIndex = returnedItem?.source_review_resolved === true ? null : returnReviewPack.selectedIndex;
     state.reviewCaseSet = null;
     render();
     drawWaveform();
@@ -1420,9 +1488,11 @@ function openNextReviewPackItem() {
 function nextReviewPackIndex() {
   const items = state.reviewPack?.items || [];
   if (!items.length) return null;
-  if (state.reviewPackSelectedIndex === null || state.reviewPackSelectedIndex === undefined) return 0;
-  const nextIndex = state.reviewPackSelectedIndex + 1;
-  return nextIndex < items.length ? nextIndex : null;
+  const startIndex = Number.isInteger(state.reviewPackSelectedIndex) ? state.reviewPackSelectedIndex + 1 : 0;
+  for (let index = startIndex; index < items.length; index += 1) {
+    if (items[index]?.source_review_resolved !== true) return index;
+  }
+  return null;
 }
 
 function nextReviewPackSourceIndex(returnReviewPack = state.reviewCaseReference?.returnReviewPack) {
@@ -1431,7 +1501,7 @@ function nextReviewPackSourceIndex(returnReviewPack = state.reviewCaseReference?
   const currentIndex = returnReviewPack?.selectedIndex;
   if (!Number.isInteger(currentIndex)) return null;
   for (let index = currentIndex + 1; index < items.length; index += 1) {
-    if (reviewPackSourceTarget(items[index], reviewPack)) return index;
+    if (items[index]?.source_review_resolved !== true && reviewPackSourceTarget(items[index], reviewPack)) return index;
   }
   return null;
 }
