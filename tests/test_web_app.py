@@ -195,6 +195,18 @@ class WebAppBehaviorTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_local_qwen_hf_adapter_points_to_the_selected_product_model(self):
+        result = self.run_app_assertions(
+            r"""
+            assert.strictEqual(
+              context.modelPlaceholderForAdapter("local-qwen-hf-asr"),
+              ".casrt/models/qwen3-asr-1.7b-ja-anime-galgame-hf-5a6a789ceb2f22d2b8606743b13a8159af218362",
+            );
+        """,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_review_case_preview_uses_first_remaining_review_segment(self):
         result = self.run_app_assertions(
             r"""
