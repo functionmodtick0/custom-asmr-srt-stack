@@ -424,6 +424,117 @@ class WorkflowTests(unittest.TestCase):
                 [(0, 1000, "1000"), (1000, 2000, "1000"), (2000, 3000, "1000")],
             )
 
+    def test_local_qwen_asr_overlap_context_keeps_only_the_owning_core_result(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "qwen-long-scene.wav"
+            write_stereo_samples(audio_path, [(2000, 2000)] * 3000)
+            store = ProjectStore(root / "projects")
+            created = store.create_from_audio(
+                "qwen-long-scene.wav",
+                "audio/wav",
+                base64.b64encode(audio_path.read_bytes()).decode("ascii"),
+            )
+            analyzed = analyze_project(store, created["project_id"])
+            calls = []
+
+            def fake_transcribe(endpoint, audio_bytes, *, mime_type, channel, source_language):
+                del endpoint, mime_type, source_language
+                duration_ms = analyze_wav(audio_bytes).duration_ms
+                calls.append((channel, duration_ms))
+                if len(calls) == 1:
+                    values = [(900, 1100, "first-boundary")]
+                elif len(calls) == 2:
+                    values = [
+                        (100, 300, "first-boundary"),
+                        (1100, 1300, "second-boundary"),
+                    ]
+                else:
+                    values = [(100, 300, "second-boundary")]
+                return tuple(
+                    Segment(
+                        id="ignored",
+                        start_ms=start_ms,
+                        end_ms=end_ms,
+                        channel=channel,
+                        kind="speech",
+                        text=text,
+                    )
+                    for start_ms, end_ms, text in values
+                )
+
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "CASRT_QWEN_ENERGY_MAX_CHUNK_MS": "1000",
+                    "CASRT_QWEN_ENERGY_CHUNK_CONTEXT_MS": "200",
+                },
+            ):
+                master = transcribe_project(
+                    store,
+                    created["project_id"],
+                    ModelEndpoint(
+                        adapter="local-qwen-asr",
+                        endpoint_url=None,
+                        model_id="Qwen/Qwen3-ASR-1.7B",
+                    ),
+                    analyzed["metadata"],
+                    source_language="ja",
+                    transcribe_audio_func=fake_transcribe,
+                )
+
+            self.assertEqual(calls, [("MIX", 1200), ("MIX", 1400), ("MIX", 1200)])
+            self.assertEqual(
+                [(segment.start_ms, segment.end_ms, segment.text) for segment in master.segments],
+                [(900, 1100, "first-boundary"), (1900, 2100, "second-boundary")],
+            )
+
+    def test_local_qwen_asr_overlap_context_rejects_invalid_configuration(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_path = root / "qwen-long-scene.wav"
+            write_stereo_samples(audio_path, [(2000, 2000)] * 1000)
+            store = ProjectStore(root / "projects")
+            created = store.create_from_audio(
+                "qwen-long-scene.wav",
+                "audio/wav",
+                base64.b64encode(audio_path.read_bytes()).decode("ascii"),
+            )
+            analyzed = analyze_project(store, created["project_id"])
+            endpoint = ModelEndpoint(
+                adapter="local-qwen-asr",
+                endpoint_url=None,
+                model_id="Qwen/Qwen3-ASR-1.7B",
+            )
+
+            for environment, message in (
+                ({"CASRT_QWEN_ENERGY_CHUNK_CONTEXT_MS": "200"}, "requires CASRT_QWEN_ENERGY_MAX_CHUNK_MS"),
+                (
+                    {
+                        "CASRT_QWEN_ENERGY_MAX_CHUNK_MS": "1000",
+                        "CASRT_QWEN_ENERGY_CHUNK_CONTEXT_MS": "-1",
+                    },
+                    "must be non-negative",
+                ),
+                (
+                    {
+                        "CASRT_QWEN_ENERGY_MAX_CHUNK_MS": "1000",
+                        "CASRT_QWEN_ENERGY_CHUNK_CONTEXT_MS": "1000",
+                    },
+                    "must be smaller",
+                ),
+            ):
+                with self.subTest(environment=environment), mock.patch.dict(os.environ, environment, clear=True):
+                    with self.assertRaisesRegex(ValueError, message):
+                        transcribe_project(
+                            store,
+                            created["project_id"],
+                            endpoint,
+                            analyzed["metadata"],
+                            source_language="ja",
+                            transcribe_audio_func=lambda *args, **kwargs: (),
+                        )
+
     def test_local_qwen_asr_transcribe_project_uses_vad_command_when_configured(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

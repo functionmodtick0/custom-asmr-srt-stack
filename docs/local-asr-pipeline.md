@@ -252,9 +252,10 @@ CASRT_QWEN_ENERGY_MIN_SILENCE_MS
 CASRT_QWEN_ENERGY_MIN_SPEECH_MS
 CASRT_QWEN_ENERGY_PAD_MS
 CASRT_QWEN_ENERGY_MAX_CHUNK_MS
+CASRT_QWEN_ENERGY_CHUNK_CONTEXT_MS
 ```
 
-`CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 긴 energy interval을 고정 길이 이하로 자르는 내부 실험 옵션이다. 기본값은 unset이며 WebUI/CLI 모델 선택 옵션으로 노출하지 않는다.
+`CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 긴 energy interval을 고정 길이 이하로 자르는 내부 실험 옵션이다. `CASRT_QWEN_ENERGY_CHUNK_CONTEXT_MS`는 max chunk와 함께 쓸 때 각 core 앞뒤에 audio context를 붙이고 output midpoint가 core에 속한 segment만 남긴다. 둘 다 기본값은 unset/0이며 WebUI/CLI 모델 선택 옵션으로 노출하지 않는다.
 
 이 결정의 이유:
 
