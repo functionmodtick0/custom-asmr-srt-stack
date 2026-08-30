@@ -209,6 +209,8 @@ CASRT_QWEN_HF_ASR_NUM_BEAMS=5 \
 
 현재 제품 권장 모델은 exact native HF snapshot `jaykwok/Qwen3-ASR-1.7B-JA-Anime-Galgame-hf@5a6a789ceb2f22d2b8606743b13a8159af218362`로 확정했습니다. 01/04/08 spot-audit에서 04/08의 도메인 어휘와 ASMR 표현이 Bro보다 크게 좋아진 이득이 01의 일부 한자 오인보다 크다고 판단했습니다. L/R bleed duplicate와 일부 후반 누락은 현재 모델의 알려진 한계입니다. 사용자의 자유 입력 결정에 따라 자동 고정하지는 않지만, `local-qwen-hf-asr` 모델 필드 placeholder가 이 local snapshot을 가리킵니다.
 
+이 권장 모델의 같은 01/04/08 출력에 text/channel/segment를 보존하는 energy VAD edge snap, Qwen3-ForcedAligner, 두 단계 조합을 다시 적용했지만 same-channel 500ms timing이 no-op `21.67%`에서 각각 최고 `15.00%`, `8.62%`, `8.62%`로 악화했습니다. 따라서 production은 계속 L/R fixed 20초 비중첩 전사와 no-op alignment를 사용합니다. VAD와 aligner는 개발 CLI 실험에만 남고 WebUI나 정상 CLI 전사에 숨은 후처리로 실행되지 않습니다.
+
 `CASRT_QWEN_HF_ASR_NUM_BEAMS`는 positive integer 내부 benchmark 설정이며 기본값은 `1`입니다. Beam 5를 보고한 모델을 비교할 때만 base와 fine-tune 양쪽에 같은 값으로 명시하고, WebUI 옵션으로는 추가하지 않습니다. Qwen HF snapshot은 safetensors/native `qwen3_asr` file/config preflight를 통과해야 하며, external `chat_template.jinja`가 있으면 `CASRT_QWEN_HF_ASR_EXPECTED_CHAT_TEMPLATE_SHA256` expected digest가 필수입니다.
 
 고정 aligner command는 기존 transcript를 명시적으로 재정렬하는 개발 CLI에서만 사용합니다. 이 명령은 stdin으로 `{ audio_file, master }` JSON을 받고 stdout으로 `{ segments: [{ id, start_ms, end_ms }] }` JSON을 반환해야 합니다.
