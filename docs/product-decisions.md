@@ -53,8 +53,8 @@ WebUI는 이 계약을 위한 새 옵션을 추가하지 않는다. 기존 `검�
 
 1. 사용자가 WebUI에 오디오 파일을 드롭한다.
 2. 시스템이 오디오를 좌측, 우측, 믹스 트랙으로 분리한다.
-3. 사용자가 지정한 메인 모델이 오디오를 전사한다.
-4. 고정된 alignment 계층이 segment 단위 타이밍을 만든다.
+3. 사용자가 지정한 메인 모델 하나가 stereo 입력은 L/R을 각각, mono 입력은 MIX를 20초 비중첩 청크로 전사한다.
+4. 모델이 반환한 청크 상대 타이밍을 원본 타임라인으로 offset하고 시간순 정렬한다. Production alignment는 no-op이다.
 5. 시스템이 `master.json`을 저장한다.
 6. 사용자는 필요한 경우 segment 텍스트를 검토하고 수정한다.
 7. 사용자는 외부 번역 도구에 넣을 `translation.json`을 내보낸다.
@@ -104,9 +104,9 @@ WebUI/CLI -> local-transformers adapter -> transformers worker subprocess -> Gem
 
 worker는 첫 전사 요청 때 lazy start하며, 같은 애플리케이션 프로세스 안에서 모델을 메모리에 유지한다. worker가 죽거나 응답 계약을 어기면 fallback으로 조용히 넘기지 않고 오류를 표시한다. `local-transformers` worker는 `CASRT_LOCAL_WORKER_ENV_MODE=offline`에서만 모델을 로드하고, `model_id`가 실제 local snapshot directory가 아니면 실패한다. 모델과 processor는 `local_files_only=True`, `trust_remote_code=False`, `use_safetensors=True`로만 로드한다. Remote code가 필요한 모델/runtime은 실행 전 별도 외부 runtime 검토 대상으로 둔다.
 
-Gemma 4 E2B/E4B 계열처럼 audio clip 길이 제한이 있는 모델을 고려해, `local-transformers` adapter는 silence/energy 기반 chunk를 내부적으로 30초 이하 subchunk로 나눠 보낸다. worker가 세부 timestamp를 안정적으로 만들 수 없으면 clip 전체를 하나의 speech segment로 반환하고 `needs_review`를 표시한다. 필요한 경우 고정 alignment 계층이 후속 timing을 정리한다.
+모든 production adapter는 동일한 20초 비중첩 청크 계약을 사용한다. Adapter가 더 짧은 입력 상한을 요구하면 그 상한으로만 추가 분할한다. Worker가 세부 timestamp를 만들 수 없으면 청크 전체를 하나의 speech segment로 반환하고 `needs_review`를 표시한다. Production은 별도 aligner로 이를 조용히 수정하지 않는다.
 
-로컬 ASR adapter인 `local-transformers`, `local-qwen-asr`, `local-qwen-hf-asr`, `local-cohere-asr`, `local-granite-asr`는 모두 기본적으로 MIX-first로 전사한다. L/R 단독 전사는 조용한 ASMR에서 bleed와 low-SNR 문제를 키울 수 있으므로, 기본 경로에서 L/R은 텍스트 입력이 아니라 channel attribution 근거로 사용한다. 다만 동시 L/R reference와 MIX 한 줄 transcript의 계약 mismatch를 측정하기 위해 `CASRT_LOCAL_ASR_CHANNEL_MODE=stereo` CLI-only benchmark mode를 허용한다. 이 mode는 같은 VAD/ASR 경로를 L/R 각각에 적용하며 WebUI 옵션이나 자동 fallback으로 만들지 않는다. 2026-08-30 Bro all8의 전역 practical CER는 stereo `64.33%`, MIX `58.84%`였지만, L/R interleave 순서 영향을 제거한 channel-aware practical CER는 stereo `48.21%`, MIX `117.12%`였다. Stereo는 모든 case에서 labeled metric을 개선했지만 MIX가 구조적으로 불리한 지표이고 reference도 pseudo-gold이므로 기본값은 MIX-first로 유지한다. Stereo는 human-reviewed L/R reference에서 재검증할 유력 후보로 남기고, 2dB energy-match-only filter는 channel-aware CER `71.22%`로 raw stereo보다 나빠 승격하지 않는다.
+모든 adapter는 stereo 입력에서 L/R을 각각 전사하고 두 결과를 모두 보존하며, mono 입력에서만 MIX를 전사한다. 모델 종류별 MIX-first 분기, `CASRT_LOCAL_ASR_CHANNEL_MODE`, energy 기반 channel attribution, 반대 채널 duplicate 자동 삭제는 production에 없다. 이들은 과거 실험과 명시적 개발 CLI에만 남는다. 2026-08-30 pseudo-gold 실험은 global CER와 channel-aware CER가 서로 반대 결론을 냈기 때문에 자동 재귀속/삭제 근거로 쓰지 않는다.
 
 Stereo bleed duplicate 제거는 반대 채널에 시간/text가 충분히 덮이고 원 채널 energy가 명확히 작은 segment만 지우는 bounded 후보로도 평가한다. Coverage는 제거될 segment 자체를 denominator로 사용해 짧은 반대편 조각 때문에 긴 고유 text를 통째로 지우지 않는다. 2026-08-30 all8 sweep에서는 낮은 energy threshold가 global practical CER를 개선했지만 channel-aware CER를 악화했고, 높은 threshold도 raw stereo를 두 지표에서 동시에 이기지 못했다. 따라서 자동 bleed 삭제를 기본 pipeline, production CLI, WebUI 옵션으로 추가하지 않고 human-reviewed L/R reference에서 같은 후보를 재평가한다.
 
@@ -124,14 +124,14 @@ Gemma 4 audio path는 audio tower까지 pre-quantize된 bnb checkpoint에서 깨
 원본 오디오
 -> WAV 정규화
 -> L/R/MIX 생성
--> VAD/silence 기반 chunking
--> MIX-first ASR
--> L/R channel attribution
--> forced alignment
+-> 고정 20초 비중첩 chunking
+-> stereo L/R 각각 단일 모델 ASR, mono MIX ASR
+-> 결과 보존 및 시간순 정렬
+-> no-op alignment
 -> master.json
 ```
 
-ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한 ASMR 파일에서 L/R 단독 전사는 channel bleed, low SNR, whisper 때문에 더 쉽게 깨졌다. L/R은 텍스트 인식의 주 경로가 아니라 발화 위치와 겹침 판단을 위한 근거로 사용한다.
+고정 production 경로는 음성 누락과 불확실한 channel 재귀속을 피하기 위해 L/R 결과를 삭제하지 않는다. Energy VAD, 외부 VAD, channel attribution, forced alignment는 후보를 비교하는 개발 도구이며 WebUI/server/project 전사의 숨은 단계가 아니다.
 
 우선 구현 대상은 다음이다.
 
@@ -151,7 +151,7 @@ ASR 텍스트는 기본적으로 `MIX`에서 만든다. 실험 결과, 조용한
 - `microsoft/VibeVoice-ASR`와 `microsoft/VibeVoice-ASR-HF`: 2026년 공개된 일본어 tag 포함 최신 local ASR 후보. Exact revisions는 각각 `d0c9efdb8d614685062c04425d91e01b6f37d944`, `f22241c2062b3b25272bf117397e03d73381037a`다. 현재 repo env의 Transformers 5.12.1에는 필요한 VibeVoice class가 없으므로 기본 경로에 넣지 않는다. 공식 release 지원 또는 별도 runtime 검토 후 exact revision local snapshot으로만 평가한다.
 - `OpenMOSS-Team/MOSS-Transcribe-preview-2B`와 `cstr/MOSS-Transcribe-preview-2B-GGUF`: 2026-06 신규 ASR 후보지만 일본어 tag가 없거나 `custom_code`/별도 GGUF runtime이 필요하다. 일본 ASMR 우선 후보가 아니며 실행 전 외부 코드/runtime 검토가 필요하다.
 - `TransWithAI/Whisper-Vad-EncDec-ASMR-onnx`: ASR 모델이 아니라 VAD 후보. 공개 discussion 기준 일본어 ASMR 약 500시간으로 학습된 Whisper encoder 기반 VAD다. `casrt vad whisper-asmr-onnx` command로 붙이며, WebUI 옵션으로 노출하지 않고 `CASRT_VAD_COMMAND` 뒤에 붙일 내부 후보로 둔다. 실행은 `gpt-5.4 xhigh` 정적 보안 검토의 `PASS_WITH_CONSTRAINTS` 조건을 따른다. 2026-06-28 01/04/07 front120 gold에서 단독 chunker default practical CER 30.2%, tuned practical CER 33.4%, energy-rescue hybrid practical CER 31.0%라 energy baseline 29.6%보다 나빠 기본 교체하지 않는다.
-- Energy VAD t54/pad800/max30s: 2026-07-02 all8 coverage sweep에서 reference recall 99.5%로 좋아졌지만, actual Qwen ASR eval에서는 practical CER 60.2%, time-aligned 500ms 15.2%로 baseline Qwen보다 악화되어 기본 교체하지 않는다. 2026-08-30 Bro beam5 stereo에서도 segment 수와 global CER/timing은 개선했지만 channel-aware CER와 candidate energy match ratio가 악화돼 raw stereo를 지배하지 못했다. MIX-first 기본값과 default energy VAD는 유지하고 human-reviewed L/R reference에서만 재평가한다.
+- Energy VAD t54/pad800/max30s: 2026-07-02 all8 coverage sweep에서 reference recall 99.5%로 좋아졌지만, actual Qwen ASR eval에서는 practical CER 60.2%, time-aligned 500ms 15.2%로 baseline Qwen보다 악화됐다. 2026-08-30 Bro beam5 stereo에서도 segment 수와 global CER/timing은 개선했지만 channel-aware CER와 candidate energy match ratio가 악화돼 raw stereo를 지배하지 못했다. 따라서 production에서는 제거하고 개발 CLI 재평가 후보로만 보존한다.
 - `Qwen/Qwen3-ASR-0.6B`: 빠른 비교/저사양 후보
 - `Qwen/Qwen3-ForcedAligner-0.6B`: 고정 forced alignment 후보. 기본은 기존 segment 내부만 재정렬하고, `CASRT_QWEN_ALIGNER_CONTEXT_MS`는 기존 segment 밖 boundary 보정 실험용 내부 env로만 둔다. 2026-07-02 Qwen official all8 context 500/2000ms 실험은 time-aligned 500ms를 baseline 16.0%보다 낮은 11.1%/6.9%로 악화시켜 기본 승격하지 않는다. 같은 날 all8 reference-copy oracle에서도 baseline reference-copy의 time-aligned 500ms 95.1%를 Qwen aligner 적용 후 51.2%로 낮추고 timing edit ratio를 9.8%에서 75.6%로 악화시켰으므로, 현재 Qwen3-ForcedAligner는 ASMR 기본 alignment 계층으로 쓰지 않는다. 현 alignment 기본 정책은 `CASRT_ALIGNER_COMMAND`를 설정하지 않는 no-op이며, 새 aligner 후보는 reference-copy no-op baseline 95.1%를 넘어야 승격 대상이 된다.
 
@@ -205,17 +205,19 @@ Gemma 4 E4B 같은 general multimodal 모델은 실험 대상으로 유지하되
 
 구현 세부 값, 실험 결과, 다음 작업 계획은 [local-asr-pipeline.md](local-asr-pipeline.md)에 기록한다.
 
-2026년 1월 이후 공개 후기/툴링 조사 기준, ASMR/동인음성에서는 단일 최신 ASR 모델보다 scene detection, ASMR-friendly VAD, forced alignment, hallucination filtering을 조합하는 파이프라인의 영향이 크다. WhisperJAV는 ASMR/VR/whisper 콘텐츠에 `fidelity` pipeline과 `aggressive` sensitivity를 추천하고, ChronosJAV는 Qwen ASR/anime-whisper/Kotoba처럼 timestamp가 없는 모델의 text generation과 timestamp alignment를 분리한다. 이 구조는 제품 기본 방향인 `MIX-first ASR -> alignment -> channel attribution`과 맞는다.
+2026년 1월 이후 공개 후기/툴링 조사는 scene detection, ASMR-friendly VAD, forced alignment, hallucination filtering의 잠재적 영향을 보여줬다. 하지만 이 프로젝트의 실제 pseudo-gold 반복에서는 어느 후보도 단순 20초 L/R 경로를 일관되게 지배하지 못했다. 따라서 이 기능들은 개발 실험으로 보존하고 production 경로에는 넣지 않는다.
 
 ## Alignment 정책
 
-Alignment는 애플리케이션이 고정으로 제공하며, 기본 UI에서 사용자가 선택하지 않는다.
+Production alignment는 no-op으로 고정하며 기본 UI에서 사용자가 선택하지 않는다.
 
 현재 의도한 방향은 다음이다.
 
 ```text
-메인 모델 전사 결과 + 오디오 -> Qwen3-ForcedAligner -> segment timing
+메인 모델의 청크 상대 timing -> 원본 timeline offset -> segment timing
 ```
+
+`CASRT_ALIGNER_COMMAND`와 Qwen3-ForcedAligner는 `align-transcript`, `align-review-case-candidates` 같은 명시적 개발 CLI에서만 실행한다. Server와 `project transcribe`는 이 환경변수를 읽지 않는다.
 
 aligner가 내부적으로 word/character timing을 만들 수 있더라도, 기본 제품 데이터에는 segment 단위 timing만 저장한다. word/character alignment는 외부 번역 워크플로우를 애매하게 만들기 때문에 번역용 JSON에 포함하지 않는다.
 
@@ -473,7 +475,7 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 
 현재 구현에서 확정된 정책은 다음이다.
 
-- chunk interval 기본 최대 길이는 180초다.
+- production chunk interval 최대 길이는 20초이며 비중첩이다. 이전 분석 metadata의 더 긴 chunk도 전사 시점에 다시 20초 이하로 나눈다.
 - 오디오는 분석 전에 WAV로 정규화한다.
 - SRT import는 cue text 선두의 `[L]`, `[R]`, `[LR]`, `[MIX]`, `[L:SPEAKER_00]`, `[R:SPEAKER_00]`, `[SPEAKER_00]`를 metadata로 읽고 본문 텍스트에서 제거한다.
 - `[LR]`은 현재 channel model에서 `MIX`로 저장한다.
@@ -493,11 +495,10 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - mono WAV는 `MIX`만 만든다.
 - 모델 adapter는 `openai-compatible`, `gemini`, `local-transformers`, `local-qwen-asr`, `local-qwen-hf-asr`, `local-cohere-asr`, `local-granite-asr`다.
 - 모델 설정은 UI에서 사용자가 직접 입력한다.
-- 로컬 ASR adapter는 stereo 입력에서도 `MIX`를 먼저 전사한다.
-- 로컬 ASR adapter는 `CASRT_VAD_COMMAND`가 있으면 고정 VAD command interval을 사용하고, 없으면 MIX energy 기반 speech chunking을 사용한다.
-- Qwen 내장 energy 기본값은 threshold `-48.0 dBFS`, window `100ms`, min silence `500ms`, min speech `200ms`, pad `200ms`다.
-- Qwen 내장 energy 값은 `CASRT_QWEN_ENERGY_*` env로만 튜닝하고 WebUI 옵션으로 노출하지 않는다.
-- `CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 긴 energy interval을 고정 길이 이하로 자르는 실험 옵션이다. 2026-06-30 01/04/07 front120에서 max10000은 practical CER를 29.5% -> 29.3%로만 낮추고 channel accuracy를 73.1% -> 72.0%로 떨어뜨렸으므로 기본값으로 켜지 않는다.
+- 모든 ASR adapter는 stereo 입력의 L/R을 각각 전사하고 mono 입력만 MIX를 전사한다.
+- Production은 energy/external VAD, energy channel attribution, automatic bleed deletion을 실행하지 않는다.
+- `CASRT_VAD_COMMAND`, `CASRT_QWEN_ENERGY_*`, `CASRT_LOCAL_ASR_CHANNEL_MODE`, `CASRT_ALIGNER_COMMAND`는 server와 `project transcribe`에서 무시한다. 관련 구현은 명시적 개발/평가 CLI 전용이다.
+- Production local worker 환경은 Qwen forced-aligner와 Granite timestamp parsing 실험 변수를 제거한다. Worker 모듈 직접 실행을 통한 개발 실험만 허용한다.
 - `CASRT_QWEN_ASR_ALIGNER_MODEL_ID`는 고정 forced aligner 실험/내부 보정 경로다. `CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS`보다 짧은 aligned span은 clip bounds로 되돌리며, WebUI 옵션으로 노출하지 않는다. 2026-06-30 01/04/07 front120 guard80 평가에서는 time-aligned 500ms가 29.5% -> 36.1%, channel time-aligned가 73.1% -> 75.0%로 개선됐지만 practical CER 29.5%는 변하지 않아 단독 기본 승격하지 않는다.
 - Generic Qwen aligner worker는 stereo master의 segment channel에 맞는 L/R/MIX mono clip을 사용한다. 이전 full-stereo clip 경로의 결과는 MIX 후보에는 유효하지만 stereo 후보 alignment 근거로 재사용하지 않는다. 수정 worker의 Bro stereo all8 재평가에서도 같은 채널 전용 500ms timing이 `15.79% -> 8.00%`로 악화했으므로 Qwen3-ForcedAligner는 기본 승격하지 않고 no-op alignment를 유지한다.
 - `custom_asmr_srt_stack.qwen_aligner_worker`는 Qwen3-ForcedAligner를 generic aligner command로 쓰는 고정 내부 경로다. 이 경로는 기존 master text/channel/kind를 변경하지 않고 segment 내부 start/end만 재정렬한다. 실행은 local snapshot, offline env scrub, network-disabled guard, `qwen-asr==0.0.6` RECORD hash, per-file RECORD hash, import origin 검증 조건을 만족해야 한다. `CASRT_QWEN_ALIGNER_MIN_ALIGNED_DURATION_MS=80`과 `CASRT_QWEN_ALIGNER_MIN_COVERAGE_RATIO=0.5` guard로 비현실적으로 짧거나 원 segment 절반 미만으로 잘린 span만 원래 timing으로 유지한다. 이 fallback은 외부 aligner over-trim에 한정하며 text/channel 수정 실패를 숨기지 않는다.
@@ -510,7 +511,7 @@ MVP에서는 복잡한 검토 플래그 시스템을 만들지 않는다.
 - VAD command는 stdin으로 `{ audio_file, audio_info }` JSON을 받고 stdout으로 `{ intervals: [{ start_ms, end_ms }] }` JSON을 반환한다.
 - VAD interval이 정렬되지 않았거나 겹치거나 audio duration을 넘으면 실패한다.
 - alignment는 UI에서 선택하지 않는다.
-- `CASRT_ALIGNER_COMMAND`가 설정된 경우, 앱은 고정 aligner command를 실행한다.
+- `CASRT_ALIGNER_COMMAND`는 명시적 alignment 개발 CLI에서만 실행하며 앱의 정상 전사 경로에는 영향을 주지 않는다.
 - aligner command는 stdin으로 `{ audio_file, master }` JSON을 받고 stdout으로 `{ segments: [{ id, start_ms, end_ms }] }` JSON을 반환한다.
 - aligner output이 id를 누락하거나 중복하면 실패한다.
 - `needs_review`는 WebUI segment row에서 표시하고 직접 토글할 수 있다. `content_reviewed`와 `channel_reviewed`는 기존 검수 동작이 관리하며 별도 옵션으로 노출하지 않는다.

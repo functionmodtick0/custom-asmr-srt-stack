@@ -61,6 +61,12 @@ LOCAL_WORKER_ENV_PREFIXES = (
     "CASRT_COHERE_ASR_",
     "CASRT_GRANITE_ASR_",
 )
+PRODUCTION_LOCAL_WORKER_ENV_BLOCKLIST = {
+    "CASRT_GRANITE_ASR_PARSE_TIMESTAMPS",
+    "CASRT_QWEN_ASR_ALIGNER_KWARGS",
+    "CASRT_QWEN_ASR_ALIGNER_MODEL_ID",
+    "CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS",
+}
 LOCAL_WORKER_OFFLINE_ENV = {
     "CASRT_COHERE_ASR_DISABLE_NETWORK": "1",
     "CASRT_GRANITE_ASR_DISABLE_NETWORK": "1",
@@ -497,12 +503,18 @@ def granite_asr_worker_command() -> tuple[str, ...]:
 def local_worker_env() -> dict[str, str] | None:
     mode = os.environ.get("CASRT_LOCAL_WORKER_ENV_MODE", "inherit").strip().lower()
     if mode in {"", "inherit"}:
-        return None
+        return {
+            name: value
+            for name, value in os.environ.items()
+            if name not in PRODUCTION_LOCAL_WORKER_ENV_BLOCKLIST
+        }
     if mode != "offline":
         raise ValueError("CASRT_LOCAL_WORKER_ENV_MODE must be inherit or offline")
 
     env: dict[str, str] = {}
     for name, value in os.environ.items():
+        if name in PRODUCTION_LOCAL_WORKER_ENV_BLOCKLIST:
+            continue
         if name in LOCAL_WORKER_ENV_ALLOWLIST or name.startswith(LOCAL_WORKER_ENV_PREFIXES):
             env[name] = value
 

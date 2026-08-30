@@ -1241,7 +1241,7 @@ def vad_whisper_asmr_onnx(args: argparse.Namespace) -> None:
         add_rescue_intervals,
         detect_command_intervals,
     )
-    from custom_asmr_srt_stack.workflow import qwen_energy_chunk_kwargs
+    from custom_asmr_srt_stack.vad import qwen_energy_chunk_kwargs
 
     request = require_mapping(json.loads(sys.stdin.read()), "VAD request")
     audio_file = request.get("audio_file")
@@ -1283,7 +1283,7 @@ def vad_coverage_interval_source(
 ) -> tuple[str, tuple[dict[str, int], ...], dict[str, float | int | None] | None]:
     from custom_asmr_srt_stack.audio import speech_intervals_by_energy
     from custom_asmr_srt_stack.vad import parse_vad_intervals, run_vad_command
-    from custom_asmr_srt_stack.workflow import split_long_chunks
+    from custom_asmr_srt_stack.vad import split_long_chunks
 
     if intervals_path is not None and vad_adapter_command is not None:
         raise ValueError("--intervals and --vad-command cannot be used together")
@@ -1313,7 +1313,7 @@ def vad_coverage_interval_source(
 
 
 def vad_coverage_energy_settings(args: argparse.Namespace) -> tuple[dict[str, float | int], int | None]:
-    from custom_asmr_srt_stack.workflow import qwen_energy_chunk_kwargs, qwen_energy_max_chunk_ms
+    from custom_asmr_srt_stack.vad import qwen_energy_chunk_kwargs, qwen_energy_max_chunk_ms
 
     kwargs = qwen_energy_chunk_kwargs()
     if args.energy_threshold_dbfs is not None:

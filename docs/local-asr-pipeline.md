@@ -16,18 +16,20 @@
 원본 오디오
 -> 16-bit PCM WAV 정규화
 -> L/R/MIX 채널 생성
--> MIX energy 기반 speech chunking
--> Qwen3-ASR 로컬 전사
--> L/R energy 기반 channel attribution
+-> 고정 20초 비중첩 chunking
+-> 사용자가 고른 단일 로컬 모델로 stereo L/R 각각 전사, mono MIX 전사
+-> 두 채널 결과 보존 및 시간순 정렬
+-> no-op alignment
 -> master.json 저장
--> eval-transcript로 품질 측정
 ```
 
 핵심 결정:
 
-- ASR 텍스트는 `MIX`에서 만든다.
-- L/R 단독 ASR은 기본 경로로 쓰지 않는다.
-- L/R은 발화 위치 판정에 사용한다.
+- Stereo ASR 텍스트는 L/R에서 각각 만들고 둘 다 보존한다.
+- Mono 입력만 MIX를 사용한다.
+- Energy VAD, channel attribution, forced alignment는 명시적 개발 CLI 실험이며 production 경로가 아니다.
+- `CASRT_VAD_COMMAND`, `CASRT_QWEN_ENERGY_*`, `CASRT_LOCAL_ASR_CHANNEL_MODE`, `CASRT_ALIGNER_COMMAND`는 server/project 전사를 바꾸지 않는다.
+- Production local worker subprocess는 Qwen forced-aligner와 Granite timestamp parsing 실험 환경변수를 상속하지 않는다.
 - `text`에는 `[L]`, `[R]` 같은 라벨을 넣지 않는다.
 - 모든 channel 정보는 `segment.channel`에만 저장한다.
 - 번역은 이 파이프라인에서 하지 않는다.
@@ -151,12 +153,12 @@ Qwen HF snapshot은 load 전에 native snapshot preflight를 통과해야 한다
 - 2026-08-30 Bro beam 5 real-audio smoke: `.casrt/experiments/upload-real-crop/01-front10.wav`를 실제 GPU에서 로드/추론했다. 첫 실행은 검증용 최소 venv에 Transformers audio decoder dependency인 `librosa`가 없어 model load 후 fail-fast했다. Repo `local` extra와 `uv.lock`에는 이미 `librosa==0.11.0`이 포함되어 있으므로 별도 제품 dependency 변경 없이, 전용 venv에 hash-generated requirements로 같은 버전과 wheel dependency만 추가했다. 설치 전후 freeze와 hashed requirements는 `.casrt/runtime-provenance/`에 보존했고 `uv pip check`는 77 packages compatible로 통과했으며 Transformers/Torch/NumPy/SoundFile 버전은 바뀌지 않았다. 재실행 결과 energy VAD 3개 구간에 `やば、見つかっちゃった。`, `ね、ね、魔女ちゃん。`, `こいつ強い？えっと。`를 반환했다. Reference 첫 문장 내용과 일치하는 정상 smoke지만 10초 한 건은 승격 근거가 아니므로, 다음 단계는 official Qwen HF base와 동일 beam 5, max-new-tokens 256, all8 front120 비교다.
 - 2026-08-30 Bro vs official Qwen HF all8 beam 5: 두 모델 모두 exact local snapshot, official Transformers commit `45b004d7bb505a258542d1965b0f9e0d8b03b89d`, max-new-tokens 256, default energy VAD, MIX-first/channel attribution, offline worker를 사용했다. Bro candidates/report/comparison은 `.casrt/experiments/all8-front120-bro-asr-beam5-candidates`, `.casrt/experiments/all8-front120-bro-asr-beam5-eval-report.json`, `.casrt/experiments/all8-front120-qwen-hf-base-vs-bro-beam5-comparison.json`; base counterparts는 `all8-front120-qwen-hf-base-beam5-*`다. Bro는 193 candidate segments, practical CER `58.84%`, Japanese-relaxed CER `57.91%`, time-aligned 500ms `16.05%`, channel time-aligned accuracy `53.33%`, MIX ratio `62.96%`, review effort `100%`였다. Base는 167 segments, practical CER `59.87%`, Japanese-relaxed CER `58.89%`, timing `16.25%`, channel accuracy `55.17%`, MIX ratio `63.75%`, review effort `100%`였다. Bro는 practical CER를 `1.03` percentage points 낮췄고 case delta report `.casrt/experiments/all8-front120-qwen-hf-base-vs-bro-beam5-case-deltas.json`에서 8개 중 7개 case를 개선했지만 timing/channel/review는 개선하지 못했다. Bro review queue/pack은 각각 `.casrt/experiments/all8-front120-bro-asr-beam5-review-effort.json`, `.casrt/experiments/all8-front120-bro-asr-beam5-review-pack`이며 82/82 reference segments가 edit 대상이다.
 - 위 all8 비교의 판단: Bro는 현재 같은 HF runtime/decoding에서 official base보다 소폭 나은 text 후보지만 기본 승격하지 않는다. Candidate practical characters는 Bro `2,876`, base `2,753`으로 reference `5,993`보다 크게 적고, pseudo-gold reference는 동시 L/R text를 별도 segment로 포함하는 반면 MIX-first ASR은 한 chunk에서 한 transcript만 만든다. 따라서 현재 high CER에는 모델 누락뿐 아니라 overlap/channel transcript 계약 mismatch도 포함된다. 다음 pipeline 반복은 모델만 교체하지 않고 human-reviewed reference와 overlap-aware stereo transcription 후보로 이 원인을 분리해야 한다.
-- 2026-08-30 stereo transcription benchmark plan: `CASRT_LOCAL_ASR_CHANNEL_MODE=stereo`를 CLI-only 실험 mode로 추가한다. 기본 `mix`는 바꾸지 않고, stereo mode는 기존 project workflow의 channel selection만 L/R로 바꿔 각 채널에 같은 energy VAD, local ASR adapter, timing offset, sorting을 적용한다. Invalid value와 mono input은 fail-visible 처리한다. 첫 비교는 Bro beam 5에서 MIX all8과 동일 reference/eval gate로 실행해 text coverage 개선과 bleed duplicate 증가를 함께 측정하며, WebUI 옵션이나 정상 경로 fallback으로 승격하지 않는다.
+- 2026-08-30 stereo transcription benchmark plan (historical, superseded): 당시 `CASRT_LOCAL_ASR_CHANNEL_MODE=stereo` 실험 mode로 MIX와 L/R을 비교했다. 후속 continuous20 결과와 runtime 단순화 결정으로 환경변수 mode는 production에서 제거됐고, 현재 stereo L/R은 고정 production 계약이다.
 - 2026-08-30 Bro all8 stereo 결과: candidates `.casrt/experiments/all8-front120-bro-asr-beam5-stereo-candidates`, report `.casrt/experiments/all8-front120-bro-asr-beam5-stereo-eval-report.json`, MIX comparison `.casrt/experiments/all8-front120-bro-asr-beam5-mix-vs-stereo-comparison.json`. Stereo는 candidate segments `350`, practical characters `5,109`로 MIX `193`/`2,876`보다 text 양을 늘렸지만 practical CER는 `58.84% -> 64.33%`, Japanese-relaxed CER는 `57.91% -> 64.10%`로 악화했다. Timing 500ms는 `16.05% -> 15.85%`, time-aligned channel accuracy는 `53.33% -> 51.22%`, review effort는 양쪽 모두 `100%`다. Case 01/02/04는 stereo가 개선했지만 03/05/06/07/08은 악화했고 08은 practical CER `49.56% -> 89.36%`로 bleed duplicate 영향이 컸다. 전 구간 L/R 전사는 기본 승격하지 않고 CLI-only diagnostics로 유지한다.
 - 2026-08-30 stereo energy gate 상한: stereo candidate를 threshold 2dB, quiet gate off로 audit한 `.casrt/experiments/all8-front120-bro-asr-beam5-stereo-candidate-channel-audit-th2.json`에서 350 segments 중 energy match `137`, wrong-side `150`, uncertain/over-attribution `63`이었다. `status=match`만 남긴 post-filter candidates/report는 `.casrt/experiments/all8-front120-bro-asr-beam5-stereo-th2-match-candidates`, `.casrt/experiments/all8-front120-bro-asr-beam5-stereo-th2-match-eval-report.json`; practical CER `66.96%`, timing 500ms `14.81%`, channel accuracy `53.09%`, review effort `100%`로 MIX와 raw stereo보다 모두 나빴다. Stereo가 개선된 case와 energy match ratio도 일관되게 상관하지 않았다. 결론: RMS 우세는 source direction evidence이지 transcript correctness/omission evidence가 아니므로 단순 energy drop filter를 제품 경로에 추가하지 않는다.
 - 2026-08-30 pipeline status 판단: 구현과 automatic proxy 기준으로는 VAD/chunking, no-op alignment, candidate channel energy proxy가 pass하지만, 이번 model/channel 실험은 pseudo-gold의 긴 L/R overlap segment와 실제 후보의 짧은 MIX/LR segment 계약 차이 때문에 text/timing/channel 수치를 동시에 크게 흔든다. 따라서 ASR만 남은 상태로 보지 않는다. 다음 승격 근거는 현재 8-case reference의 남은 15 structure review items와 48 unresolved channel items를 사람이 확정한 human-reviewed manifest여야 하며, 그 전에는 Bro/MIX를 current text candidate로만 유지한다.
 - 2026-08-30 channel-aware CER plan: 기존 `text_practical`은 모든 speech segment를 document order로 이어 붙이므로 겹치는 L/R candidate의 boundary 차이가 global interleave 순서를 바꿀 때 text 자체보다 큰 벌점을 줄 수 있다. `text_practical_channel_aware`를 L/R/MIX별 practical edit distance의 micro-average로 추가해 raw stereo와 energy-filtered stereo를 다시 진단한다. Wrong channel/MIX text는 deletion+insertion으로 벌점이 남고 metric은 1.0을 넘을 수 있다. 이 지표는 stereo 원인 분석 전용이며 product gate는 바꾸지 않는다.
-- 2026-08-30 channel-aware CER all8 결과: 기존 manifest를 재평가했고 comparison은 `.casrt/experiments/all8-front120-bro-asr-beam5-channel-aware-comparison.json`이다. Bro MIX는 global practical CER `58.84%`, channel-aware `117.12%`; raw stereo는 global `64.33%`, channel-aware `48.21%` (`L=51.42%`, `R=45.08%`); 2dB energy-match-only stereo는 global `66.96%`, channel-aware `71.22%`였다. Raw stereo는 8개 모든 case에서 MIX보다 channel-aware CER가 낮았고, global CER 악화의 상당 부분이 L/R boundary 차이로 인한 interleave 순서 벌점임을 확인했다. 그러나 MIX는 한 transcript를 L/R 두 reference에 배치할 수 없어 channel-aware metric에서 구조적으로 불리하고 reference도 pseudo-gold다. 결정: stereo를 폐기하지 않고 human-reviewed L/R 기준 재평가 후보로 복원하되, product default/gate와 MIX-first 기본값은 바꾸지 않는다. 단순 energy filter는 여전히 탈락이다.
+- 2026-08-30 channel-aware CER all8 결과: 기존 manifest를 재평가했고 comparison은 `.casrt/experiments/all8-front120-bro-asr-beam5-channel-aware-comparison.json`이다. Bro MIX는 global practical CER `58.84%`, channel-aware `117.12%`; raw stereo는 global `64.33%`, channel-aware `48.21%` (`L=51.42%`, `R=45.08%`); 2dB energy-match-only stereo는 global `66.96%`, channel-aware `71.22%`였다. Raw stereo는 8개 모든 case에서 MIX보다 channel-aware CER가 낮았고, global CER 악화의 상당 부분이 L/R boundary 차이로 인한 interleave 순서 벌점임을 확인했다. 그러나 MIX는 구조적으로 불리하고 reference도 pseudo-gold라 수치 자체는 승격 근거가 아니다. 후속 결정은 fixed continuous20 L/R을 production으로 채택하고 단순 energy filter는 탈락시키는 것이다.
 - 2026-08-30 fixed residual demix smoke: FFmpeg `L-0.5R`, `R-0.5L` PCM16 residual을 01/04/08 front120에 적용해 Bro stereo beam 5로 평가했다. Artifacts는 `.casrt/experiments/bro-demix-k05-3case*`; original stereo subset report는 `.casrt/experiments/all8-front120-bro-asr-beam5-stereo-01-04-08-eval-report.json`. Residual은 candidate segments `145 -> 154`, global practical CER `63.04% -> 61.77%`로 좋아졌지만 channel-aware CER `41.67% -> 42.21%`로 악화했고, case 01만 `27.10% -> 26.47%`, 04는 `29.11% -> 29.32%`, 08은 `76.09% -> 78.43%`였다. 고정 감산은 승격하지 않고 추가 coefficient brute-force도 중단한다.
 - 2026-08-30 stereo aligner input bug: generic Qwen aligner worker가 L/R segment에도 full stereo clip을 전달해 aligner decoder의 channel 처리에 의존하고 있었다. Worker가 입력을 L/R/MIX mono로 한 번 분리하고 segment channel과 같은 clip을 사용하도록 수정한다. Mono audio의 L/R label은 유일한 MIX waveform을 사용한다. 기존 MIX/reference-copy aligner 실패 결론은 유지하지만, stereo candidate alignment는 수정 경로에서 다시 평가해야 한다.
 - 2026-08-30 channel-aware stereo aligner result: output `.casrt/experiments/all8-front120-bro-asr-beam5-stereo-qwen-aligner-channel-aware`, comparison `comparison.json`. 350 segments 중 268개 timing이 바뀌었고 mean absolute boundary delta `311.9ms`, 자체 boundary 500ms 이내 변화율 `81.4%`였다. Unrestricted reference timing 500ms는 `15.85% -> 8.02%`, 같은 채널 전용 timing 500ms도 `15.79% -> 8.00%`로 악화했다. Channel-aware mean boundary error는 `6.88s -> 7.37s`, reference match ratio는 `92.68% -> 91.46%`로 나빠졌다. Channel accuracy `51.22% -> 55.56%`와 channel edit ratio `48.78% -> 43.90%` 개선은 바뀐 time pairing 효과이며 timing 실패를 상쇄하지 못한다. 결정: stereo input bug 수정은 유지하지만 Qwen3-ForcedAligner는 MIX와 stereo 모두 기본 승격하지 않고 no-op alignment를 유지한다.
@@ -190,7 +192,7 @@ Qwen HF snapshot은 load 전에 native snapshot preflight를 통과해야 한다
 - 2026-08-30 no-training product constraint: 사용자는 project-owned fine-tuning을 하지 않기로 확정했다. 이 파이프라인은 공개된 pretrained 또는 third-party fine-tuned local checkpoint의 exact snapshot 평가, decoding, VAD/chunking, channel handling, alignment, deterministic post-processing만 개선 대상으로 삼는다. Training dataset/loop, LoRA/adapter 생성, 사용자별 checkpoint는 비목표다. Product gate `CER <=10%`, review effort `<=15%`는 임의로 낮추지 않되, 공개 모델 ceiling이 이를 만족하지 못하면 fine-tuning을 후속 계획으로 기록하지 않고 실제 human-reviewed metric과 필요한 검수량을 명시한다. 현재 human-reviewed authority가 없어 ceiling 자체도 아직 확정할 수 없다.
 - 2026-08-30 human-free runtime constraint: 사용자는 사람을 정상 전사 단계에서 배제하기로 확정했다. Production runtime은 사용자가 선택한 메인 모델 하나와 고정 VAD/channel/alignment pipeline만 실행하며 multi-model consensus, MBR/ROVER, 추가 audio-conditioned verifier를 숨은 정상 비용이나 fallback으로 호출하지 않는다. 여러 모델 후보와 audio verifier는 개발 단계에서 main model/pipeline을 비교하는 benchmark에만 사용하고 WebUI 옵션으로 노출하지 않는다. 서로 다른 architecture의 confidence는 calibration 없이 직접 비교하지 않는다. Runtime은 불확실한 항목도 단일 main-model 결과와 machine uncertainty를 저장하고 완료하며 Review UI 승인을 기다리지 않는다. Human-reviewed gold가 전혀 없으면 correctness/CER는 증명할 수 없으므로 benchmark proxy agreement 개선과 실제 정답 개선을 구분한다.
 - 2026-08-30 community-first validation constraint: 공식 benchmark/leaderboard는 일본 동인 음성 실사용 품질의 모델 선택 근거에서 제외한다. 후보 discovery/ranking은 최근 실제 사용자 커뮤니티의 ASMR/whisper/Japanese 파일 사용 후기, exact model/quant/runtime, 공유된 output/failure case, 독립 재현 수를 우선한다. 공식 자료는 modality/language/runtime/license/revision 사실 확인에만 쓴다. 후보는 사용자의 실제 파일에서 단일 모델로 실행하고 Codex가 일본어 출력 붕괴, 반복, 문맥 단절, 누락 징후, L/R duplicate, timing 구조를 spot-audit한다. 현재 Codex는 audio를 직접 청취하지 못하므로 이 audit은 제한된 개발 판단이며 실제 발화 correctness나 CER를 증명하지 않는다.
-- 2026-08-30 production runtime simplicity reset plan: production WebUI/server 전사는 이미 단일 `ModelEndpoint`만 호출하고 evaluation/readiness를 import하지 않지만, `workflow.py`에 env-selected energy/external VAD, MIX/stereo mode, energy channel attribution, optional aligner hook이 병렬 정상 경로로 남아 있다. 이를 stereo input은 `L`, `R`을 각각 정확히 한 번씩 같은 fixed chunks로 전사하고 mono input만 `MIX`를 사용하는 단일 계약으로 교체한다. Fixed chunk는 all8 실제 출력에서 가장 나았던 non-overlap continuous `20,000ms`; 두 channel 결과는 삭제/재귀속하지 않고 시간순 병합한다. Production alignment는 현재 최선인 no-op으로 고정해 모델이 반환한 clip-local timing만 offset한다. `CASRT_VAD_COMMAND`, `CASRT_QWEN_ENERGY_*`, `CASRT_LOCAL_ASR_CHANNEL_MODE`, `CASRT_ALIGNER_COMMAND`는 server/project transcription에서 읽지 않는다. External VAD/alignment와 energy sweep은 명시적 개발 CLI command에만 남긴다. Behavior tests는 stereo `L/R`, mono `MIX`, `20s+tail`, 환경변수 무시, stable sort, empty/error side effect를 검증하고 old MIX-first/env branch tests를 제거한다. 그 다음 primary WebUI에서 review loader/control을 diagnostics 화면으로 격리한다.
+- 2026-08-30 production runtime simplicity reset 구현 완료: `workflow.py`는 stereo L/R, mono MIX, non-overlap `20,000ms`, 결과 무삭제/시간순 병합, no-op alignment의 단일 계약을 사용한다. `CASRT_VAD_COMMAND`, `CASRT_QWEN_ENERGY_*`, `CASRT_LOCAL_ASR_CHANNEL_MODE`, `CASRT_ALIGNER_COMMAND`는 server/project transcription에서 읽지 않는다. External VAD/alignment와 energy sweep은 명시적 개발 CLI command에만 남겼다. Behavior tests는 stereo `L/R`, mono `MIX`, `20s+tail`, 이전 metadata 재분할, 환경변수 무시, stable sort를 검증한다.
 - 2026-08-30 stereo bleed dedupe sweep: raw stereo 350 segments 중 반대 채널과 time/text가 유사한 segment가 많아, duplicate evidence와 own-channel energy 열세를 모두 요구하는 bounded post-filter를 평가했다. 첫 scratch `.casrt/experiments/all8-front120-bro-stereo-bleed-dedupe-sweep`은 짧은 쪽을 coverage denominator로 써 짧은 fragment 하나가 긴 segment의 고유 tail까지 삭제할 수 있는 계약 결함이 있어 채택하지 않는다. Corrected oriented sweep은 제거될 segment 자체의 time coverage `>=50%`, practical text matching coverage `>=70%/85%`, 최소 4자, own channel energy 열세 `2/4/6dB`를 요구한다. Artifacts는 `.casrt/experiments/all8-front120-bro-stereo-bleed-dedupe-oriented-sweep`; 가장 낮은 global CER인 `2dB/text85`는 94개를 제거해 global practical CER `64.33% -> 58.02%`를 개선했지만 channel-aware CER `48.21% -> 59.40%`, same-channel timing 500ms `15.79% -> 13.82%`로 악화했다. Strict sweep `.casrt/experiments/all8-front120-bro-stereo-bleed-dedupe-strict-sweep`의 `8dB/text95`는 47개를 제거해 global CER `61.97%`, channel-aware `53.36%`; `10dB/text95`는 30개 제거, global `63.89%`, channel-aware `51.21%`; `12dB/text95`는 19개 제거, global `64.41%`, channel-aware `50.01%`였다. 모든 후보의 review effort는 `100%`이고 raw stereo를 global/channel-aware 양쪽에서 동시에 이긴 후보가 없다. 결정: bleed duplicate 진단은 유효하지만 pseudo-gold의 중복 L/R authority가 불확실하므로 자동 삭제를 제품 경로나 production CLI에 추가하지 않는다. Human-reviewed manifest 재실행용 exact scripts는 `.casrt/experiments/all8-front120-bro-stereo-bleed-dedupe-repro/run-oriented-sweep.py`와 `run-strict-sweep.py`에 보존한다.
 - 2026-08-30 Bro stereo VAD t54/pad800/max30s all8: exact Bro snapshot, pinned HF runtime, beam 5, max tokens 256, offline/network-disabled worker, stereo mode를 유지하고 VAD만 `threshold=-54dBFS`, `pad=800ms`, `max chunk=30000ms`로 바꿔 실제 GPU 전사를 완료했다. Candidates/projects/report/comparison은 `.casrt/experiments/all8-front120-bro-asr-beam5-stereo-vad-t54-pad800-max30s-candidates`, `...-projects`, `...-eval-report.json`, `...-comparison.json`; case delta는 `...-case-deltas.json`, energy audit은 `...-candidate-channel-audit-th2.json`이다. Candidate는 8/8 case, segments `350 -> 320`, practical characters `5,109 -> 5,361`; global practical CER `64.33% -> 63.36%`, time-aligned 500ms `15.85% -> 17.68%`, time-aligned channel accuracy `51.22% -> 52.44%`로 개선했다. 반면 channel-aware practical CER는 `48.21% -> 49.31%`, same-channel timing 500ms는 `15.79% -> 16.03%`로 text/channel 종합은 악화와 미세 개선이 섞였고 review effort는 계속 `100%`다. Case별 global CER는 6/8 개선했지만 channel-aware CER는 3/8만 개선했다. Candidate energy audit 2dB/quiet-off에서 match/wrong-side/uncertain은 raw `137/150/63`에서 tuned `124/138/58`, energy-labeled match ratio `47.74% -> 47.33%`, wrong-side ratio `52.26% -> 52.67%`로 bleed를 개선하지 못했다. 결정: fragmentation/global/timing challenger로 보존하지만 raw stereo를 지배하지 못하므로 MIX/default VAD나 canonical human-review candidate를 교체하지 않는다. Human-reviewed L/R manifest에서 raw/tuned 둘을 다시 비교한다.
 - 2026-08-30 Bro-aware model/readiness audit: persistent `.casrt/models` snapshot은 Bro, official Qwen HF, Neosophie Qwen JA, Granite base/plus 다섯 개이며 모두 all8 또는 bounded real-data 평가가 있어 다운로드 없는 최신 미평가 후보는 없었다. Latest comparison `.casrt/experiments/all8-front120-local-model-comparison-bro-aware.json`에서 Bro MIX beam5가 practical CER `58.84%`로 6개 후보 중 text 1위지만 review effort `100%`다. Coverage-only readiness가 t54 VAD를 pass로 표시하던 계약을 수정해 product preset이 같은-scope baseline/candidate eval의 downstream no-regression을 요구하도록 했다. Actual output `.casrt/experiments/all8-front120-pipeline-readiness-current-best-bro-aware-vad-downstream.json`은 reference와 VAD/chunking을 ASR-only blocker, reference/VAD/text ASR을 product blocker로 판정한다. VAD는 coverage recall `99.51%`지만 동일 Qwen MIX downstream에서 practical CER `59.74% -> 60.19%`, timing 500ms `16.05% -> 15.24%`, MIX ratio `62.96% -> 70.73%`가 악화해 fail이다. Alignment no-op과 isolated energy channel attribution은 각각 proxy pass로 유지한다.
@@ -237,26 +239,21 @@ max gain: 4.0x
 
 ## Speech Chunking
 
-`local-qwen-asr`는 분석 단계의 180초 chunk를 그대로 쓰지 않고, MIX 채널에서 energy 기반 speech interval을 다시 만든다.
+Production의 모든 adapter는 동일한 고정 20초 비중첩 chunk를 사용한다. 마지막 tail은 남은 길이만 사용하고 침묵 구간도 임의로 삭제하지 않는다. 이전 버전의 긴 분석 chunk metadata도 전사 시점에 20초 이하로 다시 나눈다.
 
-현재 값:
+현재 production 값:
 
 ```text
-threshold_dbfs: -48.0
-window_ms: 100
-min_silence_ms: 500
-min_speech_ms: 200
-pad_ms: 200
-max_chunk_ms: unset
+max_chunk_ms: 20000
+overlap_ms: 0
+silence_drop: false
 ```
 
-`CASRT_VAD_COMMAND`가 설정되어 있으면 energy splitter 대신 고정 VAD command의 interval을 사용한다.
+Energy/VAD coverage와 외부 VAD command는 `casrt vad ...` 개발 명령에서만 비교한다. `CASRT_VAD_COMMAND`와 `CASRT_QWEN_ENERGY_*`를 설정해도 production 전사는 바뀌지 않는다.
 
 ```bash
-CASRT_VAD_COMMAND='python3 path/to/vad.py' \
-  uv run casrt project transcribe PROJECT_ID \
-  --adapter local-qwen-asr \
-  --model-id Qwen/Qwen3-ASR-1.7B
+uv run casrt vad coverage audio.wav reference.master.json \
+  --vad-command 'python3 path/to/vad.py' --json
 ```
 
 VAD command contract:
@@ -265,9 +262,9 @@ VAD command contract:
 - stdout: `{ intervals: [{ start_ms, end_ms }] }`
 - interval은 정렬되어야 하고 서로 겹치면 안 된다.
 - interval이 audio duration을 넘거나 malformed이면 fallback하지 않고 실패한다.
-- WebUI/CLI 옵션으로 노출하지 않는다.
+- Production WebUI/CLI 옵션으로 노출하지 않는다.
 
-내장 energy splitter는 다음 env로만 내부 튜닝할 수 있다.
+개발용 energy coverage는 다음 env/helper와 명시적 CLI 옵션으로 재현할 수 있다.
 
 ```text
 CASRT_QWEN_ENERGY_THRESHOLD_DBFS
@@ -280,11 +277,11 @@ CASRT_QWEN_ENERGY_MAX_CHUNK_MS
 
 `CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 긴 energy interval을 고정 길이 이하로 자르는 내부 실험 옵션이다. 기본값은 unset이며 WebUI/CLI 모델 선택 옵션으로 노출하지 않는다.
 
-이 결정의 이유:
+고정 production 경로의 이유:
 
-- 10초 통째 입력은 텍스트는 어느 정도 맞아도 segment timing이 거칠다.
-- ForcedAligner 단독보다 먼저 발화 단위 chunking을 해야 timing이 안정된다.
-- WebUI에는 이 값을 옵션으로 노출하지 않는다. 필요하면 config/env 또는 developer setting으로 분리한다.
+- 실제 all8 실험에서 continuous 20초 L/R 후보가 energy VAD 후보보다 누락 신호와 종합 proxy가 안정적이었다.
+- 불확실한 VAD가 조용한 속삭임을 삭제하는 것보다 모든 구간을 단일 모델에 넘기는 쪽을 택한다.
+- Chunk 길이는 WebUI 옵션으로 노출하지 않는다.
 
 ## ASR Text Cleanup
 
@@ -301,7 +298,9 @@ CASRT_QWEN_ENERGY_MAX_CHUNK_MS
 
 ## Channel Attribution
 
-Qwen은 `MIX`를 전사한다. 생성된 speech segment에 대해 같은 시간 범위의 L/R RMS를 비교해 channel을 판정한다. 같은 구현은 기존 SRT/master 후처리 CLI에서도 사용한다.
+Production은 channel attribution을 하지 않는다. Stereo 입력은 모델 호출 시점부터 L/R이 정해져 있으며 두 결과를 그대로 저장한다. Mono 입력만 MIX다.
+
+기존 transcript의 진단/후처리를 위한 `attribute-channels` CLI는 개발 도구로 유지한다.
 
 현재 값:
 
@@ -316,7 +315,7 @@ quieter side gate: -40.0 dBFS 이하
 - R이 L보다 8dB 이상 크고 L이 -40dBFS 이하이면 `channel: "R"`
 - 차이가 작거나 양쪽이 모두 충분히 active이면 `channel: "MIX"`
 
-이 기준은 보수적이다. 채널을 틀리게 확정하는 것보다 `MIX`로 남기는 쪽을 우선한다.
+이 기준은 개발용 기존 transcript 후처리에만 적용되며 production 전사를 바꾸지 않는다.
 
 기존 transcript 후처리:
 
@@ -327,6 +326,8 @@ uv run casrt attribute-channels audio.wav candidate.master.json -o candidate.att
 이 명령은 `MIX` speech segment만 relabel하며, 이미 `L`/`R`인 segment와 speech가 아닌 segment는 바꾸지 않는다. mono audio나 L/R을 만들 수 없는 audio는 실패한다. `--threshold-db`와 `--quiet-channel-max-dbfs`는 benchmark 재현용 CLI 옵션이고 WebUI에는 노출하지 않는다.
 
 ## ForcedAligner 상태
+
+Production 기본값은 no-op이다. 아래 Qwen3-ForcedAligner와 generic aligner command는 `align-transcript`, `align-review-case-candidates` 같은 명시적 개발 CLI 실험에서만 사용한다. Server와 `project transcribe`는 `CASRT_ALIGNER_COMMAND`를 읽지 않는다.
 
 후보:
 
@@ -731,7 +732,7 @@ stable-ts에 L/R energy attribution만 붙인 channel 진단:
 - threshold-only 6dB historical run: input dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-mix`, output dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed`, report `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-3case-report.json`. Result: practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 65.0%, candidate MIX ratio 23.9%, review effort 66/74, channel edits 41.
 - 10dB sweep: output dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-th10`, report `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-th10-3case-report.json`. Result: practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 76.9%, candidate MIX ratio 58.2%, review effort 61/74, channel edits 28.
 - 8dB + quiet-side -40dBFS default: output dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-quiet8`, report `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-quiet8-3case-report.json`, review queue `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-quiet8-review-effort-items.json`, review pack `/tmp/casrt-quality.Q5OdDf/review-pack-stable-ts-cli-attributed-quiet8`. Result: practical CER 16.1%, time-aligned 500ms 56.7%, channel time-aligned accuracy 68.8%, candidate MIX ratio 40.3%, review effort 64/74, channel edits 36.
-- 결정: 현재 기본값은 8dB + quiet-side -40dBFS gate다. 기존 6dB threshold-only보다 review effort가 66 -> 64로 줄었고 MIX ratio 40.3%로 50% gate 안에 남는다. 10dB threshold-only는 wrong L/R를 더 줄이지만 MIX ratio가 50% gate를 넘으므로 기본 승격하지 않는다.
+- 개발용 `attribute-channels` CLI의 기본값은 8dB + quiet-side -40dBFS gate다. Production 전사는 이 gate를 사용하지 않는다. 기존 6dB threshold-only보다 review effort가 66 -> 64로 줄었고 MIX ratio 40.3%로 50% gate 안에 남는다. 10dB threshold-only는 wrong L/R를 더 줄이지만 MIX ratio가 50% gate를 넘으므로 개발 기본값으로 승격하지 않는다.
 - 2026-06-30 `--diagnostics-output` smoke: output dir `/tmp/casrt-quality.Q5OdDf/stable-ts-cli-attributed-quiet8-diagnostics`. 01/04/07 front120 MIX master에 대해 diagnostics JSON을 생성했고 attributed master는 기존 quiet8 output과 byte-identical이다. Reason counts는 `below_threshold=23`, `left_dominant=14`, `right_dominant=19`, `quieter_side_active=4`다.
 - 2026-07-02 all8 channel summary smoke: command `uv run casrt sweep-channel-attribution .casrt/experiments/all8-front120-candidate-attach-smoke/eval-manifest.json --audio-map .casrt/experiments/all8-front120-candidate-attach-smoke/audio-map.json --threshold-db 8 --reset-speech-channels-to-mix -o .casrt/experiments/all8-front120-channel-summary-smoke --json`. This used the reference-copy attach smoke set as a diagnostics contract check, not as a model-quality benchmark. Result: `case_count=8`, `setting_id=th8_quietm40`, `speech_segments=82`, `changed_segments=14`, `changed_segment_ratio=17.1%`, reason counts `{below_threshold:67, left_dominant:11, quieter_side_active:1, right_dominant:3}`, attributed channel counts `{L:11, MIX:68, R:3}`. Follow-up comparison showed `channel_time_aligned_accuracy=53.8%`, `channel_time_aligned_mix_ratio=84.1%`, `segments_needing_edit_ratio=91.5%`. 판단: all8 pseudo-gold/reference-copy reset smoke에서도 기본 channel attribution은 대부분 MIX를 남기므로 channel 단계도 완료된 상태가 아니다. Summary fields let future threshold sweeps distinguish low-confidence MIX retention from L/R assignment errors without opening per-segment diagnostics first.
 - 2026-07-02 all8 channel quiet-none sweeps: command `uv run casrt sweep-channel-attribution .casrt/experiments/all8-front120-candidate-attach-smoke/eval-manifest.json --audio-map .casrt/experiments/all8-front120-candidate-attach-smoke/audio-map.json --threshold-db 6 --threshold-db 8 --threshold-db 10 --quiet-channel-max-dbfs none --reset-speech-channels-to-mix -o .casrt/experiments/all8-front120-channel-quiet-none-sweep --json`; follow-up low-threshold command used thresholds `2/3/4/5` and output `.casrt/experiments/all8-front120-channel-quiet-none-low-threshold-sweep`. Best review-effort candidate was `th2_quietnone`: channel accuracy `50.0%`, MIX ratio `19.5%`, channel edit ratio `59.8%`, segments needing edit `63.4%`. `th3_quietnone` had MIX ratio `45.1%` but channel accuracy `46.7%`; `th4_quietnone` had MIX ratio `50.0%` and channel accuracy `48.8%`. 판단: disabling the quiet-side gate reduces MIX retention and can lower edit count on pseudo-gold/reference-copy diagnostics, but L/R accuracy remains around chance and far below the 85% product gate. Do not promote quiet-none or lower threshold as default; use it only as CLI-only evidence that channel blocker is not solved by threshold/quiet-side tuning alone.
@@ -814,6 +815,16 @@ window 단위 dominant fraction attribution도 01/04/07 front120 stable-ts basel
 - 다음 개선은 forced alignment 재평가, channel attribution 재평가 순서로 검증한다.
 
 ## 다음 작업 계획
+
+현재 완료 계획(2026-08-30):
+
+1. Primary WebUI에서 review/evaluation loader를 별도 diagnostics 화면으로 격리하고, 정상 화면은 오디오 열기, 모델 설정, 전사, segment 수정/재전사, JSON/SRT 입출력만 남긴다.
+2. WebUI와 CLI가 동일한 fixed production workflow를 호출하는지 실제 uploads/outputs 데이터로 end-to-end 검증한다.
+3. 최근 일본어 ASMR/동인 음성 firsthand community report에서 로컬 단일 모델 후보를 갱신하고, 이미 보유한 exact local snapshot을 우선 실제 데이터에 실행한다.
+4. Codex는 출력 구조, 일본어 붕괴/반복, 명백한 누락 신호, L/R duplicate, timestamp를 spot-check하되 audio-ground-truth 정확도를 주장하지 않는다.
+5. 전체 행동 테스트와 문서 일치 검사를 통과한 뒤 작은 commit으로 push한다.
+
+아래 항목은 과거 개발/평가 계획과 실행 기록이다. 현재 production 계약보다 우선하지 않는다.
 
 1. Gold set 운영
    - gold set manifest CLI는 추가됐다.

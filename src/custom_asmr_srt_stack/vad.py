@@ -8,10 +8,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from custom_asmr_srt_stack.audio import analyze_wav, split_wav_channels
+from custom_asmr_srt_stack.audio import analyze_wav, chunk_intervals, split_wav_channels
 from custom_asmr_srt_stack.models import MasterDocument, require_int, require_mapping
 
 DEFAULT_VAD_TIMEOUT_SECONDS = 300.0
+QWEN_ENERGY_THRESHOLD_DBFS = -48.0
+QWEN_ENERGY_WINDOW_MS = 100
+QWEN_ENERGY_MIN_SILENCE_MS = 500
+QWEN_ENERGY_MIN_SPEECH_MS = 200
+QWEN_ENERGY_PAD_MS = 200
 VAD_COVERAGE_FORMAT = "custom-asmr-vad-coverage-v1"
 VAD_COVERAGE_SUITE_FORMAT = "custom-asmr-vad-coverage-suite-v1"
 VAD_COVERAGE_COMPARISON_FORMAT = "custom-asmr-vad-coverage-comparison-v1"
@@ -22,6 +27,46 @@ class VadCoverageUnit:
     channel: str
     audio_bytes: bytes
     reference: MasterDocument
+
+
+def qwen_energy_chunk_kwargs() -> dict[str, float | int]:
+    return {
+        "threshold_dbfs": float(os.environ.get("CASRT_QWEN_ENERGY_THRESHOLD_DBFS", QWEN_ENERGY_THRESHOLD_DBFS)),
+        "window_ms": int(os.environ.get("CASRT_QWEN_ENERGY_WINDOW_MS", QWEN_ENERGY_WINDOW_MS)),
+        "min_silence_ms": int(os.environ.get("CASRT_QWEN_ENERGY_MIN_SILENCE_MS", QWEN_ENERGY_MIN_SILENCE_MS)),
+        "min_speech_ms": int(os.environ.get("CASRT_QWEN_ENERGY_MIN_SPEECH_MS", QWEN_ENERGY_MIN_SPEECH_MS)),
+        "pad_ms": int(os.environ.get("CASRT_QWEN_ENERGY_PAD_MS", QWEN_ENERGY_PAD_MS)),
+    }
+
+
+def qwen_energy_max_chunk_ms() -> int | None:
+    value = os.environ.get("CASRT_QWEN_ENERGY_MAX_CHUNK_MS", "").strip()
+    if not value:
+        return None
+    max_chunk_ms = int(value)
+    if max_chunk_ms <= 0:
+        raise ValueError("CASRT_QWEN_ENERGY_MAX_CHUNK_MS must be positive")
+    return max_chunk_ms
+
+
+def split_long_chunks(
+    chunks: tuple[dict[str, int], ...] | list[dict[str, int]],
+    max_chunk_ms: int,
+) -> tuple[dict[str, int], ...]:
+    if max_chunk_ms <= 0:
+        raise ValueError("max_chunk_ms must be positive")
+    split_chunks = []
+    for chunk in chunks:
+        start_ms = chunk["start_ms"]
+        for interval in chunk_intervals(chunk["end_ms"] - start_ms, max_chunk_ms=max_chunk_ms):
+            split_chunks.append(
+                {
+                    "index": len(split_chunks),
+                    "start_ms": start_ms + interval["start_ms"],
+                    "end_ms": start_ms + interval["end_ms"],
+                }
+            )
+    return tuple(split_chunks)
 
 
 def vad_coverage_units(

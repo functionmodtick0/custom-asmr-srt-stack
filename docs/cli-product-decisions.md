@@ -163,15 +163,15 @@ uv run casrt project transcribe PROJECT_ID \
 동작:
 
 - project가 아직 분석되지 않았다면 실패한다.
-- OpenAI-compatible/Gemini endpoint는 L/R 채널이 있으면 각각 전사하고, mono/MIX만 있으면 MIX를 전사한다.
-- 로컬 ASR adapter인 `local-transformers`, `local-qwen-asr`, `local-qwen-hf-asr`, `local-cohere-asr`, `local-granite-asr`는 L/R이 있어도 기본적으로 MIX-first로 전사한다. `CASRT_LOCAL_ASR_CHANNEL_MODE=stereo`는 같은 VAD/ASR 경로를 L/R 각각에 적용해 overlap/bleed 영향을 비교하는 CLI-only benchmark mode다. 기본값은 `mix`이며 WebUI 옵션으로 노출하지 않는다. `mix`, `stereo` 외 값과 L/R이 없는 stereo 요청은 fallback 없이 실패한다.
-- 로컬 ASR adapter는 silence/energy 기반 chunk interval별로 선택된 채널 오디오를 잘라 모델에 보낸다. 기본 선택은 MIX이고 stereo benchmark에서만 L/R 각각이다.
-- `local-transformers` adapter는 worker 모델의 audio limit을 고려해 chunk를 30초 이하 subchunk로 다시 자른다.
-- 로컬 ASR adapter가 반환한 MIX segment는 L/R energy 기반 channel attribution을 적용한다. Stereo benchmark가 이미 L/R로 반환한 segment는 channel attribution이 다시 덮어쓰지 않는다.
+- 모든 adapter는 L/R 채널이 있으면 L과 R을 각각 전사하고, mono/MIX만 있으면 MIX를 전사한다.
+- 분석과 전사는 고정 20초 비중첩 chunk를 사용한다. 이전 분석 metadata의 더 긴 chunk도 전사 시점에 20초 이하로 다시 나눈다.
+- Adapter가 20초보다 짧은 audio limit을 선언한 경우에만 그 상한으로 추가 분할한다.
+- Production은 energy/external VAD, energy channel attribution, automatic duplicate deletion을 실행하지 않는다.
 - 모델이 반환한 chunk-relative timing을 원본 timeline timing으로 offset한다.
 - 결과를 시간순으로 정렬하고 stable segment id를 다시 부여한다.
 - `master.json`을 project에 저장한다.
-- `CASRT_ALIGNER_COMMAND`가 설정되어 있으면 고정 aligner hook을 실행한다.
+- `CASRT_VAD_COMMAND`, `CASRT_QWEN_ENERGY_*`, `CASRT_LOCAL_ASR_CHANNEL_MODE`, `CASRT_ALIGNER_COMMAND`는 `project transcribe`의 동작을 바꾸지 않는다.
+- Production alignment는 no-op이다. 외부 aligner는 `align-transcript` 또는 `align-review-case-candidates`를 명시적으로 호출할 때만 실행한다.
 - `CASRT_ALIGNER_ENV_MODE=offline`이면 aligner subprocess env는 CUDA/cache/path와 `CASRT_ALIGNER_`, `CASRT_QWEN_ALIGNER_` prefix만 보존하고 API key/token/secret류 env, `CASRT_ALIGNER_COMMAND`, `PYTHONPATH`를 제거하며 `PYTHONNOUSERSITE=1`을 강제한다.
 - `python -m custom_asmr_srt_stack.qwen_aligner_worker --model-id LOCAL_SNAPSHOT`은 Qwen3-ForcedAligner를 generic aligner command로 실행한다.
 - Qwen aligner worker는 `CASRT_ALIGNER_ENV_MODE=offline`, `CASRT_QWEN_ALIGNER_REQUIRE_LOCAL_MODEL_PATH=1`, `CASRT_QWEN_ALIGNER_LOCAL_FILES_ONLY=1`, `CASRT_QWEN_ALIGNER_DISABLE_NETWORK=1` 조건이 모두 없으면 실패하며, `--model-id`는 existing local directory만 허용한다.
@@ -221,13 +221,10 @@ uv run casrt project transcribe PROJECT_ID \
 - `casrt`가 내부적으로 `python -m custom_asmr_srt_stack.qwen_asr_worker` subprocess를 시작한다.
 - worker와 JSON Lines로 통신한다.
 - worker는 모델을 lazy load하고 같은 CLI/WebUI 프로세스 안에서 재사용한다.
-- ASMR 품질 경로에서는 MIX 전사를 우선하고 L/R은 channel attribution 근거로 사용한다.
+- ASMR production 경로에서는 stereo L/R을 각각 전사하고 둘 다 보존한다. Mono 입력만 MIX를 사용한다.
 - 보안 검토가 필요한 benchmark 실행은 `CASRT_LOCAL_WORKER_ENV_MODE=offline`, `CASRT_QWEN_ASR_REQUIRE_LOCAL_MODEL_PATH=1`, `CASRT_QWEN_ASR_LOCAL_FILES_ONLY=1`, `CASRT_QWEN_ASR_DISABLE_NETWORK=1`을 사용하고 `--model-id`에는 repo id가 아니라 고정 local snapshot directory를 넣는다.
-- `CASRT_QWEN_ASR_ALIGNER_MODEL_ID`가 설정되면 Qwen3-ForcedAligner timestamp를 사용한다. `CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS`보다 짧은 aligned span은 clip bounds로 되돌리며, 이 값은 WebUI/CLI 옵션으로 노출하지 않는다.
-- `CASRT_VAD_COMMAND`가 설정되어 있으면 고정 VAD command의 interval을 사용한다.
-- `CASRT_VAD_COMMAND`가 설정되어 있지 않으면 MIX energy 기반 speech chunking으로 발화 단위 전사를 시도한다.
-- energy chunking은 `CASRT_QWEN_ENERGY_*` env로만 내부 튜닝한다. `CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 긴 interval을 일정 길이 이하로 자르는 실험 옵션이며, 2026-06-30 01/04/07 front120 평가에서는 기본 승격하지 않는다.
-- L/R energy 차이가 충분할 때만 channel을 L 또는 R로 확정하고, 애매하면 MIX로 남긴다.
+- Qwen worker 모듈을 개발 목적으로 직접 실행하면 `CASRT_QWEN_ASR_ALIGNER_MODEL_ID`로 Qwen3-ForcedAligner를 실험할 수 있다. `project transcribe`가 띄우는 production worker 환경에서는 이 변수와 관련 aligner 설정을 제거한다.
+- Qwen worker도 다른 adapter와 같은 고정 20초 chunk/channel 계약을 사용한다. VAD와 channel attribution 실험은 별도 CLI에서 수행한다.
 - worker import, model load, inference, response contract 오류는 실패로 표시한다.
 
 Qwen ASR 파이프라인의 세부 값과 평가 결과는 `docs/local-asr-pipeline.md`에 기록한다.
@@ -245,7 +242,7 @@ uv run casrt project transcribe PROJECT_ID \
 - `casrt`가 내부적으로 `python -m custom_asmr_srt_stack.cohere_asr_worker` subprocess를 시작한다.
 - worker는 `CohereAsrForConditionalGeneration`와 `CohereAsrProcessor`를 명시적으로 사용하고 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로 로드한다.
 - `--model-id`는 safetensors weight가 있는 existing local snapshot directory여야 한다. repo id나 cache miss fallback은 실패한다.
-- Cohere는 timestamp를 반환하지 않으므로 chunk bounds를 segment timing으로 사용하고, 기존 MIX-first energy chunking과 L/R channel attribution을 적용한다.
+- Cohere는 timestamp를 반환하지 않으므로 고정 production chunk bounds를 segment timing으로 사용한다. Stereo에서는 L/R을 각각 호출하고 mono에서만 MIX를 호출한다.
 - 실제 download/evaluation은 exact revision pin과 `casrt model digest` report 기록 전까지 실행하지 않는다.
 
 로컬 Granite ASR worker:
@@ -262,7 +259,7 @@ uv run casrt project transcribe PROJECT_ID \
 - worker는 `AutoModelForSpeechSeq2Seq`와 `AutoProcessor`를 사용하고 `trust_remote_code=False`, `local_files_only=True`, `use_safetensors=True`로 로드한다.
 - Granite `AutoProcessor`의 `GraniteSpeechFeatureExtractor`는 `torchaudio`를 요구하므로 `local` extra에 `torchaudio`를 포함한다.
 - `--model-id`는 safetensors weight가 있는 existing local snapshot directory여야 한다. repo id나 cache miss fallback은 실패한다.
-- Granite는 timestamp를 반환하지 않으므로 chunk bounds를 segment timing으로 사용하고, 기존 MIX-first energy chunking과 L/R channel attribution을 적용한다.
+- Granite는 timestamp를 반환하지 않으므로 고정 production chunk bounds를 segment timing으로 사용한다. Stereo에서는 L/R을 각각 호출하고 mono에서만 MIX를 호출한다.
 - 기본 prompt는 `<|audio|>transcribe the speech with proper punctuation and capitalization.`이고 `CASRT_GRANITE_ASR_PROMPT`로만 내부 override할 수 있다.
 - `CASRT_GRANITE_ASR_PARSE_TIMESTAMPS=1`이면 Granite Plus timestamp prompt가 반환하는 `[T:N]` centisecond tag를 segment timing으로 변환한다. `_ [T:N]` silence marker는 speech segment split/trim 근거로 쓰고, timestamp tag가 없으면 기존 chunk-bound segment로 남긴다. 이 값은 내부 실험 env이며 CLI/WebUI 옵션으로 노출하지 않는다.
 - 현재 local snapshot은 `.casrt/models/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546`이고 digest report는 `.casrt/model-digests/granite-speech-4.1-2b-de575db64086f84fdc79da4932d1076e965bc546-digest.json`이다. snapshot SHA-256은 `67c7d69184b53bae7a2bec077fbc88d8695a72f043fd70831f4e4830dc4752ca`다.
@@ -288,7 +285,7 @@ uv run casrt project transcribe PROJECT_ID \
 - `--energy-rescue-min-ms`는 energy interval을 유지하고 ONNX-only gap만 추가하는 내부 실험 옵션이다. 2026-06-28 gold 결과에서 text가 악화되어 기본값으로 쓰지 않는다.
 - `casrt vad coverage AUDIO REFERENCE --json -o vad-coverage.json`은 built-in energy intervals, `--intervals {intervals:[...]}` JSON, 또는 `--vad-command` CASRT VAD command를 reference transcript speech union과 비교해 `custom-asmr-vad-coverage-v1` report를 만든다. Built-in energy mode는 `--energy-threshold-dbfs`, `--energy-window-ms`, `--energy-min-silence-ms`, `--energy-min-speech-ms`, `--energy-pad-ms`, `--energy-max-chunk-ms` CLI 옵션으로 재현 가능하게 조정할 수 있고, 적용값은 `source_settings`에 기록한다. Report는 missed reference interval, extra detected interval, detected max/mean interval도 포함해 사람이 확인할 시간대와 ASR chunk granularity를 같이 볼 수 있게 한다. Coverage recall/precision은 union interval 기준으로 계산하지만 detected max/mean interval과 detected interval count는 max-chunk split이 보이도록 union merge 전 detected chunk 기준으로 계산한다.
 - `casrt vad coverage-cases CASE_INDEX --json -o vad-coverage-suite.json`은 prepared review case set 전체에 같은 VAD source를 적용하고 `custom-asmr-vad-coverage-suite-v1` report를 만든다. Suite summary는 duration-weighted reference recall, detected precision, missed reference duration, extra detected duration, detected max/mean interval을 포함한다. Case별 report는 단건 coverage와 같은 interval diagnostics를 보존하고, energy options를 쓰면 suite top-level `source_settings`를 기록한다. 이 명령은 VAD/chunking 후보를 비교하기 위한 CLI-only 진단 도구이며 WebUI 옵션을 늘리지 않는다.
-- `vad coverage`와 `vad coverage-cases`는 `--channel-mode mix|stereo`를 지원하며 기본은 `mix`다. `mix`는 실제 local MIX ASR 경로와 같은 L/R 평균 mono waveform에서 VAD를 실행하고 전체 reference speech union을 사용한다. `stereo`는 L/R mono에서 VAD를 각각 실행하고 reference의 같은 channel 및 MIX speech만 coverage authority로 사용한다. Suite의 `case_count`는 source case 수이고 `summary.coverage_unit_count`는 실제 waveform unit 수다. 각 result는 `id=<case-id>:<channel>`, `case_id`, `channel`을 기록한다. Mono input, L/R로 분리할 수 없는 WAV, single-file `vad coverage --channel-mode stereo --intervals ...`는 fail-fast하며 WebUI 옵션은 추가하지 않는다.
+- 개발 명령 `vad coverage`와 `vad coverage-cases`는 `--channel-mode mix|stereo`를 지원하며 진단 기본은 `mix`다. `mix`는 L/R 평균 mono waveform과 전체 reference speech union을 사용하고, `stereo`는 L/R mono와 같은 channel 및 MIX reference를 사용한다. 이 선택은 production ASR channel 경로를 바꾸지 않는다. Suite의 `case_count`는 source case 수이고 `summary.coverage_unit_count`는 실제 waveform unit 수다. 각 result는 `id=<case-id>:<channel>`, `case_id`, `channel`을 기록한다. Mono input, L/R로 분리할 수 없는 WAV, single-file `vad coverage --channel-mode stereo --intervals ...`는 fail-fast하며 WebUI 옵션은 추가하지 않는다.
 - `casrt vad compare-coverage REPORT... --json -o vad-coverage-comparison.json`은 single/suite coverage report를 `custom-asmr-vad-coverage-comparison-v1` 비교표로 정렬한다. 기본 순서는 missed reference duration, extra detected duration, reference recall desc, detected precision desc다. `--max-detected-interval-ms`, `--max-missed-reference-ms`, `--min-reference-recall`, `--min-detected-precision`을 주면 각 item에 `gate_passed`와 `gate_failures`를 표시해 full-audio/no-VAD처럼 chunk가 너무 길거나, reference speech를 많이 놓치거나, 과검출이 큰 후보를 걸러낸다. `--fail-on-gate`는 비교표를 출력/저장한 뒤 gate 실패 item이 있으면 exit 1로 종료하므로 batch 실험에서 다음 ASR 평가 단계로 넘어가지 않게 할 수 있다. 이 명령은 coverage 후보 선택 보조 도구이며 coverage만으로 기본 VAD를 자동 승격하지 않는다.
 
 ### 기준본 고정

@@ -118,23 +118,20 @@ API Key
 
 고품질 일본 ASMR 경로는 로컬 처리만 사용합니다. `local-transformers`, `local-qwen-asr`, `local-qwen-hf-asr`, `local-cohere-asr`, `local-granite-asr`는 Endpoint URL과 API Key를 사용하지 않습니다. OpenAI-compatible / Gemini adapter는 기존 호환성과 로컬 HTTP 서버 연결을 위해 남아 있지만 제품 기본 품질 경로는 아닙니다.
 
-고정 VAD command를 사용하려면 서버 실행 전에 `CASRT_VAD_COMMAND`를 설정합니다. 이 명령은 stdin으로 `{ audio_file, audio_info }` JSON을 받고 stdout으로 `{ intervals: [{ start_ms, end_ms }] }` JSON을 반환해야 합니다. 설정하지 않으면 로컬 ASR adapter는 내장 energy splitter를 사용합니다.
-
-```bash
-CASRT_VAD_COMMAND='python3 path/to/vad.py' \
-  uv run casrt serve
-```
+Production 전사는 모델 종류와 관계없이 stereo 입력의 L/R을 각각 20초 비중첩 청크로 전사하고 두 결과를 시간순으로 보존합니다. Mono 입력만 MIX를 사용합니다. Energy/external VAD, channel attribution, forced alignment는 자동 실행하지 않으며 관련 환경변수는 server/project 전사를 바꾸지 않습니다.
 
 ASMR-trained Whisper ONNX VAD 후보는 내장 CLI command로도 실행할 수 있습니다. 이 모델은 ASR이 아니라 speech interval만 반환하며 WebUI 옵션으로 노출하지 않습니다.
 
 ```bash
-CASRT_VAD_COMMAND='/tmp/casrt-vad-venv/bin/casrt vad whisper-asmr-onnx --model /path/to/model.onnx --metadata /path/to/model_metadata.json --force-cpu --num-threads 1' \
-  uv run casrt serve
+uv run casrt vad whisper-asmr-onnx \
+  --model /path/to/model.onnx \
+  --metadata /path/to/model_metadata.json \
+  --force-cpu --num-threads 1
 ```
 
 이 command는 전용 venv에 `.[vad-onnx]`만 설치해서 사용합니다. 모델 디렉터리는 `model.onnx`와 `model_metadata.json` 두 파일만 포함해야 하며, subprocess는 timeout과 최소 환경 변수로 실행됩니다.
 
-내장 energy splitter는 `CASRT_QWEN_ENERGY_*` env로 내부 튜닝할 수 있지만 WebUI 옵션으로 노출하지 않습니다. `CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 긴 interval을 자르는 실험 옵션이며 현재 실데이터 평가에서는 기본값으로 켜지 않습니다.
+Energy splitter와 외부 VAD는 아래 `casrt vad` 개발 명령에서만 비교하며 WebUI 옵션으로 노출하지 않습니다.
 
 VAD/chunking 후보의 reference speech coverage는 CLI에서만 비교합니다.
 
@@ -212,11 +209,11 @@ CASRT_QWEN_HF_ASR_NUM_BEAMS=5 \
 
 `CASRT_QWEN_HF_ASR_NUM_BEAMS`는 positive integer 내부 benchmark 설정이며 기본값은 `1`입니다. Beam 5를 보고한 모델을 비교할 때만 base와 fine-tune 양쪽에 같은 값으로 명시하고, WebUI 옵션으로는 추가하지 않습니다. Qwen HF snapshot은 safetensors/native `qwen3_asr` file/config preflight를 통과해야 하며, external `chat_template.jinja`가 있으면 `CASRT_QWEN_HF_ASR_EXPECTED_CHAT_TEMPLATE_SHA256` expected digest가 필수입니다.
 
-고정 aligner command를 사용하려면 서버 실행 전에 `CASRT_ALIGNER_COMMAND`를 설정합니다. 이 명령은 stdin으로 `{ audio_file, master }` JSON을 받고 stdout으로 `{ segments: [{ id, start_ms, end_ms }] }` JSON을 반환해야 합니다.
+고정 aligner command는 기존 transcript를 명시적으로 재정렬하는 개발 CLI에서만 사용합니다. 이 명령은 stdin으로 `{ audio_file, master }` JSON을 받고 stdout으로 `{ segments: [{ id, start_ms, end_ms }] }` JSON을 반환해야 합니다.
 
 ```bash
 CASRT_ALIGNER_COMMAND='python3 path/to/aligner.py' \
-  uv run casrt serve
+  uv run casrt align-transcript audio.wav master.json -o aligned.master.json
 ```
 
 Qwen3-ForcedAligner를 기존 master 텍스트 재정렬용으로 쓰려면 qwen-asr 전용 venv에서 내장 worker를 실행합니다.
@@ -227,7 +224,7 @@ CASRT_QWEN_ALIGNER_REQUIRE_LOCAL_MODEL_PATH=1 \
 CASRT_QWEN_ALIGNER_LOCAL_FILES_ONLY=1 \
 CASRT_QWEN_ALIGNER_DISABLE_NETWORK=1 \
 CASRT_ALIGNER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_srt_stack.qwen_aligner_worker --model-id /path/to/Qwen3-ForcedAligner-0.6B/snapshot' \
-  uv run casrt serve
+  uv run casrt align-transcript audio.wav master.json -o aligned.master.json
 ```
 
 이 worker는 `offline + local path-only + local_files_only + network disabled` 조건이 모두 없으면 시작하지 않습니다. 또한 `qwen-asr` RECORD hash, RECORD에 기록된 각 설치 파일 hash, `qwen_asr` import origin을 검증한 뒤에만 import합니다. transcript text를 바꾸지 않고 segment 내부 start/end만 재정렬합니다. 모델 실행 전에는 local snapshot digest, `qwen-asr` package fingerprint, 보안 리뷰 결과를 실험 기록에 남깁니다.
@@ -310,9 +307,7 @@ uv run casrt project transcribe PROJECT_ID \
   --model-id Qwen/Qwen3-ASR-1.7B
 ```
 
-전사는 `project analyze`가 저장한 L/R 또는 MIX 채널을 chunk 단위로 잘라 모델에 보낸 뒤, 결과 타임스탬프를 원본 timeline으로 되돌려 저장합니다. `local-transformers`, `local-qwen-asr`, `local-qwen-hf-asr`, `local-cohere-asr`, `local-granite-asr`는 로컬 ASMR 경로로서 L/R이 있어도 MIX-first로 전사하고, L/R은 channel attribution에만 사용합니다.
-
-로컬 ASR 경로는 MIX-first 전사, energy-based speech chunking, L/R energy 기반 channel attribution을 사용합니다. 세부 값과 실험 결과는 [docs/local-asr-pipeline.md](docs/local-asr-pipeline.md)에 기록합니다.
+전사는 `project analyze`가 저장한 stereo L/R 또는 mono MIX 채널을 20초 비중첩 청크로 잘라 사용자가 고른 모델 하나에 보냅니다. 결과 타임스탬프를 원본 timeline으로 되돌리고, L/R 결과를 삭제하거나 재귀속하지 않은 채 시간순으로 저장합니다. 세부 값과 실험 결과는 [docs/local-asr-pipeline.md](docs/local-asr-pipeline.md)에 기록합니다.
 
 선택 segment 재전사:
 

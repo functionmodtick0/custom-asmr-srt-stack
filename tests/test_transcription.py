@@ -516,6 +516,26 @@ class TranscriptionAdapterTests(unittest.TestCase):
         self.assertNotIn("PYTHONPATH", worker_env)
         self.assertEqual(segments[0].text, "ねえ")
 
+    def test_production_worker_env_blocks_alignment_experiment_settings(self):
+        experiment_env = {
+            "CASRT_GRANITE_ASR_PARSE_TIMESTAMPS": "1",
+            "CASRT_QWEN_ASR_ALIGNER_KWARGS": '{"dtype":"float16"}',
+            "CASRT_QWEN_ASR_ALIGNER_MODEL_ID": "/models/forced-aligner",
+            "CASRT_QWEN_ASR_MIN_ALIGNED_DURATION_MS": "1",
+        }
+
+        for mode in ("inherit", "offline"):
+            with self.subTest(mode=mode), mock.patch.dict(
+                os.environ,
+                {"CASRT_LOCAL_WORKER_ENV_MODE": mode, **experiment_env},
+                clear=True,
+            ):
+                worker_env = local_worker_env()
+
+            self.assertIsNotNone(worker_env)
+            for name in experiment_env:
+                self.assertNotIn(name, worker_env)
+
     def test_model_output_must_have_valid_timing(self):
         with self.assertRaisesRegex(ValueError, "end_ms must be greater"):
             parse_model_segments(
