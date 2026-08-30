@@ -7,6 +7,7 @@ from typing import Any
 
 from custom_asmr_srt_stack.alignment import apply_alignment_review_flags, run_alignment_command
 from custom_asmr_srt_stack.audio import (
+    analyze_wav,
     chunk_intervals,
     normalize_audio_to_wav,
     slice_wav,
@@ -189,7 +190,12 @@ def local_asr_chunks(model_endpoint: ModelEndpoint, audio_bytes: bytes | None) -
     else:
         chunks = speech_intervals_by_energy(audio_bytes, **qwen_energy_chunk_kwargs())
         if max_energy_chunk_ms is not None:
-            chunks = split_long_chunks(chunks, max_energy_chunk_ms, context_ms=chunk_context_ms)
+            chunks = split_long_chunks(
+                chunks,
+                max_energy_chunk_ms,
+                context_ms=chunk_context_ms,
+                audio_duration_ms=analyze_wav(audio_bytes).duration_ms,
+            )
     return tuple(dict(chunk) for chunk in chunks)
 
 
@@ -232,6 +238,7 @@ def split_long_chunks(
     max_chunk_ms: int,
     *,
     context_ms: int = 0,
+    audio_duration_ms: int | None = None,
 ) -> tuple[dict[str, int], ...]:
     if max_chunk_ms <= 0:
         raise ValueError("max_chunk_ms must be positive")
@@ -239,6 +246,10 @@ def split_long_chunks(
         raise ValueError("context_ms must be non-negative")
     if context_ms >= max_chunk_ms:
         raise ValueError("context_ms must be smaller than max_chunk_ms")
+    if context_ms > 0 and audio_duration_ms is None:
+        raise ValueError("audio_duration_ms is required when context_ms is positive")
+    if audio_duration_ms is not None and audio_duration_ms < 0:
+        raise ValueError("audio_duration_ms must be non-negative")
     split_chunks: list[dict[str, int]] = []
     for chunk in chunks:
         cores = split_interval(chunk["start_ms"], chunk["end_ms"], max_chunk_ms)
@@ -248,8 +259,8 @@ def split_long_chunks(
         for core in cores:
             split_chunks.append(
                 {
-                    "start_ms": max(chunk["start_ms"], core["start_ms"] - context_ms),
-                    "end_ms": min(chunk["end_ms"], core["end_ms"] + context_ms),
+                    "start_ms": max(0, core["start_ms"] - context_ms),
+                    "end_ms": min(audio_duration_ms, core["end_ms"] + context_ms),
                     "accept_start_ms": core["start_ms"],
                     "accept_end_ms": core["end_ms"],
                 }

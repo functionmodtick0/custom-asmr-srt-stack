@@ -12,7 +12,7 @@ from custom_asmr_srt_stack.audio import analyze_wav
 from custom_asmr_srt_stack.models import MasterDocument, Segment
 from custom_asmr_srt_stack.projects import ProjectStore
 from custom_asmr_srt_stack.transcription import ModelEndpoint
-from custom_asmr_srt_stack.workflow import analyze_project, transcribe_project
+from custom_asmr_srt_stack.workflow import analyze_project, local_asr_chunks, transcribe_project
 from custom_asmr_srt_stack.workflow import retranscribe_segment as retranscribe_workflow_segment
 
 
@@ -487,6 +487,63 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(
                 [(segment.start_ms, segment.end_ms, segment.text) for segment in master.segments],
                 [(900, 1100, "first-boundary"), (1900, 2100, "second-boundary")],
+            )
+
+    def test_local_qwen_asr_overlap_context_crosses_energy_interval_boundaries(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audio_path = Path(tmpdir) / "qwen-silence.wav"
+            write_stereo_samples(
+                audio_path,
+                ([(2000, 2000)] * 1000) + ([(0, 0)] * 1000) + ([(2000, 2000)] * 1000),
+            )
+            endpoint = ModelEndpoint(
+                adapter="local-qwen-asr",
+                endpoint_url=None,
+                model_id="Qwen/Qwen3-ASR-1.7B",
+            )
+
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "CASRT_QWEN_ENERGY_MAX_CHUNK_MS": "1000",
+                    "CASRT_QWEN_ENERGY_CHUNK_CONTEXT_MS": "200",
+                },
+                clear=True,
+            ):
+                chunks = local_asr_chunks(endpoint, audio_path.read_bytes())
+
+            self.assertEqual(
+                chunks,
+                (
+                    {
+                        "index": 0,
+                        "start_ms": 0,
+                        "end_ms": 1200,
+                        "accept_start_ms": 0,
+                        "accept_end_ms": 1000,
+                    },
+                    {
+                        "index": 1,
+                        "start_ms": 800,
+                        "end_ms": 1400,
+                        "accept_start_ms": 1000,
+                        "accept_end_ms": 1200,
+                    },
+                    {
+                        "index": 2,
+                        "start_ms": 1600,
+                        "end_ms": 3000,
+                        "accept_start_ms": 1800,
+                        "accept_end_ms": 2800,
+                    },
+                    {
+                        "index": 3,
+                        "start_ms": 2600,
+                        "end_ms": 3000,
+                        "accept_start_ms": 2800,
+                        "accept_end_ms": 3000,
+                    },
+                ),
             )
 
     def test_local_qwen_asr_overlap_context_rejects_invalid_configuration(self):
