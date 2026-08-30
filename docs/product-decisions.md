@@ -9,8 +9,10 @@
 제품의 핵심 약속은 다음이다.
 
 ```text
-오디오 드롭 -> JSON 생성 -> 필요한 부분만 검토 -> JSON/SRT 내보내기
+오디오 드롭 -> 자동 JSON 생성 -> JSON/SRT 내보내기
 ```
+
+사람 검토는 필수 실행 단계가 아니라 optional diagnostics/benchmark workflow다. 정상 제품 경로는 사람이 후보를 선택하거나 승인하지 않아도 끝나야 한다.
 
 ## 비목표
 
@@ -25,6 +27,10 @@
 번역은 명시적으로 범위 밖이다. 번역은 외부 번역 도구가 담당한다.
 
 학습은 명시적으로 범위 밖이다. 다른 주체가 공개한 pretrained/fine-tuned checkpoint를 exact local snapshot으로 평가하고 사용하는 것은 허용하지만, 이 프로젝트는 학습 dataset 구축, training loop, checkpoint 생성이나 사용자별 adapter 최적화를 제공하지 않는다. 공개 모델과 inference-time pipeline이 product gate를 만족하지 못하면 학습을 다음 단계로 제안하지 않고 관측된 품질 ceiling과 사람 검수 비용을 그대로 보고한다.
+
+Runtime human adjudication도 범위 밖이다. 여러 로컬 모델 후보가 다르면 deterministic consensus/MBR, calibrated confidence가 있는 acoustic score, 또는 audio-conditioned local verifier가 자동으로 선택해야 하며 transcript-only fluency judge를 음성 정답 판정자로 간주하지 않는다. 자동 판정이 불확실해도 사용자 승인을 요구하지 않고 최선 후보와 machine uncertainty를 저장한다. `content_reviewed`/`channel_reviewed`와 Review UI는 평가·감사 도구로 유지하되 정상 전사 완료 조건이 아니다.
+
+사람을 runtime에서 배제하는 것과 absolute quality 검증은 별개다. 독립 human-reviewed gold가 전혀 없으면 model agreement, proxy reference, energy consistency만 보고할 수 있으며 실제 CER나 정답률을 증명했다고 표현하지 않는다.
 
 ## 기본 산출물
 

@@ -28,6 +28,8 @@
 
 모델 fine-tuning, LoRA/adapter training과 사용자별 checkpoint 생성도 제공하지 않습니다. 공개된 pretrained 또는 third-party fine-tuned checkpoint는 로컬 snapshot으로 평가할 수 있지만, 제품 품질은 학습 없이 local inference pipeline과 필요한 사람 검수량으로 판단합니다.
 
+정상 runtime은 사람의 후보 선택이나 승인 없이 JSON/SRT까지 자동 완료하는 것을 목표로 합니다. Review UI와 human-review evidence는 optional 평가·감사 도구입니다. 여러 모델의 합의는 로컬 MBR/consensus 또는 audio-conditioned verifier로 자동 판정하며, 독립 human-reviewed gold가 없다면 agreement를 실제 CER나 정답률로 표현하지 않습니다.
+
 SRT import는 선두의 `[L]`, `[R]`, `[LR]`, `[MIX]`, `[L:SPEAKER_00]`, `[R:SPEAKER_00]`, `[SPEAKER_00]` 같은 channel/speaker metadata label을 본문 텍스트에서 제거합니다. 채널은 `segment.channel`에만 저장합니다.
 
 ## 요구 사항
