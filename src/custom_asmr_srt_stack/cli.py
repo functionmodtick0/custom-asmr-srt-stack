@@ -1351,38 +1351,75 @@ def ensure_energy_options_apply(args: argparse.Namespace) -> None:
 
 def vad_coverage(args: argparse.Namespace) -> None:
     from custom_asmr_srt_stack.audio import analyze_wav
-    from custom_asmr_srt_stack.vad import vad_coverage_report
+    from custom_asmr_srt_stack.vad import (
+        VAD_COVERAGE_SUITE_FORMAT,
+        vad_coverage_report,
+        vad_coverage_units,
+    )
 
     audio_bytes = args.audio.read_bytes()
     audio_info = analyze_wav(audio_bytes)
+    if args.channel_mode == "stereo" and args.intervals is not None:
+        raise ValueError("--channel-mode stereo cannot be used with --intervals")
     ensure_energy_options_apply(args)
     energy_kwargs, energy_max_chunk_ms = vad_coverage_energy_settings(args)
-    interval_source, intervals, source_settings = vad_coverage_interval_source(
-        audio_bytes,
-        audio_duration_ms=audio_info.duration_ms,
-        intervals_path=args.intervals,
-        vad_adapter_command=args.vad_adapter_command,
-        energy_kwargs=energy_kwargs,
-        energy_max_chunk_ms=energy_max_chunk_ms,
-    )
-
     reference = load_transcript_document(args.reference, source_language=args.source_language)
-    report = vad_coverage_report(
-        reference=reference,
-        intervals=intervals,
-        audio_duration_ms=audio_info.duration_ms,
-        source=interval_source,
-    )
+    units = vad_coverage_units(audio_bytes, reference, channel_mode=args.channel_mode)
+    unit_reports = []
+    case_reports = []
+    interval_source = "unspecified"
+    source_settings = None
+    for unit in units:
+        interval_source, intervals, source_settings = vad_coverage_interval_source(
+            unit.audio_bytes,
+            audio_duration_ms=audio_info.duration_ms,
+            intervals_path=args.intervals,
+            vad_adapter_command=args.vad_adapter_command,
+            energy_kwargs=energy_kwargs,
+            energy_max_chunk_ms=energy_max_chunk_ms,
+        )
+        unit_report = vad_coverage_report(
+            reference=unit.reference,
+            intervals=intervals,
+            audio_duration_ms=audio_info.duration_ms,
+            source=interval_source,
+        )
+        unit_report["channel_mode"] = args.channel_mode
+        unit_report["channel"] = unit.channel
+        unit_reports.append(unit_report)
+        case_reports.append(
+            {
+                "id": f"{args.audio.stem}:{unit.channel}",
+                "case_id": args.audio.stem,
+                "channel": unit.channel,
+                "audio": str(args.audio),
+                "reference": str(args.reference),
+                "report": unit_report,
+            }
+        )
+
+    if args.channel_mode == "mix":
+        report = unit_reports[0]
+    else:
+        report = {
+            "format": VAD_COVERAGE_SUITE_FORMAT,
+            "source": interval_source,
+            "channel_mode": args.channel_mode,
+            "case_count": 1,
+            "summary": vad_coverage_summary(unit_reports, source_case_count=1),
+            "cases": case_reports,
+        }
     if source_settings is not None:
-        report["source_settings"] = source_settings
+        report["source_settings"] = {**source_settings, "channel_mode": args.channel_mode}
     if args.output is not None:
         write_text(args.output, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    summary = report.get("summary", report)
     emit(
         args,
         report,
         (
-            f"vad coverage: recall={report['reference_recall']} "
-            f"precision={report['detected_precision']} intervals={report['detected_interval_count']}"
+            f"vad coverage: recall={summary['reference_recall']} "
+            f"precision={summary['detected_precision']} intervals={summary['detected_interval_count']}"
         ),
     )
 
@@ -1391,8 +1428,8 @@ def vad_coverage_cases(args: argparse.Namespace) -> None:
     from custom_asmr_srt_stack.audio import analyze_wav
     from custom_asmr_srt_stack.vad import (
         VAD_COVERAGE_SUITE_FORMAT,
-        aggregate_vad_coverage_reports,
         vad_coverage_report,
+        vad_coverage_units,
     )
 
     case_index = load_review_case_index(args.case_index)
@@ -1416,44 +1453,50 @@ def vad_coverage_cases(args: argparse.Namespace) -> None:
         reference_path = resolve_plan_path(args.case_index.parent, reference_value)
         audio_bytes = audio_path.read_bytes()
         audio_info = analyze_wav(audio_bytes)
-        case_interval_source, intervals, source_settings = vad_coverage_interval_source(
-            audio_bytes,
-            audio_duration_ms=audio_info.duration_ms,
-            intervals_path=None,
-            vad_adapter_command=args.vad_adapter_command,
-            energy_kwargs=energy_kwargs,
-            energy_max_chunk_ms=energy_max_chunk_ms,
-        )
-        interval_source = case_interval_source
-        suite_source_settings = source_settings
         reference = load_transcript_document(reference_path, source_language=args.source_language)
-        report = vad_coverage_report(
-            reference=reference,
-            intervals=intervals,
-            audio_duration_ms=audio_info.duration_ms,
-            source=case_interval_source,
-        )
-        reports.append(report)
-        case_reports.append(
-            {
-                "id": case_id,
-                "audio": audio_value,
-                "reference": reference_value,
-                "report": report,
-            }
-        )
+        for unit in vad_coverage_units(audio_bytes, reference, channel_mode=args.channel_mode):
+            case_interval_source, intervals, source_settings = vad_coverage_interval_source(
+                unit.audio_bytes,
+                audio_duration_ms=audio_info.duration_ms,
+                intervals_path=None,
+                vad_adapter_command=args.vad_adapter_command,
+                energy_kwargs=energy_kwargs,
+                energy_max_chunk_ms=energy_max_chunk_ms,
+            )
+            interval_source = case_interval_source
+            suite_source_settings = source_settings
+            report = vad_coverage_report(
+                reference=unit.reference,
+                intervals=intervals,
+                audio_duration_ms=audio_info.duration_ms,
+                source=case_interval_source,
+            )
+            report["channel_mode"] = args.channel_mode
+            report["channel"] = unit.channel
+            reports.append(report)
+            case_reports.append(
+                {
+                    "id": f"{case_id}:{unit.channel}",
+                    "case_id": case_id,
+                    "channel": unit.channel,
+                    "audio": audio_value,
+                    "reference": reference_value,
+                    "report": report,
+                }
+            )
 
-    summary = aggregate_vad_coverage_reports(reports)
+    summary = vad_coverage_summary(reports, source_case_count=len(raw_items))
     suite_report = {
         "format": VAD_COVERAGE_SUITE_FORMAT,
         "case_index": str(args.case_index),
         "source": interval_source,
-        "case_count": len(case_reports),
+        "channel_mode": args.channel_mode,
+        "case_count": len(raw_items),
         "summary": summary,
         "cases": case_reports,
     }
     if suite_source_settings is not None:
-        suite_report["source_settings"] = suite_source_settings
+        suite_report["source_settings"] = {**suite_source_settings, "channel_mode": args.channel_mode}
     if args.output is not None:
         write_text(args.output, json.dumps(suite_report, ensure_ascii=False, indent=2) + "\n")
     emit(
@@ -1464,6 +1507,15 @@ def vad_coverage_cases(args: argparse.Namespace) -> None:
             f"recall={summary['reference_recall']} precision={summary['detected_precision']}"
         ),
     )
+
+
+def vad_coverage_summary(reports: list[dict[str, Any]], *, source_case_count: int) -> dict[str, Any]:
+    from custom_asmr_srt_stack.vad import aggregate_vad_coverage_reports
+
+    summary = aggregate_vad_coverage_reports(reports)
+    summary["coverage_unit_count"] = summary["case_count"]
+    summary["case_count"] = source_case_count
+    return summary
 
 
 def vad_compare_coverage(args: argparse.Namespace) -> None:
@@ -2285,6 +2337,7 @@ def build_parser() -> argparse.ArgumentParser:
     vad_coverage_parser.add_argument("audio", type=Path)
     vad_coverage_parser.add_argument("reference", type=Path)
     vad_coverage_parser.add_argument("--source-language", default="ja")
+    vad_coverage_parser.add_argument("--channel-mode", choices=["mix", "stereo"], default="mix")
     add_vad_energy_coverage_args(vad_coverage_parser)
     vad_coverage_source = vad_coverage_parser.add_mutually_exclusive_group()
     vad_coverage_source.add_argument("--intervals", type=Path, help="JSON file with {intervals:[{start_ms,end_ms}]}.")
@@ -2302,6 +2355,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vad_coverage_cases_parser.add_argument("case_index", type=Path)
     vad_coverage_cases_parser.add_argument("--source-language", default="ja")
+    vad_coverage_cases_parser.add_argument("--channel-mode", choices=["mix", "stereo"], default="mix")
     add_vad_energy_coverage_args(vad_coverage_cases_parser)
     vad_coverage_cases_parser.add_argument(
         "--vad-command",

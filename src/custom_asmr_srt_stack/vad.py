@@ -4,16 +4,54 @@ import json
 import os
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from custom_asmr_srt_stack.audio import analyze_wav
+from custom_asmr_srt_stack.audio import analyze_wav, split_wav_channels
 from custom_asmr_srt_stack.models import MasterDocument, require_int, require_mapping
 
 DEFAULT_VAD_TIMEOUT_SECONDS = 300.0
 VAD_COVERAGE_FORMAT = "custom-asmr-vad-coverage-v1"
 VAD_COVERAGE_SUITE_FORMAT = "custom-asmr-vad-coverage-suite-v1"
 VAD_COVERAGE_COMPARISON_FORMAT = "custom-asmr-vad-coverage-comparison-v1"
+
+
+@dataclass(frozen=True)
+class VadCoverageUnit:
+    channel: str
+    audio_bytes: bytes
+    reference: MasterDocument
+
+
+def vad_coverage_units(
+    audio_bytes: bytes,
+    reference: MasterDocument,
+    *,
+    channel_mode: str,
+) -> tuple[VadCoverageUnit, ...]:
+    if channel_mode not in {"mix", "stereo"}:
+        raise ValueError("VAD coverage channel_mode must be one of: mix, stereo")
+    _, channels = split_wav_channels(audio_bytes)
+    if channel_mode == "mix":
+        return (VadCoverageUnit(channel="MIX", audio_bytes=channels["MIX"], reference=reference),)
+    if not {"L", "R"}.issubset(channels):
+        raise ValueError("VAD coverage channel_mode=stereo requires stereo audio")
+    return tuple(
+        VadCoverageUnit(
+            channel=channel,
+            audio_bytes=channels[channel],
+            reference=MasterDocument(
+                source_language=reference.source_language,
+                source_file=reference.source_file,
+                duration_ms=reference.duration_ms,
+                segments=tuple(
+                    segment for segment in reference.segments if segment.channel in {channel, "MIX"}
+                ),
+            ),
+        )
+        for channel in ("L", "R")
+    )
 
 
 def run_vad_command(audio_bytes: bytes, *, command: list[str]) -> tuple[dict[str, int], ...]:

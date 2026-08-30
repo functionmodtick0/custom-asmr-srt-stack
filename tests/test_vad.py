@@ -7,8 +7,15 @@ import wave
 from pathlib import Path
 from unittest import mock
 
+from custom_asmr_srt_stack.audio import analyze_wav
 from custom_asmr_srt_stack.models import MasterDocument, Segment
-from custom_asmr_srt_stack.vad import aggregate_vad_coverage_reports, parse_vad_intervals, run_vad_command, vad_coverage_report
+from custom_asmr_srt_stack.vad import (
+    aggregate_vad_coverage_reports,
+    parse_vad_intervals,
+    run_vad_command,
+    vad_coverage_report,
+    vad_coverage_units,
+)
 
 
 def make_wav_bytes(duration_ms: int = 100) -> bytes:
@@ -22,6 +29,34 @@ def make_wav_bytes(duration_ms: int = 100) -> bytes:
 
 
 class VadTests(unittest.TestCase):
+    def test_stereo_coverage_units_use_same_channel_and_mix_references(self):
+        with tempfile.NamedTemporaryFile(suffix=".wav") as tmp:
+            with wave.open(tmp.name, "wb") as wav:
+                wav.setnchannels(2)
+                wav.setsampwidth(2)
+                wav.setframerate(1000)
+                wav.writeframes(struct.pack("<hh", 100, 200) * 100)
+            audio_bytes = Path(tmp.name).read_bytes()
+        reference = MasterDocument(
+            source_language="ja",
+            source_file="voice.wav",
+            duration_ms=100,
+            segments=(
+                Segment("left", 0, 30, "L", "speech", "左"),
+                Segment("mix", 30, 60, "MIX", "speech", "中央"),
+                Segment("right", 60, 100, "R", "speech", "右"),
+            ),
+        )
+
+        units = vad_coverage_units(audio_bytes, reference, channel_mode="stereo")
+
+        self.assertEqual([unit.channel for unit in units], ["L", "R"])
+        self.assertEqual(
+            [[segment.id for segment in unit.reference.segments] for unit in units],
+            [["left", "mix"], ["mix", "right"]],
+        )
+        self.assertEqual([analyze_wav(unit.audio_bytes).channels for unit in units], [1, 1])
+
     def test_parse_vad_intervals_accepts_sorted_non_overlapping_ranges(self):
         intervals = parse_vad_intervals(
             {

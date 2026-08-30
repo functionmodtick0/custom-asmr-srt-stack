@@ -419,7 +419,9 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["summary"]["overlap_duration_ms"], 1)
             self.assertEqual(report["summary"]["reference_recall"], 0.5)
             self.assertEqual(report["summary"]["detected_precision"], 1.0)
-            self.assertEqual(report["cases"][0]["id"], "front")
+            self.assertEqual(report["cases"][0]["id"], "front:MIX")
+            self.assertEqual(report["cases"][0]["case_id"], "front")
+            self.assertEqual(report["cases"][0]["channel"], "MIX")
             self.assertEqual(
                 report["cases"][0]["report"]["missed_reference_intervals"],
                 [{"index": 0, "start_ms": 1, "end_ms": 2, "duration_ms": 1}],
@@ -471,6 +473,150 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["summary"]["detected_interval_count"], 2)
             self.assertEqual(report["summary"]["detected_max_interval_ms"], 1)
             self.assertEqual(report["summary"]["reference_recall"], 1.0)
+
+    def test_vad_coverage_mix_uses_the_runtime_mono_mix_waveform(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "front.wav"
+            reference = root / "reference.master.json"
+            write_stereo_samples(audio, ([(10000, 10000)] * 500) + ([(10000, 0)] * 500))
+            reference.write_text(
+                json.dumps(
+                    MasterDocument(
+                        source_language="ja",
+                        source_file="front.wav",
+                        duration_ms=1000,
+                        segments=(Segment("seg_000001", 0, 500, "L", "speech", "前半"),),
+                    ).to_json()
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "vad",
+                    "coverage",
+                    "--json",
+                    "--energy-threshold-dbfs",
+                    "-15",
+                    "--energy-min-silence-ms",
+                    "0",
+                    "--energy-min-speech-ms",
+                    "0",
+                    "--energy-pad-ms",
+                    "0",
+                    str(audio),
+                    str(reference),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["format"], "custom-asmr-vad-coverage-v1")
+            self.assertEqual(report["channel_mode"], "mix")
+            self.assertEqual(report["channel"], "MIX")
+            self.assertEqual(report["detected_speech_duration_ms"], 500)
+            self.assertEqual(report["extra_detected_duration_ms"], 0)
+            self.assertEqual(report["detected_precision"], 1.0)
+
+    def test_vad_coverage_cases_stereo_matches_runtime_channels(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio = root / "front.wav"
+            reference = root / "reference.master.json"
+            case_index = root / "case-index.json"
+            write_stereo_samples(audio, ([(10000, 10000)] * 500) + ([(10000, 0)] * 500))
+            reference.write_text(
+                json.dumps(
+                    MasterDocument(
+                        source_language="ja",
+                        source_file="front.wav",
+                        duration_ms=1000,
+                        segments=(
+                            Segment("seg_000001", 0, 1000, "L", "speech", "左"),
+                            Segment("seg_000002", 0, 500, "R", "speech", "右"),
+                        ),
+                    ).to_json()
+                ),
+                encoding="utf-8",
+            )
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [{"id": "front", "audio": "front.wav", "reference": "reference.master.json"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "vad",
+                    "coverage-cases",
+                    "--json",
+                    "--channel-mode",
+                    "stereo",
+                    "--energy-threshold-dbfs",
+                    "-15",
+                    "--energy-min-silence-ms",
+                    "0",
+                    "--energy-min-speech-ms",
+                    "0",
+                    "--energy-pad-ms",
+                    "0",
+                    str(case_index),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["channel_mode"], "stereo")
+            self.assertEqual(report["case_count"], 1)
+            self.assertEqual(report["summary"]["case_count"], 1)
+            self.assertEqual(report["summary"]["coverage_unit_count"], 2)
+            self.assertEqual(report["summary"]["audio_duration_ms"], 2000)
+            self.assertEqual(report["summary"]["reference_speech_duration_ms"], 1500)
+            self.assertEqual(report["summary"]["detected_speech_duration_ms"], 1500)
+            self.assertEqual(report["summary"]["reference_recall"], 1.0)
+            self.assertEqual(
+                [(item["id"], item["case_id"], item["channel"]) for item in report["cases"]],
+                [("front:L", "front", "L"), ("front:R", "front", "R")],
+            )
+            self.assertEqual([item["report"]["reference_segment_count"] for item in report["cases"]], [1, 1])
+
+    def test_vad_coverage_stereo_rejects_mono_and_fixed_intervals(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            mono = root / "mono.wav"
+            stereo = root / "stereo.wav"
+            reference = root / "reference.srt"
+            intervals = root / "intervals.json"
+            write_mono_wav(mono)
+            write_stereo_samples(stereo, [(100, 200), (100, 200)])
+            reference.write_text("1\n00:00:00,000 --> 00:00:00,002\nねえ\n", encoding="utf-8")
+            intervals.write_text(json.dumps({"intervals": [{"start_ms": 0, "end_ms": 1}]}), encoding="utf-8")
+
+            mono_result, _, mono_error = run_cli_with_stderr(
+                ["vad", "coverage", "--channel-mode", "stereo", str(mono), str(reference)]
+            )
+            intervals_result, _, intervals_error = run_cli_with_stderr(
+                [
+                    "vad",
+                    "coverage",
+                    "--channel-mode",
+                    "stereo",
+                    "--intervals",
+                    str(intervals),
+                    str(stereo),
+                    str(reference),
+                ]
+            )
+
+            self.assertEqual(mono_result, 1)
+            self.assertIn("requires stereo audio", mono_error)
+            self.assertEqual(intervals_result, 1)
+            self.assertIn("cannot be used with --intervals", intervals_error)
 
     def test_vad_compare_coverage_ranks_reports_by_missed_speech(self):
         with tempfile.TemporaryDirectory() as tmpdir:
