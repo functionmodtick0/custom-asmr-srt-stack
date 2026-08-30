@@ -37,6 +37,16 @@ def mono_wav_bytes(duration_ms: int = 3000) -> bytes:
     return output.getvalue()
 
 
+def stereo_wav_bytes(duration_ms: int = 3000) -> bytes:
+    output = io.BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setnchannels(2)
+        wav.setsampwidth(2)
+        wav.setframerate(1000)
+        wav.writeframes(struct.pack("<hh", 1000, 200) * duration_ms)
+    return output.getvalue()
+
+
 def sample_master() -> MasterDocument:
     return MasterDocument(
         source_language="ja",
@@ -137,6 +147,20 @@ class ShortAligner:
         return []
 
 
+class ChannelRecordingAligner:
+    def __init__(self) -> None:
+        self.samples = []
+        self.channel_counts = []
+
+    def align(self, *, audio, text, language):
+        del language
+        for path in audio:
+            with wave.open(path, "rb") as wav:
+                self.channel_counts.append(wav.getnchannels())
+                self.samples.append(struct.unpack("<h", wav.readframes(1))[0])
+        return [FakeAlignResult([FakeAlignItem(value, 0.0, 1.0)]) for value in text]
+
+
 class QwenAlignerWorkerTests(unittest.TestCase):
     def test_align_master_applies_segment_relative_bounds(self):
         aligner = FakeAligner()
@@ -164,6 +188,44 @@ class QwenAlignerWorkerTests(unittest.TestCase):
         self.assertEqual((aligned.segments[0].start_ms, aligned.segments[0].end_ms), (100, 800))
         self.assertEqual((aligned.segments[1].start_ms, aligned.segments[1].end_ms), (1050, 1600))
         self.assertEqual(aligner.clip_durations_ms, [1200, 1400])
+
+    def test_align_master_uses_each_stereo_segment_channel(self):
+        aligner = ChannelRecordingAligner()
+        master = MasterDocument(
+            source_language="ja",
+            source_file="stereo.wav",
+            duration_ms=3000,
+            segments=(
+                Segment("left", 0, 1000, "L", "speech", "左"),
+                Segment("right", 1000, 2000, "R", "speech", "右"),
+                Segment("mix", 2000, 3000, "MIX", "speech", "中央"),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audio_path = Path(tmpdir) / "audio.wav"
+            audio_path.write_bytes(stereo_wav_bytes())
+
+            align_master(master, audio_file=audio_path, aligner=aligner)
+
+        self.assertEqual(aligner.channel_counts, [1, 1, 1])
+        self.assertEqual(aligner.samples, [1000, 200, 600])
+
+    def test_align_master_uses_mono_audio_for_labeled_segment(self):
+        aligner = ChannelRecordingAligner()
+        master = MasterDocument(
+            source_language="ja",
+            source_file="mono.wav",
+            duration_ms=1000,
+            segments=(Segment("left", 0, 1000, "L", "speech", "左"),),
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audio_path = Path(tmpdir) / "audio.wav"
+            audio_path.write_bytes(mono_wav_bytes(duration_ms=1000))
+
+            align_master(master, audio_file=audio_path, aligner=aligner)
+
+        self.assertEqual(aligner.channel_counts, [1])
+        self.assertEqual(aligner.samples, [100])
 
     def test_align_master_fails_when_aligner_result_count_mismatches_segments(self):
         with tempfile.TemporaryDirectory() as tmpdir:

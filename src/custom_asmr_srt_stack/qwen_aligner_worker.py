@@ -16,7 +16,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from custom_asmr_srt_stack.audio import analyze_wav, slice_wav
+from custom_asmr_srt_stack.audio import analyze_wav, slice_wav, split_wav_channels
 from custom_asmr_srt_stack.models import MasterDocument, Segment, require_mapping, require_string
 
 SOURCE_LANGUAGE_TO_QWEN = {
@@ -77,7 +77,7 @@ def align_request(runtime: QwenAlignerRuntime, request: dict[str, Any], *, model
 
 def align_master(master: MasterDocument, *, audio_file: Path, aligner: Any) -> MasterDocument:
     audio_bytes = audio_file.read_bytes()
-    audio_info = analyze_wav(audio_bytes)
+    audio_info, channel_audio = split_wav_channels(audio_bytes)
     language = qwen_language(master.source_language)
     context_ms = qwen_aligner_context_ms()
     aligned_segments = list(master.segments)
@@ -99,7 +99,13 @@ def align_master(master: MasterDocument, *, audio_file: Path, aligner: Any) -> M
             clip_start_ms = max(0, segment.start_ms - context_ms)
             clip_end_ms = min(audio_info.duration_ms, segment.end_ms + context_ms)
             clip_path = Path(tmpdir) / f"clip-{clip_index:06d}.wav"
-            clip_path.write_bytes(slice_wav(audio_bytes, start_ms=clip_start_ms, end_ms=clip_end_ms))
+            clip_path.write_bytes(
+                slice_wav(
+                    alignment_audio_for_channel(channel_audio, segment.channel),
+                    start_ms=clip_start_ms,
+                    end_ms=clip_end_ms,
+                )
+            )
             clip_paths.append(str(clip_path))
             clip_start_offsets_ms.append(clip_start_ms)
             clip_durations_ms.append(clip_end_ms - clip_start_ms)
@@ -142,6 +148,15 @@ def align_master(master: MasterDocument, *, audio_file: Path, aligner: Any) -> M
         )
 
     return replace(master, segments=tuple(aligned_segments))
+
+
+def alignment_audio_for_channel(channel_audio: dict[str, bytes], channel: str) -> bytes:
+    selected = channel_audio.get(channel)
+    if selected is not None:
+        return selected
+    if set(channel_audio) == {"MIX"}:
+        return channel_audio["MIX"]
+    raise ValueError(f"alignment audio is missing channel {channel}")
 
 
 def aligned_bounds_ms(
