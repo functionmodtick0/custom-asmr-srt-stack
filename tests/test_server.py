@@ -243,6 +243,134 @@ class ServerApiTests(unittest.TestCase):
             self.assertEqual(content_type, "audio/wav")
             self.assertEqual(body, b"RIFFcaseWAVE")
 
+    def test_review_load_route_returns_attached_candidate_master(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            case_dir = root / "cases"
+            reference_dir = case_dir / "references"
+            candidate_dir = case_dir / "candidates"
+            audio_dir = case_dir / "audio"
+            reference_dir.mkdir(parents=True)
+            candidate_dir.mkdir()
+            audio_dir.mkdir()
+            (audio_dir / "front.wav").write_bytes(b"RIFFcaseWAVE")
+            master_base = {
+                "format": "custom-asmr-master-v1",
+                "source_language": "ja",
+                "audio": {"source_file": "front.wav", "duration_ms": 2000},
+            }
+            (reference_dir / "front.master.json").write_text(
+                json.dumps(
+                    {
+                        **master_base,
+                        "segments": [
+                            {
+                                "id": "ref_1",
+                                "start_ms": 0,
+                                "end_ms": 2000,
+                                "channel": "L",
+                                "kind": "speech",
+                                "text": "基準",
+                                "needs_review": True,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (candidate_dir / "front.master.json").write_text(
+                json.dumps(
+                    {
+                        **master_base,
+                        "segments": [
+                            {
+                                "id": "cand_1",
+                                "start_ms": 250,
+                                "end_ms": 1250,
+                                "channel": "L",
+                                "kind": "speech",
+                                "text": "候補",
+                                "needs_review": True,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (case_dir / "case-index.json").write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "reference_type": "pseudo-gold",
+                        "case_count": 1,
+                        "items": [
+                            {
+                                "id": "front",
+                                "audio": "audio/front.wav",
+                                "reference": "references/front.master.json",
+                                "candidate": "candidates/front.master.json",
+                                "candidate_id": "bro-stereo",
+                                "segments": 1,
+                                "review_count": 1,
+                                "reference_type": "pseudo-gold",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            status, response = self.post_json("/api/review/load", {"path": str(case_dir)})
+
+            self.assertEqual(status, 200)
+            item = response["items"][0]
+            self.assertEqual(item["candidate_id"], "bro-stereo")
+            self.assertEqual(item["candidate_master"]["segments"][0]["text"], "候補")
+            self.assertEqual(item["candidate_master"]["segments"][0]["channel"], "L")
+
+    def test_review_load_route_rejects_missing_attached_candidate(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            case_dir = Path(tmpdir) / "cases"
+            (case_dir / "audio").mkdir(parents=True)
+            (case_dir / "references").mkdir()
+            (case_dir / "audio" / "front.wav").write_bytes(b"RIFFcaseWAVE")
+            (case_dir / "references" / "front.master.json").write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-master-v1",
+                        "source_language": "ja",
+                        "audio": {"source_file": "front.wav", "duration_ms": 2000},
+                        "segments": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (case_dir / "case-index.json").write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "reference_type": "pseudo-gold",
+                        "case_count": 1,
+                        "items": [
+                            {
+                                "id": "front",
+                                "audio": "audio/front.wav",
+                                "reference": "references/front.master.json",
+                                "candidate": "candidates/missing.master.json",
+                                "segments": 0,
+                                "review_count": 0,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            status, response = self.post_json("/api/review/load", {"path": str(case_dir)})
+
+            self.assertEqual(status, 400)
+            self.assertIn("candidate file is missing", response["error"])
+
     def test_review_case_save_reference_updates_master_and_case_index_counts(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

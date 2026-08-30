@@ -258,11 +258,16 @@ def load_review_case_set_response(path: Path) -> dict[str, Any]:
         review_case_item_path(case_index_path, audio, "audio")
         reference_path = review_case_item_path(case_index_path, reference, "reference")
         normalized_item = dict(item_mapping)
-        reference_master = load_review_case_reference(reference_path)
+        reference_master = load_review_case_master(reference_path)
         normalized_item["id"] = case_id
         normalized_item["audio_url"] = review_case_audio_url(case_index_path, audio)
         normalized_item["reference_master"] = reference_master
         normalized_item["review_duration_ms"] = master_review_duration_ms(reference_master)
+        candidate = item_mapping.get("candidate")
+        if candidate is not None:
+            candidate_value = require_string(candidate, f"review case item {index}.candidate")
+            candidate_path = review_case_item_path(case_index_path, candidate_value, "candidate")
+            normalized_item["candidate_master"] = load_review_case_master(candidate_path)
         normalized_items.append(normalized_item)
     response = dict(case_index)
     response["kind"] = "review-case-set"
@@ -332,8 +337,8 @@ def review_case_audio_url(index_path: Path, audio: str) -> str:
     return "/api/review-case/audio?index=" + quote(str(index_path), safe="") + "&audio=" + quote(audio, safe="")
 
 
-def load_review_case_reference(reference_path: Path) -> dict[str, Any]:
-    return MasterDocument.from_json(json.loads(reference_path.read_text(encoding="utf-8"))).to_json()
+def load_review_case_master(master_path: Path) -> dict[str, Any]:
+    return MasterDocument.from_json(json.loads(master_path.read_text(encoding="utf-8"))).to_json()
 
 
 def master_review_duration_ms(master: dict[str, Any]) -> int:

@@ -311,9 +311,12 @@ function render() {
   }
 
   const segments = state.master?.segments || [];
-  els.segmentCount.textContent = state.reviewCaseReference
-    ? `${state.reviewCaseReference.caseId} · ${segments.length} segments`
-    : `${segments.length} segments`;
+  const candidateSegments = reviewCaseCandidateSegments();
+  els.segmentCount.textContent = state.reviewCaseReference?.candidateMaster
+    ? `${state.reviewCaseReference.caseId} · ${segments.length} ref · ${candidateSegments.length} cand`
+    : state.reviewCaseReference
+      ? `${state.reviewCaseReference.caseId} · ${segments.length} segments`
+      : `${segments.length} segments`;
   els.selectedLabel.textContent = state.selectedId ? state.selectedId : "선택 없음";
   els.retranscribeButton.hidden = Boolean(state.reviewCaseReference);
   els.sourceCaseButton.hidden = true;
@@ -761,8 +764,41 @@ function renderSegment(segment) {
       selectSegment(segment.id, true);
     }
   });
-  row.append(time, meta, text);
+  const textStack = document.createElement("div");
+  textStack.className = "segment-text-stack";
+  textStack.append(text);
+  const candidateContext = renderCandidateContext(segment);
+  if (candidateContext) {
+    textStack.append(candidateContext);
+  }
+
+  row.append(time, meta, textStack);
   return row;
+}
+
+function reviewCaseCandidateSegments() {
+  const segments = state.reviewCaseReference?.candidateMaster?.segments;
+  return Array.isArray(segments) ? segments : [];
+}
+
+function renderCandidateContext(referenceSegment) {
+  const candidates = reviewCaseCandidateSegments().filter(
+    (candidate) =>
+      candidate.start_ms < referenceSegment.end_ms &&
+      candidate.end_ms > referenceSegment.start_ms &&
+      (referenceSegment.channel === "MIX" || candidate.channel === referenceSegment.channel || candidate.channel === "MIX"),
+  );
+  if (!candidates.length) return null;
+
+  const context = document.createElement("div");
+  context.className = "candidate-context";
+  for (const candidate of candidates) {
+    const line = document.createElement("p");
+    line.className = "candidate-context-line";
+    line.textContent = `CAND ${candidate.channel} · ${formatMsRange(candidate.start_ms, candidate.end_ms)} · ${candidate.text}`;
+    context.append(line);
+  }
+  return context;
 }
 
 function renderTimeInput(segment, key, labelText) {
@@ -1171,6 +1207,7 @@ function loadReviewCaseItem(
     focusSegmentId: sourceReviewItem?.reference_id || null,
     focusStartMs: focusRange?.startMs ?? null,
     focusEndMs: focusRange?.endMs ?? null,
+    candidateMaster: item.candidate_master || null,
     returnReviewPack,
   };
   render();

@@ -154,6 +154,70 @@ class WebAppBehaviorTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_review_case_editor_shows_overlapping_candidate_context(self):
+        result = self.run_app_assertions(
+            r"""
+            (async () => {
+              elements.get("reviewPackPathInput").value = "/cases";
+              context.fetch = async () => ({
+                ok: true,
+                async json() {
+                  return {
+                    kind: "review-case-set",
+                    case_index_path: "/cases/case-index.json",
+                    items: [
+                      {
+                        id: "front-a",
+                        audio_url: "/api/review-case/audio?x=1",
+                        candidate_id: "bro-stereo",
+                        reference_master: {
+                          format: "custom-asmr-master-v1",
+                          source_language: "ja",
+                          audio: { source_file: "front-a.wav", duration_ms: 3000 },
+                          segments: [
+                            { id: "ref_1", start_ms: 0, end_ms: 2000, channel: "L", kind: "speech", text: "基準", needs_review: true },
+                          ],
+                        },
+                        candidate_master: {
+                          format: "custom-asmr-master-v1",
+                          source_language: "ja",
+                          audio: { source_file: "front-a.wav", duration_ms: 3000 },
+                          segments: [
+                            { id: "cand_1", start_ms: 250, end_ms: 1250, channel: "L", kind: "speech", text: "候補一", needs_review: true },
+                            { id: "cand_2", start_ms: 1500, end_ms: 2500, channel: "R", kind: "speech", text: "候補二", needs_review: true },
+                            { id: "cand_3", start_ms: 1750, end_ms: 2250, channel: "MIX", kind: "speech", text: "混合候補", needs_review: true },
+                            { id: "cand_4", start_ms: 2500, end_ms: 3000, channel: "L", kind: "speech", text: "範囲外", needs_review: true },
+                          ],
+                        },
+                      },
+                    ],
+                  };
+                },
+              });
+
+              await context.loadReviewPath();
+              context.loadReviewCaseItem(0);
+
+              assert.strictEqual(elements.get("segmentCount").textContent, "front-a · 1 ref · 4 cand");
+              const row = elements.get("segmentList").children[0];
+              const textStack = row.children[2];
+              assert.strictEqual(textStack.className, "segment-text-stack");
+              const candidateContext = textStack.children[1];
+              assert.strictEqual(candidateContext.className, "candidate-context");
+              assert.strictEqual(candidateContext.children.length, 2);
+              assert.match(candidateContext.children[0].textContent, /CAND L/);
+              assert.match(candidateContext.children[0].textContent, /候補一/);
+              assert.match(candidateContext.children[1].textContent, /CAND MIX/);
+              assert.match(candidateContext.children[1].textContent, /混合候補/);
+            })().catch((error) => {
+              console.error(error);
+              process.exit(1);
+            });
+        """,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_review_case_list_shows_remaining_review_duration(self):
         result = self.run_app_assertions(
             r"""
