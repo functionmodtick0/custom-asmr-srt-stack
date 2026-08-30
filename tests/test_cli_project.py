@@ -1755,8 +1755,8 @@ class ProjectCliTests(unittest.TestCase):
                 source_file="front.wav",
                 duration_ms=1000,
                 segments=(
-                    Segment("seg_000001", 0, 800, "L", "speech", "あ"),
-                    Segment("seg_000002", 400, 1000, "L", "speech", "い"),
+                    Segment("seg_000001", 0, 800, "L", "speech", "あ", content_reviewed=True),
+                    Segment("seg_000002", 400, 1000, "L", "speech", "い", content_reviewed=True),
                 ),
             )
             (reference_dir / "front.master.json").write_text(
@@ -1842,8 +1842,8 @@ class ProjectCliTests(unittest.TestCase):
                 source_file="voice.wav",
                 duration_ms=2000,
                 segments=(
-                    Segment("seg_000001", 0, 1000, "L", "speech", "あ"),
-                    Segment("seg_000002", 500, 1200, "L", "speech", "い"),
+                    Segment("seg_000001", 0, 1000, "L", "speech", "あ", content_reviewed=True),
+                    Segment("seg_000002", 500, 1200, "L", "speech", "い", content_reviewed=True),
                 ),
             )
             (references / "front.master.json").write_text(
@@ -1900,8 +1900,8 @@ class ProjectCliTests(unittest.TestCase):
                 source_file="voice.wav",
                 duration_ms=2000,
                 segments=(
-                    Segment("seg_000001", 0, 1000, "L", "speech", "あ"),
-                    Segment("seg_000002", 500, 1200, "L", "speech", "い"),
+                    Segment("seg_000001", 0, 1000, "L", "speech", "あ", content_reviewed=True),
+                    Segment("seg_000002", 500, 1200, "L", "speech", "い", content_reviewed=True),
                 ),
             )
             (references / "front.master.json").write_text(
@@ -3400,8 +3400,8 @@ class ProjectCliTests(unittest.TestCase):
                 source_file="front.wav",
                 duration_ms=2000,
                 segments=(
-                    Segment("seg_000001", 0, 1000, "L", "speech", "あ"),
-                    Segment("seg_000002", 500, 1500, "L", "speech", "い"),
+                    Segment("seg_000001", 0, 1000, "L", "speech", "あ", content_reviewed=True),
+                    Segment("seg_000002", 500, 1500, "L", "speech", "い", content_reviewed=True),
                 ),
             )
             (reference_dir / "front.master.json").write_text(
@@ -3631,8 +3631,8 @@ class ProjectCliTests(unittest.TestCase):
                 source_file="front.wav",
                 duration_ms=2000,
                 segments=(
-                    Segment("seg_000001", 0, 1000, "L", "speech", "あ"),
-                    Segment("seg_000002", 500, 1500, "L", "speech", "い"),
+                    Segment("seg_000001", 0, 1000, "L", "speech", "あ", content_reviewed=True),
+                    Segment("seg_000002", 500, 1500, "L", "speech", "い", content_reviewed=True),
                 ),
             )
             candidate = MasterDocument(
@@ -5345,7 +5345,7 @@ class ProjectCliTests(unittest.TestCase):
                                 "candidate_id": None,
                                 "start_ms": 1000,
                                 "end_ms": 3000,
-                                "reasons": ["reference-needs-review"],
+                                "reasons": ["reference-needs-review", "reference-content-unreviewed"],
                                 "reference_text": "",
                                 "candidate_text": "",
                                 "reference_channel": "L",
@@ -5377,6 +5377,11 @@ class ProjectCliTests(unittest.TestCase):
                                 "left_dbfs": -45.0,
                                 "right_dbfs": -30.0,
                                 "delta_db": -15.0,
+                                "review_clip_start_ms": 1500,
+                                "review_clip_end_ms": 2500,
+                                "review_clip_left_dbfs": -46.0,
+                                "review_clip_right_dbfs": -29.0,
+                                "review_clip_delta_db": -17.0,
                                 "priority_score": 3502.0,
                             },
                             {
@@ -5393,6 +5398,8 @@ class ProjectCliTests(unittest.TestCase):
                                 "left_dbfs": -31.0,
                                 "right_dbfs": -30.0,
                                 "delta_db": -1.0,
+                                "review_clip_start_ms": 700,
+                                "review_clip_end_ms": 1200,
                                 "priority_score": 2501.0,
                             }
                         ],
@@ -5426,6 +5433,7 @@ class ProjectCliTests(unittest.TestCase):
                 {
                     "reference-channel-energy-mismatch": 1,
                     "reference-channel-energy-uncertain": 1,
+                    "reference-content-unreviewed": 1,
                     "reference-needs-review": 1,
                 },
             )
@@ -5439,6 +5447,7 @@ class ProjectCliTests(unittest.TestCase):
                         "item_count": 1,
                         "reason_counts": {
                             "reference-channel-energy-mismatch": 1,
+                            "reference-content-unreviewed": 1,
                             "reference-needs-review": 1,
                         },
                         "review_duration_ms": 2000,
@@ -5462,7 +5471,11 @@ class ProjectCliTests(unittest.TestCase):
             item = report["items"][0]
             self.assertEqual(
                 item["reasons"],
-                ["reference-needs-review", "reference-channel-energy-mismatch"],
+                [
+                    "reference-needs-review",
+                    "reference-content-unreviewed",
+                    "reference-channel-energy-mismatch",
+                ],
             )
             self.assertEqual(item["candidate_channel"], "R")
             self.assertEqual(item["left_dbfs"], -45.0)
@@ -5470,6 +5483,11 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(item["priority_rank"], 1)
             self.assertEqual(item["merged_input_count"], 2)
             self.assertEqual(item["source_reports"], [str(first), str(second)])
+            self.assertNotIn("review_clip_start_ms", item)
+            self.assertNotIn("review_clip_end_ms", item)
+            self.assertNotIn("review_clip_left_dbfs", item)
+            self.assertEqual(report["items"][1]["review_clip_start_ms"], 700)
+            self.assertEqual(report["items"][1]["review_clip_end_ms"], 1200)
 
     def test_merge_review_effort_rejects_conflicting_source_case_index_before_output(self):
         with tempfile.TemporaryDirectory() as tmpdir:

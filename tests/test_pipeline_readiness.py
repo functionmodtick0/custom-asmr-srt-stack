@@ -85,6 +85,36 @@ def write_eval_suite_report(path: Path, *, case_id: str) -> None:
 
 
 class PipelineReadinessTests(unittest.TestCase):
+    def test_reference_stage_blocks_explicit_content_unreviewed_segments(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            reference_audit = Path(tmpdir) / "reference-audit.json"
+            reference_audit.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-reference-audit-suite-v1",
+                        "summary": {
+                            "segment_count": 2,
+                            "review_count": 0,
+                            "content_unreviewed_count": 1,
+                            "same_channel_overlap_pair_count": 0,
+                            "exact_boundary_overlap_pair_count": 0,
+                            "exact_boundary_same_channel_overlap_pair_count": 0,
+                            "exact_boundary_cross_channel_overlap_pair_count": 0,
+                            "long_segment_count": 0,
+                            "speech_coverage_ratio": 0.5,
+                            "flag_type_counts": {"content_unreviewed_segments": 1},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            stage = reference_stage(reference_audit)
+
+        self.assertEqual(stage["status"], "fail")
+        self.assertIn("reference content review evidence missing: 1", stage["reasons"])
+        self.assertEqual(stage["metrics"]["content_unreviewed_count"], 1)
+
     def test_vad_stage_requires_downstream_reports_for_product_readiness(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             coverage = Path(tmpdir) / "coverage.json"

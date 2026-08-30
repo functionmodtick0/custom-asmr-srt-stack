@@ -395,7 +395,7 @@ uv run casrt prepare-review-cases plan.json -o cases --json
 
 `plan.json`은 `custom-asmr-case-slice-plan-v1` 형식이며 각 case의 `id`, `audio`, `reference`, `start_ms`, `end_ms`를 담습니다. 모든 case에 `candidate`가 있으면 `eval-manifest.json`도 함께 생성합니다. 출력에는 `audio-map.json`, `case-index.json`, `audio/*.wav`, `references/*.master.json`이 포함됩니다.
 
-현재 durable human-review 시작점은 `.casrt/experiments/all8-front120-review-cases/case-index.json`입니다. `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/uploads` 01~08 WAV와 2025-12-22 stable-ts draft SRT에서 만든 120초 pseudo-gold set이며, 82개 reference segment 모두 아직 명시적 `content_reviewed` 증거가 없습니다. Bro stereo 후보 350개 segment는 canonical case set의 candidate draft로 연결되어 있고 reference digest는 연결 전후 동일합니다. 전체 내용 검수용 WebUI Review path는 `.casrt/experiments/all8-front120-full-content-human-reference-review-pack`이며, 82개 clip 모두를 포함합니다. 기존 `검수 완료` 버튼으로 reference를 검수한 뒤 `freeze-case-references --reference-type human-reviewed`로 승격합니다. 명시적 channel 검수도 아직 `0`, unresolved channel item은 `48`입니다. 현재 best readiness 기준 ASR-only blocker는 reference와 VAD/chunking이고, product quality blocker는 reference, VAD/chunking, text ASR입니다. Alignment/channel pass는 automatic proxy 기준의 조건부 판정이며 human-reviewed 기준으로 재평가하기 전에는 최종 완료 판정이 아닙니다.
+현재 durable human-review 시작점은 `.casrt/experiments/all8-front120-review-cases/case-index.json`입니다. `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/uploads` 01~08 WAV와 2025-12-22 stable-ts draft SRT에서 만든 120초 pseudo-gold set이며, 82개 reference segment 모두 아직 명시적 `content_reviewed` 증거가 없습니다. Bro stereo 후보 350개 segment는 canonical case set의 candidate draft로 연결되어 있고 reference digest는 연결 전후 동일합니다. 권장 WebUI Review path는 `.casrt/experiments/all8-front120-combined-content-channel-human-reference-review-pack`입니다. 이 pack 하나에 전체 content 미검수 82개, 자동 flag 15개, channel mismatch 30개와 uncertain 18개를 중복 없이 82개 full-segment clip으로 담았습니다. 기존 `검수 완료` 버튼으로 content를 검수하고 channel evidence가 있는 항목은 같은 화면에서 channel도 판정한 뒤 `freeze-case-references --reference-type human-reviewed`로 승격합니다. 현재 best readiness 기준 ASR-only blocker는 reference와 VAD/chunking이고, product quality blocker는 reference, VAD/chunking, text ASR입니다. Alignment/channel pass는 automatic proxy 기준의 조건부 판정이며 human-reviewed 기준으로 재평가하기 전에는 최종 완료 판정이 아닙니다.
 
 준비된 case set 상태 확인:
 
@@ -644,7 +644,7 @@ uv run casrt merge-review-effort reference-audit-review-effort.json reference-ch
   -o combined-review-effort.json
 ```
 
-`merge-review-effort`는 `custom-asmr-review-effort-v1` queue를 입력 순서대로 검증하고, 같은 case/reference/candidate/time range issue는 reason과 evidence를 합쳐 하나의 item으로 만듭니다. Output에는 `case_summaries`, `case_count`, `next_case_id`도 들어가므로 WebUI/CLI가 어떤 case부터 검수할지 바로 표시할 수 있습니다. 같은 `source_case_index`를 가진 입력은 값을 보존하므로, 병합 결과를 바로 `review-pack`에 넣어도 case별 audio를 다시 지정할 필요가 없습니다. 서로 다른 `source_case_index`가 섞이면 출력 파일을 쓰기 전에 실패합니다. 이 명령은 reference/candidate transcript를 수정하지 않습니다.
+`merge-review-effort`는 같은 case/reference/time issue의 reason과 evidence를 합칩니다. 순수 channel-energy 항목은 짧은 focus를 유지하지만, content/structure reason이 같이 있으면 전체 segment를 들어야 하므로 focus를 제거합니다. 따라서 content와 channel queue를 합쳐도 text/timing 검수가 5초 evidence window로 잘리지 않습니다. 같은 `source_case_index`는 보존하고 서로 다른 값은 실패합니다.
 
 현재 파이프라인이 ASR text 모델만 남은 단계인지 확인:
 

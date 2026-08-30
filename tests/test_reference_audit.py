@@ -21,9 +21,9 @@ class ReferenceAuditTests(unittest.TestCase):
     def test_audit_master_reference_reports_overlap_and_segmentation_flags_without_text(self):
         master = master_with_segments(
             [
-                Segment("seg_000001", 0, 1000, "L", "speech", "ねえ"),
-                Segment("seg_000002", 500, 1500, "L", "speech", "そこ"),
-                Segment("seg_000003", 0, 1000, "R", "speech", "ねえ"),
+                Segment("seg_000001", 0, 1000, "L", "speech", "ねえ", content_reviewed=True),
+                Segment("seg_000002", 500, 1500, "L", "speech", "そこ", content_reviewed=True),
+                Segment("seg_000003", 0, 1000, "R", "speech", "ねえ", content_reviewed=True),
                 Segment("seg_000004", 2000, 33000, "MIX", "speech", "長い", needs_review=True),
             ]
         )
@@ -35,6 +35,8 @@ class ReferenceAuditTests(unittest.TestCase):
         self.assertEqual(report["reference"], "references/front-a.master.json")
         self.assertEqual(report["speech_segment_count"], 4)
         self.assertEqual(report["review_count"], 1)
+        self.assertEqual(report["content_reviewed_count"], 3)
+        self.assertEqual(report["content_unreviewed_count"], 1)
         self.assertEqual(report["channel_counts"], {"L": 2, "R": 1, "MIX": 1})
         self.assertEqual(report["overlap_pair_count"], 3)
         self.assertEqual(report["same_channel_overlap_pair_count"], 1)
@@ -48,15 +50,15 @@ class ReferenceAuditTests(unittest.TestCase):
         self.assertAlmostEqual(report["speech_coverage_ratio"], 32500 / 40000)
         self.assertEqual(
             [flag["type"] for flag in report["flags"]],
-            ["review_flag_segments", "same_channel_overlap", "long_segment"],
+            ["review_flag_segments", "content_unreviewed_segments", "same_channel_overlap", "long_segment"],
         )
         self.assertNotIn("text", json.dumps(report, ensure_ascii=False))
 
     def test_reference_audit_flags_same_channel_exact_boundary_overlap(self):
         master = master_with_segments(
             [
-                Segment("seg_000001", 0, 1000, "L", "speech", "前"),
-                Segment("seg_000002", 0, 1000, "L", "speech", "後"),
+                Segment("seg_000001", 0, 1000, "L", "speech", "前", content_reviewed=True),
+                Segment("seg_000002", 0, 1000, "L", "speech", "後", content_reviewed=True),
             ],
             duration_ms=3000,
         )
@@ -90,8 +92,8 @@ class ReferenceAuditTests(unittest.TestCase):
     def test_default_reference_audit_ignores_tiny_boundary_overlap(self):
         master = master_with_segments(
             [
-                Segment("seg_000001", 0, 1000, "L", "speech", "前"),
-                Segment("seg_000002", 980, 2000, "L", "speech", "後"),
+                Segment("seg_000001", 0, 1000, "L", "speech", "前", content_reviewed=True),
+                Segment("seg_000002", 980, 2000, "L", "speech", "後", content_reviewed=True),
             ],
             duration_ms=3000,
         )
@@ -110,7 +112,7 @@ class ReferenceAuditTests(unittest.TestCase):
 
     def test_default_reference_audit_ignores_near_threshold_long_segment(self):
         master = master_with_segments(
-            [Segment("seg_000001", 0, 30007, "L", "speech", "長め")],
+            [Segment("seg_000001", 0, 30007, "L", "speech", "長め", content_reviewed=True)],
             duration_ms=40000,
         )
 
@@ -131,15 +133,15 @@ class ReferenceAuditTests(unittest.TestCase):
             references.mkdir()
             first = master_with_segments(
                 [
-                    Segment("seg_000001", 0, 1000, "L", "speech", "あ"),
-                    Segment("seg_000002", 500, 1200, "L", "speech", "い"),
+                    Segment("seg_000001", 0, 1000, "L", "speech", "あ", content_reviewed=True),
+                    Segment("seg_000002", 500, 1200, "L", "speech", "い", content_reviewed=True),
                 ],
                 duration_ms=2000,
             )
             second = master_with_segments(
                 [
                     Segment("seg_000001", 0, 1000, "R", "speech", "う", needs_review=True),
-                    Segment("seg_000002", 1000, 2000, "MIX", "speech", "え"),
+                    Segment("seg_000002", 1000, 2000, "MIX", "speech", "え", content_reviewed=True),
                 ],
                 duration_ms=3000,
             )
@@ -173,18 +175,23 @@ class ReferenceAuditTests(unittest.TestCase):
         self.assertEqual(report["summary"]["segment_count"], 4)
         self.assertEqual(report["summary"]["speech_segment_count"], 4)
         self.assertEqual(report["summary"]["review_count"], 1)
+        self.assertEqual(report["summary"]["content_reviewed_count"], 3)
+        self.assertEqual(report["summary"]["content_unreviewed_count"], 1)
         self.assertEqual(report["summary"]["overlap_pair_count"], 1)
         self.assertEqual(report["summary"]["same_channel_overlap_pair_count"], 1)
         self.assertEqual(report["summary"]["channel_counts"], {"L": 2, "R": 1, "MIX": 1})
-        self.assertEqual(report["summary"]["flag_type_counts"], {"review_flag_segments": 1, "same_channel_overlap": 1})
+        self.assertEqual(
+            report["summary"]["flag_type_counts"],
+            {"content_unreviewed_segments": 1, "review_flag_segments": 1, "same_channel_overlap": 1},
+        )
         self.assertEqual([case["case_id"] for case in report["cases"]], ["first", "second"])
 
     def test_reference_audit_review_effort_report_exports_packable_queue_without_text(self):
         master = master_with_segments(
             [
-                Segment("seg_000001", 0, 1000, "L", "speech", "ねえ"),
-                Segment("seg_000002", 500, 1500, "L", "speech", "そこ"),
-                Segment("seg_000003", 0, 1000, "R", "speech", "ねえ"),
+                Segment("seg_000001", 0, 1000, "L", "speech", "ねえ", content_reviewed=True),
+                Segment("seg_000002", 500, 1500, "L", "speech", "そこ", content_reviewed=True),
+                Segment("seg_000003", 0, 1000, "R", "speech", "ねえ", content_reviewed=True),
                 Segment("seg_000004", 2000, 33000, "MIX", "speech", "長い", needs_review=True),
             ]
         )
@@ -211,16 +218,39 @@ class ReferenceAuditTests(unittest.TestCase):
             report["reason_counts"],
             {
                 "reference-long-segment": 1,
+                "reference-content-unreviewed": 1,
                 "reference-needs-review": 1,
                 "reference-same-channel-overlap": 1,
             },
         )
         self.assertEqual(report["item_count"], 3)
         self.assertEqual([item["priority_rank"] for item in report["items"]], [1, 2, 3])
-        self.assertEqual(report["items"][0]["reasons"], ["reference-needs-review"])
+        self.assertEqual(
+            report["items"][0]["reasons"],
+            ["reference-needs-review", "reference-content-unreviewed"],
+        )
         self.assertEqual(report["items"][1]["reasons"], ["reference-same-channel-overlap"])
         self.assertEqual(report["items"][2]["reasons"], ["reference-long-segment"])
         self.assertNotIn("ねえ", json.dumps(report, ensure_ascii=False))
+
+    def test_review_effort_accepts_legacy_audit_without_content_review_items(self):
+        master = master_with_segments(
+            [Segment("seg_000001", 0, 1000, "L", "speech", "確認", needs_review=True)]
+        )
+        case = audit_master_reference(master, case_id="front-a")
+        case.pop("content_unreviewed_segments")
+        audit = {
+            "format": REFERENCE_AUDIT_SUITE_FORMAT,
+            "case_index": "cases/case-index.json",
+            "case_count": 1,
+            "summary": {},
+            "cases": [case],
+        }
+
+        report = reference_audit_review_effort_report(audit)
+
+        self.assertEqual(report["item_count"], 1)
+        self.assertEqual(report["items"][0]["reasons"], ["reference-needs-review"])
 
 
 if __name__ == "__main__":

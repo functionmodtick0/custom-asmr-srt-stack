@@ -135,6 +135,10 @@ def reference_stage(
 
     reasons = []
     review_count = require_int(metrics.get("review_count"), f"{path}: reference audit review_count")
+    content_unreviewed_count = optional_int(
+        metrics.get("content_unreviewed_count"),
+        f"{path}: reference audit content_unreviewed_count",
+    )
     same_channel_overlap_count = require_int(
         metrics.get("same_channel_overlap_pair_count"),
         f"{path}: reference audit same_channel_overlap_pair_count",
@@ -143,6 +147,7 @@ def reference_stage(
     long_segment_count = require_int(metrics.get("long_segment_count"), f"{path}: reference audit long_segment_count")
     for count, label in (
         (review_count, "reference review flags remain"),
+        (content_unreviewed_count or 0, "reference content review evidence missing"),
         (same_channel_overlap_count, "same-channel reference overlaps remain"),
         (exact_boundary_blocking_count, "same-channel exact-boundary reference overlaps remain"),
         (long_segment_count, "long reference segments remain"),
@@ -178,6 +183,7 @@ def reference_stage(
             "report": str(path),
             "segment_count": optional_int(metrics.get("segment_count"), f"{path}: reference audit segment_count"),
             "review_count": review_count,
+            "content_unreviewed_count": content_unreviewed_count,
             "same_channel_overlap_pair_count": same_channel_overlap_count,
             "exact_boundary_overlap_pair_count": require_int(
                 metrics.get("exact_boundary_overlap_pair_count"),

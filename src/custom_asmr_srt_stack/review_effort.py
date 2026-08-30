@@ -6,6 +6,18 @@ from typing import Any
 
 from custom_asmr_srt_stack.evaluation import REVIEW_EFFORT_FORMAT
 
+CHANNEL_FOCUS_ONLY_REASONS = {
+    "reference-channel-energy-mismatch",
+    "reference-channel-energy-uncertain",
+}
+REVIEW_CLIP_FIELDS = {
+    "review_clip_start_ms",
+    "review_clip_end_ms",
+    "review_clip_left_dbfs",
+    "review_clip_right_dbfs",
+    "review_clip_delta_db",
+}
+
 
 def merge_review_effort_reports(paths: list[Path]) -> dict[str, Any]:
     if not paths:
@@ -30,6 +42,8 @@ def merge_review_effort_reports(paths: list[Path]) -> dict[str, Any]:
             else:
                 merge_review_item(existing, normalized, source_report=str(path))
 
+    for item in items_by_key.values():
+        enforce_review_scope(item)
     merged_items = sorted(items_by_key.values(), key=review_item_sort_key)
     for rank, item in enumerate(merged_items, start=1):
         item["priority_rank"] = rank
@@ -126,6 +140,16 @@ def merge_review_item(existing: dict[str, Any], incoming: dict[str, Any], *, sou
             continue
         if key not in existing or existing[key] in (None, ""):
             existing[key] = value
+
+
+def enforce_review_scope(item: dict[str, Any]) -> None:
+    reasons = item.get("reasons")
+    if not isinstance(reasons, list):
+        return
+    if all(reason in CHANNEL_FOCUS_ONLY_REASONS for reason in reasons):
+        return
+    for key in REVIEW_CLIP_FIELDS:
+        item.pop(key, None)
 
 
 def review_item_sort_key(item: dict[str, Any]) -> tuple[float, str, int, str, str]:

@@ -18,6 +18,7 @@ REFERENCE_AUDIT_REASON_PRIORITY = {
     "reference-exact-boundary-overlap": 4000.0,
     "reference-same-channel-overlap": 3000.0,
     "reference-long-segment": 2000.0,
+    "reference-content-unreviewed": 1000.0,
 }
 
 
@@ -71,6 +72,17 @@ def audit_master_reference(
         for segment in speech
         if segment.needs_review
     ]
+    content_unreviewed_segments = [
+        {
+            "segment_id": segment.id,
+            "start_ms": segment.start_ms,
+            "end_ms": segment.end_ms,
+            "duration_ms": segment.end_ms - segment.start_ms,
+            "channel": segment.channel,
+        }
+        for segment in master.segments
+        if not segment.content_reviewed
+    ]
     duration_ms = master.duration_ms
     speech_union_duration_ms = interval_union_duration_ms(
         [(segment.start_ms, segment.end_ms) for segment in speech]
@@ -82,6 +94,7 @@ def audit_master_reference(
 
     flags = reference_audit_flags(
         review_count=len(review_segments),
+        content_unreviewed_count=len(content_unreviewed_segments),
         same_channel_overlap_count=len(same_channel_overlap_pairs),
         exact_boundary_same_channel_overlap_count=len(exact_boundary_same_channel_overlap_pairs),
         long_segment_count=len(long_segments),
@@ -101,6 +114,8 @@ def audit_master_reference(
         "segment_count": len(master.segments),
         "speech_segment_count": len(speech),
         "review_count": len(review_segments),
+        "content_reviewed_count": len(master.segments) - len(content_unreviewed_segments),
+        "content_unreviewed_count": len(content_unreviewed_segments),
         "channel_counts": channel_counts,
         "speech_union_duration_ms": speech_union_duration_ms,
         "speech_coverage_ratio": speech_coverage_ratio,
@@ -116,6 +131,7 @@ def audit_master_reference(
         "flag_count": len(flags),
         "flags": flags,
         "review_segments": review_segments,
+        "content_unreviewed_segments": content_unreviewed_segments,
         "long_segments": long_segments,
         "overlap_pairs": overlap_pairs,
     }
@@ -205,8 +221,35 @@ def reference_audit_review_effort_report(
 
 def reference_audit_case_review_items(case_id: str, case: dict[str, Any]) -> list[dict[str, Any]]:
     items = []
+    content_items_by_segment_id: dict[str, dict[str, Any]] = {}
+    for unreviewed_segment in optional_audit_items(case, "content_unreviewed_segments"):
+        segment_id = require_non_empty_string(
+            unreviewed_segment.get("segment_id"),
+            "content unreviewed segment segment_id",
+        )
+        item = {
+            "case_id": case_id,
+            "reference_id": segment_id,
+            "candidate_id": None,
+            "start_ms": require_audit_int(unreviewed_segment, "start_ms"),
+            "end_ms": require_audit_int(unreviewed_segment, "end_ms"),
+            "reasons": ["reference-content-unreviewed"],
+            "reference_text": "",
+            "candidate_text": "",
+            "reference_channel": unreviewed_segment.get("channel"),
+            "candidate_channel": None,
+        }
+        item["priority_score"] = reference_audit_review_priority_score(item)
+        items.append(item)
+        content_items_by_segment_id[segment_id] = item
+
     for review_segment in require_audit_items(case, "review_segments"):
         segment_id = require_non_empty_string(review_segment.get("segment_id"), "review segment segment_id")
+        content_item = content_items_by_segment_id.get(segment_id)
+        if content_item is not None:
+            content_item["reasons"].insert(0, "reference-needs-review")
+            content_item["priority_score"] = reference_audit_review_priority_score(content_item)
+            continue
         item = {
             "case_id": case_id,
             "reference_id": segment_id,
@@ -273,6 +316,12 @@ def require_audit_items(case: dict[str, Any], key: str) -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             raise ValueError(f"reference audit case {key} items must be objects")
     return value
+
+
+def optional_audit_items(case: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    if key not in case:
+        return []
+    return require_audit_items(case, key)
 
 
 def require_audit_int(item: dict[str, Any], key: str) -> int:
@@ -356,6 +405,8 @@ def aggregate_reference_audits(reports: list[dict[str, Any]]) -> dict[str, Any]:
         "segment_count": sum(int(report["segment_count"]) for report in reports),
         "speech_segment_count": sum(int(report["speech_segment_count"]) for report in reports),
         "review_count": sum(int(report["review_count"]) for report in reports),
+        "content_reviewed_count": sum(int(report["content_reviewed_count"]) for report in reports),
+        "content_unreviewed_count": sum(int(report["content_unreviewed_count"]) for report in reports),
         "channel_counts": channel_counts,
         "speech_union_duration_ms": speech_union_duration_ms,
         "speech_coverage_ratio": None
@@ -388,6 +439,7 @@ def aggregate_reference_audits(reports: list[dict[str, Any]]) -> dict[str, Any]:
 def reference_audit_flags(
     *,
     review_count: int,
+    content_unreviewed_count: int,
     same_channel_overlap_count: int,
     exact_boundary_same_channel_overlap_count: int,
     long_segment_count: int,
@@ -397,6 +449,8 @@ def reference_audit_flags(
     flags = []
     if review_count:
         flags.append({"type": "review_flag_segments", "count": review_count})
+    if content_unreviewed_count:
+        flags.append({"type": "content_unreviewed_segments", "count": content_unreviewed_count})
     if same_channel_overlap_count:
         flags.append({"type": "same_channel_overlap", "count": same_channel_overlap_count})
     if exact_boundary_same_channel_overlap_count:

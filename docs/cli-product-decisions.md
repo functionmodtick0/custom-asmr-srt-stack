@@ -416,12 +416,12 @@ uv run casrt audit-review-case-references cases/case-index.json \
 
 - 입력은 `custom-asmr-review-case-set-v1` `case-index.json`이다.
 - output format은 `custom-asmr-reference-audit-suite-v1`이다.
-- 각 case와 summary에 segment count, channel counts, speech union coverage, overlap pair count, same-channel/cross-channel overlap count, exact-boundary overlap total과 same-channel/cross-channel split, long segment count, review flag count를 저장한다.
-- `overlap_pairs`, `long_segments`, `review_segments`는 segment id/time/channel 중심으로 저장하고 transcript text는 저장하지 않는다.
-- `--review-effort-output`을 지정하면 same-channel overlap, same-channel exact-boundary duplicate, long segment, reference review flag를 기존 `review-pack`에 넣을 수 있는 `custom-asmr-review-effort-v1` queue로 저장한다. Cross-channel exact-boundary overlap은 동시 L/R 발화 가능성이 있어 raw metric으로만 남긴다.
-- `--fail-on-audit`은 같은 구조 검수 queue item이 남아 있으면 report 출력/저장 후 실패한다. 이 gate 기준은 `freeze-case-references --fail-on-reference-audit`, `build-eval-manifest --fail-on-reference-audit`와 같다.
+- 각 case와 summary에 segment count, `content_reviewed_count`, `content_unreviewed_count`, channel counts, speech union coverage, overlap/long/review flag 지표를 저장한다.
+- `content_unreviewed_segments`, `overlap_pairs`, `long_segments`, `review_segments`는 segment id/time/channel 중심으로 저장하고 transcript text는 저장하지 않는다.
+- `--review-effort-output`은 `content_reviewed!=true`를 `reference-content-unreviewed` reason으로 포함하고, 같은 segment의 `reference-needs-review` reason과 한 item으로 합친다. 기존 구조 reasons와 cross-channel 정책도 유지한다.
+- `--fail-on-audit`은 content authority 또는 구조 검수 queue item이 남아 있으면 report 출력/저장 후 실패한다. 이 gate 기준은 freeze/build manifest의 reference audit gate와 같다.
 - 기본 threshold는 overlap `100ms` 이상, long segment `31000ms` 이상, near-full speech coverage `0.95` 이상이다. 100ms 미만 overlap은 SRT 경계 jitter로, 30초 근처 long segment는 절단 오차로 보고 product blocker에서 제외한다. Strict 진단은 `--overlap-min-ms 1` 또는 `--long-segment-ms 30000`으로 명시한다. CLI 옵션으로 바꿀 수 있지만 WebUI 옵션으로 노출하지 않는다.
-- 이 명령은 reference를 수정하거나 human-reviewed 여부를 추정하지 않는다. Pseudo-gold를 human-reviewed로 올리기 전 구조 검수 우선순위를 정하는 CLI-only 진단 도구다.
+- 이 명령은 명시적 검수 증거를 집계하지만 reference를 수정하거나 human-reviewed로 자동 승격하지 않는다. Pseudo-gold의 전체 내용/구조 검수 우선순위를 정하는 CLI-only 진단 도구다.
 
 ### `audit-review-case-channels`
 
@@ -824,6 +824,7 @@ uv run casrt merge-review-effort reference-audit-review-effort.json reference-ch
 - 입력은 `custom-asmr-review-effort-v1` report JSON이다.
 - output format도 `custom-asmr-review-effort-v1`이다.
 - 같은 `case_id`, `reference_id`, `candidate_id`, `start_ms`, `end_ms`를 가진 issue는 하나로 합치고, `reasons`, evidence field, `source_reports`, `merged_input_count`를 보존한다.
+- 순수 channel-energy item만 짧은 `review_clip_*` focus를 유지한다. Content 또는 structure reason이 하나라도 함께 있으면 text/timing/구조 검수에 전체 source segment가 필요하므로 focus bounds와 focus-only energy fields를 제거한다. Root full-segment energy evidence와 channel suggestion은 보존한다.
 - `priority_score`는 합쳐진 item 중 가장 높은 값을 유지하고, 출력 item 전체에 `priority_rank`를 다시 부여한다.
 - output root에는 `case_summaries`, `case_count`, `next_case_id`를 포함한다. `case_summaries`는 case별 item count, reason counts, review duration sum, first/last issue time, top priority score/rank를 담고 `top_priority_rank` 순서로 정렬한다.
 - 모든 입력의 `source_case_index`가 같으면 출력에도 보존한다. 서로 다른 `source_case_index`가 섞이면 출력 파일을 쓰기 전에 실패한다.
