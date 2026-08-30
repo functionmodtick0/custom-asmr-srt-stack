@@ -932,6 +932,8 @@ uv run casrt project export-translation PROJECT_ID -o translation.json
 uv run casrt project export-srt PROJECT_ID -o source.srt
 ```
 
+SRT export는 L/R cue에 `[L]`/`[R]` metadata label을 붙여 `srt-to-json` 왕복 시 channel을 보존한다. MIX cue는 label이 없다. 번역기에 전달하는 `translation.json`은 계속 `id`와 `text`만 포함한다.
+
 번역 SRT:
 
 ```bash

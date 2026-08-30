@@ -100,7 +100,7 @@ class ServerApiTests(unittest.TestCase):
         status, response = self.post_json("/api/json-to-srt", {"master": master, "translated": translated})
 
         self.assertEqual(status, 200)
-        self.assertEqual(response["content"], "1\n00:00:01,000 --> 00:00:02,000\n저기\n")
+        self.assertEqual(response["content"], "1\n00:00:01,000 --> 00:00:02,000\n[L] 저기\n")
 
     def test_api_errors_are_visible(self):
         status, response = self.post_json("/api/srt-to-json", {"content": 123})

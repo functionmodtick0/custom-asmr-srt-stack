@@ -56,7 +56,7 @@ class SrtConversionTests(unittest.TestCase):
         self.assertEqual(master.segments[2].channel, "R")
         self.assertEqual(master.segments[2].text, "右だよ")
 
-    def test_format_srt_exports_text_without_channel_labels(self):
+    def test_format_srt_preserves_channel_for_round_trip(self):
         master = MasterDocument(
             source_language="ja",
             source_file="voice.wav",
@@ -75,8 +75,11 @@ class SrtConversionTests(unittest.TestCase):
 
         self.assertEqual(
             format_srt(master),
-            "1\n00:00:01,000 --> 00:00:02,500\nねえ\n",
+            "1\n00:00:01,000 --> 00:00:02,500\n[L] ねえ\n",
         )
+        round_trip = parse_srt(format_srt(master))
+        self.assertEqual(round_trip.segments[0].channel, "L")
+        self.assertEqual(round_trip.segments[0].text, "ねえ")
 
     def test_parse_srt_rejects_invalid_timing(self):
         with self.assertRaisesRegex(ValueError, "end_ms must be greater"):

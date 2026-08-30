@@ -119,12 +119,17 @@ def format_srt(
         if not text:
             continue
         checked_segment = replace(segment, text=text)
+        cue_text = (
+            f"[{checked_segment.channel}] {checked_segment.text}"
+            if checked_segment.channel in {"L", "R"}
+            else checked_segment.text
+        )
         cues.append(
             "\n".join(
                 [
                     str(len(cues) + 1),
                     f"{format_timestamp(checked_segment.start_ms)} --> {format_timestamp(checked_segment.end_ms)}",
-                    checked_segment.text,
+                    cue_text,
                 ]
             )
         )

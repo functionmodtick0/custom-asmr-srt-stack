@@ -362,6 +362,8 @@ JSON에서 SRT 생성:
 uv run casrt json-to-srt master.json -o export.srt
 ```
 
+SRT는 L/R cue에 `[L]`/`[R]` metadata label을 넣어 다시 JSON으로 가져올 때 channel을 보존합니다. 번역용 `translation.json`의 text에는 이 label이 포함되지 않습니다.
+
 외부 번역 결과를 병합해서 SRT 생성:
 
 ```bash

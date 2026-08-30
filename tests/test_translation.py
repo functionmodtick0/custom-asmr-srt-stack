@@ -99,7 +99,7 @@ class TranslationJsonTests(unittest.TestCase):
 
         self.assertEqual(
             format_srt(sample_master(), text_by_id=text_by_id),
-            "1\n00:00:01,000 --> 00:00:02,000\n저기\n\n"
+            "1\n00:00:01,000 --> 00:00:02,000\n[L] 저기\n\n"
             "2\n00:00:03,000 --> 00:00:04,000\n들려?\n",
         )
 

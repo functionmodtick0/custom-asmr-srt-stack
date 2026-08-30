@@ -387,8 +387,9 @@ SRT export는 `master.json`의 segment timing과 원문 또는 번역 JSON의 te
 
 기본 동작은 다음이다.
 
-- 텍스트만 출력한다.
-- 채널 라벨을 넣지 않는다.
+- L/R cue는 첫 text line에 `[L]` 또는 `[R]` metadata label을 넣어 SRT -> JSON 왕복에서도 channel을 보존한다.
+- MIX cue는 라벨을 넣지 않는다.
+- 외부 번역 입력에는 SRT 대신 channel label이 없는 `translation.json`을 사용한다.
 - 시간순을 유지한다.
 - timing이 유효하지 않으면 조용히 보정하지 말고 실패를 표시한다.
 
