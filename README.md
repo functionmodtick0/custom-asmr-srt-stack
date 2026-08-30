@@ -30,6 +30,8 @@
 
 정상 runtime은 사람의 후보 선택이나 승인 없이 JSON/SRT까지 자동 완료하며, 사용자가 선택한 메인 모델 하나와 고정 pipeline만 실행합니다. Review UI와 human-review evidence는 optional 평가·감사 도구입니다. Multi-model 합의나 audio-conditioned verifier는 개발 benchmark에만 사용하고 production WebUI의 숨은 추가 실행이나 fallback으로 넣지 않습니다. 독립 human-reviewed gold가 없다면 benchmark agreement를 실제 CER나 정답률로 표현하지 않습니다.
 
+모델 품질 후보는 공식 benchmark/leaderboard보다 최근 사용자 커뮤니티의 일본어 ASMR·whisper·동인 음성 실사용 후기를 우선해 찾습니다. 공식 자료는 modality, runtime, license, revision 확인에만 사용하고, 최종 개발 선택은 실제 사용자 파일의 로컬 출력과 제한적인 Codex output spot-audit로 정합니다.
+
 SRT import는 선두의 `[L]`, `[R]`, `[LR]`, `[MIX]`, `[L:SPEAKER_00]`, `[R:SPEAKER_00]`, `[SPEAKER_00]` 같은 channel/speaker metadata label을 본문 텍스트에서 제거합니다. 채널은 `segment.channel`에만 저장합니다.
 
 ## 요구 사항

@@ -69,6 +69,10 @@ WebUI는 이 계약을 위한 새 옵션을 추가하지 않는다. 기존 `검�
 
 메인 전사 모델은 사용자가 직접 지정한다.
 
+모델 품질 후보 탐색은 공식 benchmark/leaderboard 순위를 기준으로 하지 않는다. 일본 동인 음성, whisper/ASMR, low-volume speech처럼 제품과 가까운 실제 파일을 사용했다는 최근 사용자 커뮤니티 후기를 우선하고, exact model/quantization/runtime/실패 사례나 출력 비교가 있는 firsthand report를 단순 추천보다 높게 본다. 서로 독립적인 사용자 보고가 반복되는지도 확인한다. 공식 model card와 benchmark는 architecture, 지원 modality/language, license, revision, runtime 요구사항 확인에만 사용하며 품질 승격 근거로 삼지 않는다.
+
+최종 개발 단계 선택은 사용자의 실제 동인 음성에서 단일 모델 후보를 실행한 뒤 Codex가 출력 일본어의 붕괴, 반복, 누락 징후, L/R 중복, timestamp/segment 구조와 community에서 보고된 실패 양상을 제한적으로 점검한다. Codex가 audio를 직접 듣지 못하는 현재 세션에서는 이 검증을 실제 발화 정답 판정이나 CER로 표현하지 않는다.
+
 UI에는 직접 연결 필드를 노출한다.
 
 ```text
