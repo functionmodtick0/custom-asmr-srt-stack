@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import io
 import json
 import os
@@ -21,6 +22,7 @@ from custom_asmr_srt_stack.qwen_hf_asr_worker import (
     qwen_hf_num_beams,
     require_secure_runtime,
     response_for_line,
+    validate_qwen_hf_snapshot,
 )
 
 
@@ -97,6 +99,100 @@ class QwenHfAsrWorkerTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "existing local model directory"):
                 checked_model_path(str(Path(tmpdir) / "missing"), "model_id")
+
+    def test_snapshot_preflight_accepts_native_safetensors_with_pinned_template(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            snapshot = Path(tmpdir)
+            template = "{{ messages }}"
+            (snapshot / "config.json").write_text(
+                json.dumps(
+                    {
+                        "architectures": ["Qwen3ASRForConditionalGeneration"],
+                        "model_type": "qwen3_asr",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (snapshot / "model.safetensors").write_bytes(b"safe-test-placeholder")
+            (snapshot / "tokenizer.json").write_text("{}", encoding="utf-8")
+            (snapshot / "chat_template.jinja").write_text(template, encoding="utf-8")
+            cache = snapshot / ".cache" / "huggingface" / "download"
+            cache.mkdir(parents=True)
+            (cache / "config.json.metadata").write_text("metadata", encoding="utf-8")
+            template_hash = hashlib.sha256(template.encode("utf-8")).hexdigest()
+
+            with mock.patch.dict(
+                os.environ,
+                {"CASRT_QWEN_HF_ASR_EXPECTED_CHAT_TEMPLATE_SHA256": template_hash},
+                clear=True,
+            ):
+                validate_qwen_hf_snapshot(snapshot)
+
+    def test_snapshot_preflight_rejects_unsafe_files_dynamic_code_and_template_drift(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            snapshot = Path(tmpdir)
+            config = {
+                "architectures": ["Qwen3ASRForConditionalGeneration"],
+                "model_type": "qwen3_asr",
+            }
+            (snapshot / "config.json").write_text(json.dumps(config), encoding="utf-8")
+            (snapshot / "model.safetensors").write_bytes(b"safe-test-placeholder")
+            template = snapshot / "chat_template.jinja"
+            template.write_text("expected", encoding="utf-8")
+            expected_hash = hashlib.sha256(b"expected").hexdigest()
+
+            (snapshot / "pytorch_model.bin").write_bytes(b"unsafe")
+            with mock.patch.dict(
+                os.environ,
+                {"CASRT_QWEN_HF_ASR_EXPECTED_CHAT_TEMPLATE_SHA256": expected_hash},
+                clear=True,
+            ):
+                with self.assertRaisesRegex(ValueError, "unsupported file"):
+                    validate_qwen_hf_snapshot(snapshot)
+            (snapshot / "pytorch_model.bin").unlink()
+
+            config["text_config"] = {"auto_map": {"AutoModel": "modeling_custom.Model"}}
+            (snapshot / "config.json").write_text(json.dumps(config), encoding="utf-8")
+            with mock.patch.dict(
+                os.environ,
+                {"CASRT_QWEN_HF_ASR_EXPECTED_CHAT_TEMPLATE_SHA256": expected_hash},
+                clear=True,
+            ):
+                with self.assertRaisesRegex(ValueError, "dynamic code settings: text_config.auto_map"):
+                    validate_qwen_hf_snapshot(snapshot)
+            config.pop("text_config")
+            (snapshot / "config.json").write_text(json.dumps(config), encoding="utf-8")
+
+            with mock.patch.dict(
+                os.environ,
+                {"CASRT_QWEN_HF_ASR_EXPECTED_CHAT_TEMPLATE_SHA256": "0" * 64},
+                clear=True,
+            ):
+                with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
+                    validate_qwen_hf_snapshot(snapshot)
+
+    def test_snapshot_preflight_validates_sharded_safetensors_index(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            snapshot = Path(tmpdir)
+            (snapshot / "config.json").write_text(
+                json.dumps(
+                    {
+                        "architectures": ["Qwen3ASRForConditionalGeneration"],
+                        "model_type": "qwen3_asr",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            shard = "model-00001-of-00001.safetensors"
+            (snapshot / shard).write_bytes(b"safe-test-placeholder")
+            index = {"weight_map": {"model.weight": shard}}
+            (snapshot / "model.safetensors.index.json").write_text(json.dumps(index), encoding="utf-8")
+
+            validate_qwen_hf_snapshot(snapshot)
+
+            (snapshot / shard).unlink()
+            with self.assertRaisesRegex(ValueError, "requires safetensors model weights"):
+                validate_qwen_hf_snapshot(snapshot)
 
     def test_qwen_language_defaults_to_japanese(self):
         self.assertEqual(qwen_language("ja"), "Japanese")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import socket
@@ -22,6 +23,32 @@ SOURCE_LANGUAGE_TO_QWEN = {
 }
 TRUE_ENV_VALUES = {"1", "true", "yes"}
 _NETWORK_DISABLED = False
+QWEN_HF_ALLOWED_ROOT_FILES = {
+    ".gitattributes",
+    "README.md",
+    "added_tokens.json",
+    "chat_template.jinja",
+    "chat_template.json",
+    "config.json",
+    "generation_config.json",
+    "merges.txt",
+    "model.safetensors",
+    "model.safetensors.index.json",
+    "preprocessor_config.json",
+    "processor_config.json",
+    "special_tokens_map.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "vocab.json",
+}
+QWEN_HF_CACHE_FILES = {".gitignore", "CACHEDIR.TAG"}
+QWEN_HF_DYNAMIC_CONFIG_KEYS = {
+    "auto_map",
+    "custom_code",
+    "remote_code",
+    "trust_remote_code",
+    "_attn_implementation_internal",
+}
 
 
 @dataclass(frozen=True)
@@ -86,6 +113,7 @@ class QwenHfAsrRuntime:
         require_secure_runtime()
         disable_python_network_if_requested()
         checked_model_id = checked_model_path(model_id, "model_id")
+        validate_qwen_hf_snapshot(Path(checked_model_id))
         loaded = self._loaded.get(checked_model_id)
         if loaded is not None:
             return loaded
@@ -149,6 +177,116 @@ def checked_model_path(value: str, name: str) -> str:
     if not path.is_dir():
         raise ValueError(f"{name} must be an existing local model directory")
     return str(path)
+
+
+def validate_qwen_hf_snapshot(path: Path) -> None:
+    root_files = []
+    for item in path.rglob("*"):
+        if item.is_symlink():
+            raise ValueError(f"Qwen HF ASR snapshot must not contain symlinks: {item.relative_to(path)}")
+        if not item.is_file():
+            continue
+        relative = item.relative_to(path)
+        if relative.parts[0] == ".cache":
+            validate_qwen_hf_cache_file(relative)
+            continue
+        if len(relative.parts) != 1:
+            raise ValueError(f"Qwen HF ASR snapshot file must be at the root: {relative}")
+        if relative.name not in QWEN_HF_ALLOWED_ROOT_FILES and not is_safetensors_shard(relative.name):
+            raise ValueError(f"Qwen HF ASR snapshot contains an unsupported file: {relative.name}")
+        root_files.append(relative.name)
+
+    if "config.json" not in root_files:
+        raise ValueError("Qwen HF ASR snapshot requires config.json")
+    if not any(name.endswith(".safetensors") for name in root_files):
+        raise ValueError("Qwen HF ASR snapshot requires safetensors model weights")
+    for name in root_files:
+        if name.endswith(".safetensors") and (path / name).stat().st_size <= 0:
+            raise ValueError(f"Qwen HF ASR safetensors file must not be empty: {name}")
+    validate_qwen_hf_config(path / "config.json")
+    validate_qwen_hf_safetensors_index(path, root_files)
+    validate_qwen_hf_chat_template(path / "chat_template.jinja")
+
+
+def validate_qwen_hf_cache_file(relative: Path) -> None:
+    if len(relative.parts) < 2 or relative.parts[1] != "huggingface":
+        raise ValueError(f"Qwen HF ASR snapshot contains an unsupported cache file: {relative}")
+    if relative.name in QWEN_HF_CACHE_FILES or relative.name.endswith(".metadata"):
+        return
+    raise ValueError(f"Qwen HF ASR snapshot contains an unsupported cache file: {relative}")
+
+
+def is_safetensors_shard(name: str) -> bool:
+    return name.startswith("model-") and name.endswith(".safetensors")
+
+
+def validate_qwen_hf_config(path: Path) -> None:
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"Qwen HF ASR config.json is invalid: {error}") from error
+    if not isinstance(config, dict):
+        raise ValueError("Qwen HF ASR config.json must be a JSON object")
+    if config.get("model_type") != "qwen3_asr":
+        raise ValueError("Qwen HF ASR config.json model_type must be qwen3_asr")
+    architectures = config.get("architectures")
+    if architectures != ["Qwen3ASRForConditionalGeneration"]:
+        raise ValueError("Qwen HF ASR config.json must use Qwen3ASRForConditionalGeneration")
+    dynamic_keys = dynamic_config_paths(config)
+    if dynamic_keys:
+        raise ValueError(f"Qwen HF ASR config.json contains dynamic code settings: {', '.join(dynamic_keys)}")
+
+
+def dynamic_config_paths(value: Any, prefix: str = "") -> list[str]:
+    if isinstance(value, dict):
+        result = []
+        for key, item in value.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            if key in QWEN_HF_DYNAMIC_CONFIG_KEYS and item is not None and item is not False:
+                result.append(path)
+            result.extend(dynamic_config_paths(item, path))
+        return sorted(result)
+    if isinstance(value, list):
+        result = []
+        for index, item in enumerate(value):
+            result.extend(dynamic_config_paths(item, f"{prefix}[{index}]"))
+        return sorted(result)
+    return []
+
+
+def validate_qwen_hf_safetensors_index(path: Path, root_files: list[str]) -> None:
+    index_path = path / "model.safetensors.index.json"
+    if not index_path.is_file():
+        return
+    try:
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"Qwen HF ASR safetensors index is invalid: {error}") from error
+    if not isinstance(index, dict) or not isinstance(index.get("weight_map"), dict):
+        raise ValueError("Qwen HF ASR safetensors index requires a weight_map object")
+    raw_shard_names = list(index["weight_map"].values())
+    if not raw_shard_names or any(not isinstance(name, str) for name in raw_shard_names):
+        raise ValueError("Qwen HF ASR safetensors index must reference model-*.safetensors shards")
+    shard_names = set(raw_shard_names)
+    if any(not is_safetensors_shard(name) for name in shard_names):
+        raise ValueError("Qwen HF ASR safetensors index must reference model-*.safetensors shards")
+    missing = sorted(name for name in shard_names if name not in root_files)
+    if missing:
+        raise ValueError(f"Qwen HF ASR safetensors index references missing shards: {', '.join(missing)}")
+
+
+def validate_qwen_hf_chat_template(path: Path) -> None:
+    if not path.is_file():
+        return
+    expected = os.environ.get("CASRT_QWEN_HF_ASR_EXPECTED_CHAT_TEMPLATE_SHA256", "").strip().lower()
+    if len(expected) != 64 or any(character not in "0123456789abcdef" for character in expected):
+        raise ValueError("CASRT_QWEN_HF_ASR_EXPECTED_CHAT_TEMPLATE_SHA256 must be a SHA-256 hex digest")
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual != expected:
+        raise ValueError(
+            "Qwen HF ASR chat_template.jinja SHA-256 mismatch: "
+            f"expected {expected}, got {actual}"
+        )
 
 
 def disable_python_network_if_requested() -> None:

@@ -196,13 +196,14 @@ CASRT_LOCAL_WORKER_ENV_MODE=offline \
 CASRT_QWEN_HF_ASR_REQUIRE_LOCAL_MODEL_PATH=1 \
 CASRT_QWEN_HF_ASR_LOCAL_FILES_ONLY=1 \
 CASRT_QWEN_HF_ASR_DISABLE_NETWORK=1 \
+CASRT_QWEN_HF_ASR_EXPECTED_CHAT_TEMPLATE_SHA256=<sha256> \
 CASRT_QWEN_HF_ASR_NUM_BEAMS=5 \
   uv run casrt project transcribe PROJECT_ID \
     --adapter local-qwen-hf-asr \
     --model-id /path/to/Qwen3-ASR-1.7B-hf
 ```
 
-`CASRT_QWEN_HF_ASR_NUM_BEAMS`는 positive integer 내부 benchmark 설정이며 기본값은 `1`입니다. Beam 5를 보고한 모델을 비교할 때만 base와 fine-tune 양쪽에 같은 값으로 명시하고, WebUI 옵션으로는 추가하지 않습니다.
+`CASRT_QWEN_HF_ASR_NUM_BEAMS`는 positive integer 내부 benchmark 설정이며 기본값은 `1`입니다. Beam 5를 보고한 모델을 비교할 때만 base와 fine-tune 양쪽에 같은 값으로 명시하고, WebUI 옵션으로는 추가하지 않습니다. Qwen HF snapshot은 safetensors/native `qwen3_asr` file/config preflight를 통과해야 하며, external `chat_template.jinja`가 있으면 `CASRT_QWEN_HF_ASR_EXPECTED_CHAT_TEMPLATE_SHA256` expected digest가 필수입니다.
 
 고정 aligner command를 사용하려면 서버 실행 전에 `CASRT_ALIGNER_COMMAND`를 설정합니다. 이 명령은 stdin으로 `{ audio_file, master }` JSON을 받고 stdout으로 `{ segments: [{ id, start_ms, end_ms }] }` JSON을 반환해야 합니다.
 

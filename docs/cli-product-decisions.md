@@ -181,6 +181,7 @@ uv run casrt project transcribe PROJECT_ID \
 - `CASRT_LOCAL_WORKER_ENV_MODE=offline`이면 local worker subprocess env는 `CASRT_LOCAL_WORKER_ENV_MODE`를 보존하고, `PYTHONPATH`와 secret/proxy류 env를 넘기지 않으며, `PYTHONNOUSERSITE=1`을 강제한다.
 - `python -m custom_asmr_srt_stack.qwen_hf_asr_worker`는 HF-native `Qwen/Qwen3-ASR-1.7B-hf`를 실행하는 worker다. `CASRT_LOCAL_WORKER_ENV_MODE=offline`, `CASRT_QWEN_HF_ASR_REQUIRE_LOCAL_MODEL_PATH=1`, `CASRT_QWEN_HF_ASR_LOCAL_FILES_ONLY=1`, `CASRT_QWEN_HF_ASR_DISABLE_NETWORK=1`이 모두 없으면 실패한다. `AutoProcessor`와 `AutoModelForMultimodalLM`은 local path, `local_files_only=True`, `trust_remote_code=False`, `use_safetensors=True`로만 로드한다.
 - `CASRT_QWEN_HF_ASR_NUM_BEAMS`는 positive integer generation beam count이며 기본값은 `1`이다. Model card decoding을 재현하는 benchmark에서만 명시하고 WebUI 옵션으로 노출하지 않는다. Base/fine-tune 비교는 같은 beam count와 `CASRT_QWEN_HF_ASR_MAX_NEW_TOKENS`를 사용한다.
+- Qwen HF worker는 model load 전에 root file/symlink/safetensors/config preflight를 실행한다. Native Qwen processor/tokenizer files와 safetensors만 허용하고 dynamic/remote model code setting 및 unsafe/alternate weight/runtime files를 거부한다. External `chat_template.jinja`가 있으면 `CASRT_QWEN_HF_ASR_EXPECTED_CHAT_TEMPLATE_SHA256` expected digest가 필수다.
 - Qwen HF ASR worker는 timestamp를 생성하지 않으므로 chunk 전체를 speech segment로 반환하고 `needs_review=true`를 붙인다. timing은 후속 VAD/alignment 평가에서 다룬다.
 - Qwen HF ASR worker 실패 응답은 요약 오류만 노출하고 traceback은 stdout/stderr/API 경로로 내보내지 않는다.
 
