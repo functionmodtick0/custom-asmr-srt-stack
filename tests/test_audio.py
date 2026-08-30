@@ -85,6 +85,19 @@ class AudioPipelineTests(unittest.TestCase):
 
         self.assertEqual(intervals, [{"index": 0, "start_ms": 0, "end_ms": 1100}, {"index": 1, "start_ms": 1900, "end_ms": 3000}])
 
+    def test_speech_intervals_by_energy_merges_ranges_that_overlap_after_padding(self):
+        audio = make_mono_wav(([2000] * 1000) + ([0] * 1300) + ([2000] * 1000))
+
+        intervals = speech_intervals_by_energy(
+            audio,
+            threshold_dbfs=-40,
+            window_ms=100,
+            min_silence_ms=1200,
+            pad_ms=800,
+        )
+
+        self.assertEqual(intervals, [{"index": 0, "start_ms": 0, "end_ms": 3300}])
+
     def test_wav_rms_dbfs_reports_selected_range(self):
         audio = make_mono_wav([1000, 1000, 0, 0])
 

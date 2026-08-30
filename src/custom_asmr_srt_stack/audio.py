@@ -226,7 +226,19 @@ def speech_intervals_by_energy(
                 "end_ms": min(info.duration_ms, end_ms + pad_ms),
             }
         )
-    return padded or [{"index": 0, "start_ms": 0, "end_ms": info.duration_ms}]
+    if not padded:
+        return [{"index": 0, "start_ms": 0, "end_ms": info.duration_ms}]
+
+    non_overlapping: list[dict[str, int]] = []
+    for interval in padded:
+        if not non_overlapping or interval["start_ms"] > non_overlapping[-1]["end_ms"]:
+            non_overlapping.append({"start_ms": interval["start_ms"], "end_ms": interval["end_ms"]})
+            continue
+        non_overlapping[-1]["end_ms"] = max(non_overlapping[-1]["end_ms"], interval["end_ms"])
+    return [
+        {"index": index, "start_ms": interval["start_ms"], "end_ms": interval["end_ms"]}
+        for index, interval in enumerate(non_overlapping)
+    ]
 
 
 def wav_rms_dbfs(audio_bytes: bytes, *, start_ms: int | None = None, end_ms: int | None = None) -> float:
