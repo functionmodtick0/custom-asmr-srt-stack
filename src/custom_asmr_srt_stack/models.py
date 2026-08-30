@@ -35,6 +35,12 @@ def require_int(value: Any, name: str) -> int:
     return value
 
 
+def require_bool(value: Any, name: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{name} must be a boolean")
+    return value
+
+
 @dataclass(frozen=True)
 class Segment:
     id: str
@@ -44,6 +50,7 @@ class Segment:
     kind: str
     text: str
     needs_review: bool = False
+    channel_reviewed: bool = False
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -67,7 +74,11 @@ class Segment:
             channel=require_string(data.get("channel"), "segment.channel"),
             kind=require_string(data.get("kind"), "segment.kind"),
             text=require_string(data.get("text"), "segment.text"),
-            needs_review=bool(data.get("needs_review", False)),
+            needs_review=require_bool(data.get("needs_review", False), "segment.needs_review"),
+            channel_reviewed=require_bool(
+                data.get("channel_reviewed", False),
+                "segment.channel_reviewed",
+            ),
         )
 
     def to_json(self) -> dict[str, Any]:
@@ -79,6 +90,7 @@ class Segment:
             "kind": self.kind,
             "text": self.text,
             "needs_review": self.needs_review,
+            "channel_reviewed": self.channel_reviewed,
         }
 
 

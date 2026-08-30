@@ -136,12 +136,12 @@ def reference_stage(
             reasons.append(f"reference_type {reference_type!r} != {required_reference_type!r}")
     channel_metrics = reference_channel_audit_metrics(reference_channel_audit_file)
     if channel_metrics is not None:
-        mismatch_count = channel_metrics["mismatch_count"]
-        uncertain_count = channel_metrics["energy_uncertain_count"]
+        mismatch_count = channel_metrics["unresolved_mismatch_count"]
+        uncertain_count = channel_metrics["unresolved_uncertain_count"]
         if mismatch_count > 0:
-            reasons.append(f"reference channel labels conflict with energy: {mismatch_count}")
+            reasons.append(f"unreviewed reference channel labels conflict with energy: {mismatch_count}")
         if uncertain_count > 0:
-            reasons.append(f"reference channel labels have uncertain energy evidence: {uncertain_count}")
+            reasons.append(f"unreviewed reference channel labels have uncertain energy evidence: {uncertain_count}")
 
     warnings = []
     flag_type_counts = metrics.get("flag_type_counts")
@@ -185,6 +185,16 @@ def reference_channel_audit_metrics(path: Path | None) -> dict[str, Any] | None:
     if report.get("format") != REFERENCE_CHANNEL_AUDIT_SUITE_FORMAT:
         raise ValueError(f"{path}: reference channel audit report format must be {REFERENCE_CHANNEL_AUDIT_SUITE_FORMAT}")
     summary = require_mapping(report.get("summary"), f"{path}: reference channel audit summary")
+    mismatch_count = require_int(
+        summary.get("mismatch_count"),
+        f"{path}: reference channel audit mismatch_count",
+    )
+    energy_uncertain_count = require_int(
+        summary.get("energy_uncertain_count"),
+        f"{path}: reference channel audit energy_uncertain_count",
+    )
+    unresolved_mismatch_count = summary.get("unresolved_mismatch_count", mismatch_count)
+    unresolved_uncertain_count = summary.get("unresolved_uncertain_count", energy_uncertain_count)
     return {
         "report": str(path),
         "eligible_reference_channel_count": require_int(
@@ -195,14 +205,24 @@ def reference_channel_audit_metrics(path: Path | None) -> dict[str, Any] | None:
             summary.get("energy_labeled_count"),
             f"{path}: reference channel audit energy_labeled_count",
         ),
-        "energy_uncertain_count": require_int(
-            summary.get("energy_uncertain_count"),
-            f"{path}: reference channel audit energy_uncertain_count",
-        ),
+        "energy_uncertain_count": energy_uncertain_count,
         "match_count": require_int(summary.get("match_count"), f"{path}: reference channel audit match_count"),
-        "mismatch_count": require_int(
-            summary.get("mismatch_count"),
-            f"{path}: reference channel audit mismatch_count",
+        "mismatch_count": mismatch_count,
+        "channel_reviewed_count": optional_int(
+            summary.get("channel_reviewed_count"),
+            f"{path}: reference channel audit channel_reviewed_count",
+        ),
+        "reviewed_exception_count": optional_int(
+            summary.get("reviewed_exception_count"),
+            f"{path}: reference channel audit reviewed_exception_count",
+        ),
+        "unresolved_mismatch_count": require_int(
+            unresolved_mismatch_count,
+            f"{path}: reference channel audit unresolved_mismatch_count",
+        ),
+        "unresolved_uncertain_count": require_int(
+            unresolved_uncertain_count,
+            f"{path}: reference channel audit unresolved_uncertain_count",
         ),
         "match_ratio": optional_number(summary.get("match_ratio"), f"{path}: reference channel audit match_ratio"),
         "energy_labeled_ratio": optional_number(

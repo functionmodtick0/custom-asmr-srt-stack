@@ -184,6 +184,7 @@ def reference_channel_energy_item(
         "abs_delta_db": abs(delta_db),
         "quieter_dbfs": min(left_db, right_db),
         "needs_review": segment.needs_review,
+        "channel_reviewed": segment.channel_reviewed,
     }
 
 
@@ -328,12 +329,30 @@ def reference_channel_audit_summary(items: list[dict[str, Any]]) -> dict[str, An
     mismatch_count = status_counts.get("mismatch", 0)
     uncertain_count = status_counts.get("uncertain", 0)
     energy_labeled_count = match_count + mismatch_count
+    channel_reviewed_count = sum(item.get("channel_reviewed") is True for item in items)
+    reviewed_exception_count = sum(
+        item.get("channel_reviewed") is True and item.get("status") in {"mismatch", "uncertain"}
+        for item in items
+    )
+    unresolved_mismatch_count = sum(
+        item.get("status") == "mismatch" and item.get("channel_reviewed") is not True
+        for item in items
+    )
+    unresolved_uncertain_count = sum(
+        item.get("status") == "uncertain" and item.get("channel_reviewed") is not True
+        for item in items
+    )
     return {
         "eligible_count": eligible_count,
         "energy_labeled_count": energy_labeled_count,
         "energy_uncertain_count": uncertain_count,
         "match_count": match_count,
         "mismatch_count": mismatch_count,
+        "channel_reviewed_count": channel_reviewed_count,
+        "reviewed_exception_count": reviewed_exception_count,
+        "unresolved_mismatch_count": unresolved_mismatch_count,
+        "unresolved_uncertain_count": unresolved_uncertain_count,
+        "unresolved_count": unresolved_mismatch_count + unresolved_uncertain_count,
         "match_ratio": None if energy_labeled_count == 0 else match_count / energy_labeled_count,
         "mismatch_ratio": None if energy_labeled_count == 0 else mismatch_count / energy_labeled_count,
         "energy_labeled_ratio": None if eligible_count == 0 else energy_labeled_count / eligible_count,
@@ -364,7 +383,11 @@ def reference_channel_audit_review_effort_report(
         if not isinstance(raw_items, list):
             raise ValueError("reference channel audit items must be an array")
         for raw_item in raw_items:
-            if not isinstance(raw_item, dict) or raw_item.get("status") == "match":
+            if (
+                not isinstance(raw_item, dict)
+                or raw_item.get("status") == "match"
+                or raw_item.get("channel_reviewed") is True
+            ):
                 continue
             items.append(reference_channel_review_item(case_id, raw_item))
 

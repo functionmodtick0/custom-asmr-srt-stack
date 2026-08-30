@@ -24,6 +24,7 @@ def slice_master_document(master: MasterDocument, *, start_ms: int, end_ms: int)
                 start_ms=overlap_start - start_ms,
                 end_ms=overlap_end - start_ms,
                 needs_review=segment.needs_review or clipped,
+                channel_reviewed=segment.channel_reviewed and not clipped,
             )
         )
 

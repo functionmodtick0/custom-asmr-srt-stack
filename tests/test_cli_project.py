@@ -2056,6 +2056,81 @@ class ProjectCliTests(unittest.TestCase):
             self.assertIn("reference_channel_audit_item_count=1", error)
             self.assertIn("reference-channel-energy-mismatch", error)
 
+    def test_audit_review_case_channels_accepts_explicit_human_channel_review(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            audio_dir = root / "audio"
+            references = root / "references"
+            audio_dir.mkdir()
+            references.mkdir()
+            audio = audio_dir / "front.wav"
+            write_stereo_samples(audio, [(100, 6000)] * 1000)
+            master = MasterDocument(
+                source_language="ja",
+                source_file="front.wav",
+                duration_ms=1000,
+                segments=(
+                    Segment(
+                        "seg_000001",
+                        0,
+                        1000,
+                        "L",
+                        "speech",
+                        "あ",
+                        channel_reviewed=True,
+                    ),
+                ),
+            )
+            (references / "front.master.json").write_text(
+                json.dumps(master.to_json(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            case_index = root / "case-index.json"
+            output_path = root / "channel-audit.json"
+            review_effort_path = root / "channel-audit-review-effort.json"
+            case_index.write_text(
+                json.dumps(
+                    {
+                        "format": "custom-asmr-review-case-set-v1",
+                        "items": [
+                            {
+                                "id": "front",
+                                "audio": "audio/front.wav",
+                                "reference": "references/front.master.json",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result, output = run_cli(
+                [
+                    "audit-review-case-channels",
+                    "--json",
+                    "--fail-on-audit",
+                    "--threshold-db",
+                    "3",
+                    "--quiet-channel-max-dbfs",
+                    "none",
+                    "-o",
+                    str(output_path),
+                    "--review-effort-output",
+                    str(review_effort_path),
+                    str(case_index),
+                ]
+            )
+
+            self.assertEqual(result, 0)
+            report = json.loads(output)
+            self.assertEqual(report["summary"]["mismatch_count"], 1)
+            self.assertEqual(report["summary"]["reviewed_exception_count"], 1)
+            self.assertEqual(report["summary"]["unresolved_mismatch_count"], 0)
+            self.assertEqual(report["summary"]["unresolved_count"], 0)
+            review_effort = json.loads(review_effort_path.read_text(encoding="utf-8"))
+            self.assertEqual(review_effort["item_count"], 0)
+            self.assertEqual(review_effort["reason_counts"], {})
+
     def test_audit_review_case_channels_adds_short_review_clip_window_for_long_segments(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

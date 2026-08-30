@@ -438,8 +438,9 @@ uv run casrt audit-review-case-channels cases/case-index.json \
 - 각 L/R reference speech segment에 대해 stereo L/R RMS dBFS, delta, energy channel, match/mismatch/uncertain status를 저장한다.
 - Transcript text는 저장하지 않는다. Segment id/time/channel과 energy diagnostics만 저장한다.
 - `--threshold-db`와 `--quiet-channel-max-dbfs`는 CLI-only 실험값이다. WebUI 옵션으로 노출하지 않는다.
-- `--review-effort-output`을 지정하면 mismatch/uncertain segment를 기존 `review-pack`에 넣을 수 있는 `custom-asmr-review-effort-v1` queue로 저장한다. 긴 channel audit item은 원본 `start_ms/end_ms`를 유지하고, 최대 5초 `review_clip_start_ms/review_clip_end_ms`와 해당 구간의 L/R dBFS/delta evidence를 추가한다.
-- `--fail-on-audit`은 channel audit review item이 남아 있으면 report 출력/저장 후 실패한다.
+- Raw mismatch/uncertain count는 energy 진단값으로 보존한다. 사람이 해당 segment를 듣고 `channel_reviewed=true`로 저장한 예외는 `reviewed_exception_count`에 포함하고, 별도 `unresolved_mismatch_count`, `unresolved_uncertain_count`, `unresolved_count`에서는 제외한다.
+- `--review-effort-output`을 지정하면 unresolved mismatch/uncertain segment만 기존 `review-pack`에 넣을 수 있는 `custom-asmr-review-effort-v1` queue로 저장한다. 긴 channel audit item은 원본 `start_ms/end_ms`를 유지하고, 최대 5초 `review_clip_start_ms/review_clip_end_ms`와 해당 구간의 L/R dBFS/delta evidence를 추가한다.
+- `--fail-on-audit`은 unresolved channel audit review item이 남아 있으면 report 출력/저장 후 실패한다.
 - 이 명령은 reference를 수정하거나 energy channel을 정답으로 승격하지 않는다. Human-reviewed 승격 전 L/R label 검수 우선순위를 정하는 진단 도구다.
 
 ### `audit-candidate-channels`
@@ -602,7 +603,7 @@ uv run casrt build-eval-manifest cases/case-index.json \
 - `review-case-status`와 같은 방식으로 파일 존재 여부와 stale count를 확인하고, 문제가 있으면 manifest를 쓰지 않고 실패한다.
 - `--fail-on-review`는 reference에 `needs_review=true`가 남아 있으면 manifest를 쓰지 않고 실패한다.
 - `--fail-on-reference-audit`는 reference audit 구조 검수 queue가 남아 있으면 manifest를 쓰지 않고 실패한다.
-- `--fail-on-reference-channel-audit`는 reference channel audit mismatch/uncertain queue가 남아 있으면 manifest를 쓰지 않고 실패한다.
+- `--fail-on-reference-channel-audit`는 사람 검수 예외를 제외한 reference channel audit unresolved mismatch/uncertain queue가 남아 있으면 manifest를 쓰지 않고 실패한다.
 - output file은 `custom-asmr-eval-manifest-v1`이다.
 - `--reference-type`이 있으면 root `reference_type`을 override한다. 사람이 검수한 기준본을 모델 승격에 쓰려면 이 값을 `human-reviewed`로 명시한다.
 - `--reference-type`이 없으면 `case-index.json`의 root/item reference type을 보존한다.
@@ -844,7 +845,7 @@ uv run casrt pipeline-readiness \
 - `reference`, `vad_chunking`, `alignment`, `channel_attribution`, `text_asr` stage별 `pass`/`fail`/`unknown`, reason, 핵심 metric을 저장한다.
 - `asr_only_ready`는 `reference`, `vad_chunking`, `alignment`, `channel_attribution`이 모두 pass일 때만 true다. `text_asr` 실패는 제품 품질 blocker지만 ASR-only readiness blocker로 세지 않는다.
 - `vad_chunking`은 `quality_gate`가 있는 VAD comparison에서는 통과 후보가 있으면 pass로 보고, gate가 없는 comparison에서는 chosen candidate의 missed reference speech가 남으면 fail로 본다.
-- `--reference-channel-audit`을 지정하면 reference L/R label energy mismatch와 uncertain count를 `reference` stage blocker와 metrics에 포함한다.
+- `--reference-channel-audit`을 지정하면 raw reference L/R energy mismatch/uncertain count는 metrics에 보존하고, `unresolved_*` count만 `reference` stage blocker로 사용한다. `unresolved_*`가 없는 이전 report는 raw count를 unresolved로 해석한다.
 - `--alignment-comparison`을 지정하면 `alignment` stage만 해당 eval comparison에서 읽고, `channel_attribution`과 `text_asr`는 `--eval-comparison`에서 계속 읽는다. Reference-copy oracle처럼 alignment만 따로 평가한 report를 readiness에 반영하기 위한 CLI-only override다.
 - `--channel-comparison`을 지정하면 `channel_attribution` stage만 해당 eval comparison에서 읽고, `alignment`와 `text_asr`는 `--eval-comparison`에서 계속 읽는다. Reference-copy channel sweep처럼 channel만 따로 평가한 report를 readiness에 반영하기 위한 CLI-only override다.
 - `--candidate-channel-audit`을 지정하면 `channel_attribution` stage만 `custom-asmr-candidate-channel-audit-suite-v1`에서 읽고, reference label comparison 대신 stereo energy proxy 기준으로 pass/fail을 계산한다. 이 option은 `--channel-comparison`보다 우선하며, reference channel label 문제는 `--reference-channel-audit`을 통해 `reference` stage에 남긴다.
