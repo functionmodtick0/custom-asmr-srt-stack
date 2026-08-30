@@ -61,6 +61,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["timing_time_aligned"]["matched_reference_segments"], 2)
         self.assertEqual(report["timing_time_aligned"]["reference_match_ratio"], 1.0)
         self.assertEqual(report["timing_time_aligned"]["mean_boundary_error_ms"], 80)
+        self.assertEqual(report["timing_time_aligned_channel_aware"]["matched_reference_segments"], 1)
         self.assertEqual(report["channel"]["paired_segments"], 2)
         self.assertEqual(report["channel"]["comparable_segments"], 2)
         self.assertEqual(report["channel"]["accuracy"], 0.5)
@@ -162,6 +163,30 @@ class EvaluationTests(unittest.TestCase):
                 "candidate_channel": "MIX",
             }
         ])
+
+    def test_channel_aware_timing_does_not_pair_overlapping_opposite_channel(self):
+        reference = master_with_segments(
+            [
+                Segment("ref_l", 0, 1000, "L", "speech", "左"),
+                Segment("ref_r", 0, 1000, "R", "speech", "右"),
+            ]
+        )
+        candidate = master_with_segments(
+            [
+                Segment("cand_l", 0, 1000, "L", "speech", "左"),
+                Segment("cand_r", 600, 1000, "R", "speech", "右"),
+            ]
+        )
+
+        report = evaluate_transcripts(reference, candidate)
+
+        self.assertEqual(report["timing_time_aligned"]["within_500ms_ratio"], 1.0)
+        self.assertEqual(report["channel_time_aligned"]["accuracy"], 0.5)
+        channel_aware = report["timing_time_aligned_channel_aware"]
+        self.assertEqual(channel_aware["matched_reference_segments"], 2)
+        self.assertEqual(channel_aware["reference_match_ratio"], 1.0)
+        self.assertEqual(channel_aware["within_500ms_count"], 3)
+        self.assertEqual(channel_aware["within_500ms_ratio"], 0.75)
 
     def test_review_effort_items_report_missing_reference_segments(self):
         reference = master_with_segments(
@@ -278,6 +303,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["summary"]["text"]["reference_characters"], 6)
         self.assertAlmostEqual(report["summary"]["text"]["cer"], 1 / 6)
         self.assertEqual(report["summary"]["timing"]["paired_segments"], 2)
+        self.assertEqual(report["summary"]["timing_time_aligned_channel_aware"]["reference_segments"], 2)
         self.assertEqual(report["summary"]["timing"]["boundary_samples"], 4)
         self.assertEqual(report["summary"]["timing"]["mean_start_error_ms"], 150)
         self.assertEqual(report["summary"]["timing"]["mean_boundary_error_ms"], 175)
@@ -461,6 +487,7 @@ class EvaluationTests(unittest.TestCase):
         )
         self.assertIsNone(item["asr_artifact_segment_ratio"])
         self.assertIsNone(item["channel_aware_practical_cer"])
+        self.assertIsNone(item["channel_aware_time_aligned_500ms_ratio"])
 
     def test_compare_review_effort_reports_groups_candidate_failures_by_reference_segment(self):
         with tempfile.TemporaryDirectory() as tmpdir:

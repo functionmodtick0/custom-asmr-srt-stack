@@ -711,6 +711,7 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 - `text_practical_channel_aware`는 L/R/MIX별 practical text를 각각 이어 붙여 편집거리를 계산한 뒤 micro-average한다. 겹치는 L/R segment의 전역 시간순 interleave가 달라도 같은 채널 안의 문장 순서가 맞으면 불필요한 순서 벌점을 피한다. 반대로 같은 text를 잘못된 채널이나 MIX에 두면 원 채널 deletion과 잘못된 채널 insertion을 모두 반영하므로 1.0을 넘을 수 있다. 기존 `text_practical` product gate를 대체하지 않는 stereo/channel diagnostics다.
 - segment index 기준 mean start/end/boundary error를 계산한다.
 - segment 수나 split이 다른 후보를 평가하기 위해 time-overlap 기반 `timing_time_aligned`를 계산한다.
+- `timing_time_aligned_channel_aware`는 reference와 같은 L/R/MIX channel 후보 안에서만 최대 overlap을 찾아 boundary error를 계산한다. 겹친 반대 채널 후보를 잘못 선택하지 않기 위한 stereo alignment 진단이며, channel attribution accuracy나 기존 timing product gate를 대체하지 않는다.
 - forced alignment 재평가를 위해 boundary sample 수, max/mean boundary delta, 250ms/500ms 이내 boundary ratio를 계산한다.
 - channel attribution 튜닝을 위해 index 기반 `channel`과 time-overlap 기반 `channel_time_aligned`의 L/R/MIX confusion, candidate MIX 유지 비율, L/R channel accuracy를 계산한다.
 - candidate `needs_review` 비율을 계산한다. 이 값은 모델/heuristic 승격 gate에서 0이어야 한다.
@@ -783,7 +784,7 @@ uv run casrt compare-evals qwen-report.json stable-report.json quiet8-report.jso
 
 - 입력은 `eval-transcript` 단일 report 또는 `eval-manifest` suite report JSON이다.
 - output format은 `custom-asmr-eval-comparison-v1`이다.
-- 각 report의 practical CER, optional channel-aware practical CER/Japanese relaxed CER, time-aligned 500ms ratio, channel time-aligned accuracy, candidate MIX ratio, candidate `needs_review` 비율, `review_effort` 수정 비율과 text/channel/timing/missing/extra breakdown ratio, dominant review-effort reason/ranking, optional `asr_artifacts` ratio를 한 줄 summary로 뽑는다. Legacy report에 channel-aware metric이 없으면 `null`로 둔다.
+- 각 report의 practical CER, optional channel-aware practical CER/Japanese relaxed CER, time-aligned 500ms ratio, optional channel-aware time-aligned 500ms ratio, channel time-aligned accuracy, candidate MIX ratio, candidate `needs_review` 비율, `review_effort` 수정 비율과 text/channel/timing/missing/extra breakdown ratio, dominant review-effort reason/ranking, optional `asr_artifacts` ratio를 한 줄 summary로 뽑는다. Legacy report에 channel-aware metric이 없으면 `null`로 둔다.
 - `compare-evals` item은 새 report에서 `asr_artifact_segment_ratio`, `asr_repeated_text_segment_ratio`, `asr_high_text_density_segment_ratio`, `asr_non_japanese_text_segment_ratio`를 표시하고, legacy report에는 `null`로 둔다.
 - ranking은 `segments_needing_edit_ratio`, practical CER, time-aligned 500ms ratio desc, channel time-aligned accuracy desc 순서다.
 - `--product-gate` 또는 개별 gate 인자를 지정하면 각 item에 `gate_passed`와 `gate_failures`를 표시한다. `compare-evals` 자체는 gate 실패 때문에 실패 exit code를 반환하지 않는다.

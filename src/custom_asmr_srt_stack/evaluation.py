@@ -54,11 +54,20 @@ def evaluate_transcripts(reference: MasterDocument, candidate: MasterDocument) -
     )
     paired = list(zip(reference_speech, candidate_speech))
     time_aligned_paired = time_aligned_segment_pairs(reference_speech, candidate_speech)
+    channel_aware_time_aligned_paired = channel_aware_time_aligned_segment_pairs(
+        reference_speech,
+        candidate_speech,
+    )
     timing_errors = timing_error_summary(paired)
     time_aligned_timing_errors = time_aligned_timing_summary(
         reference_speech,
         candidate_speech,
         time_aligned_paired,
+    )
+    channel_aware_time_aligned_timing_errors = time_aligned_timing_summary(
+        reference_speech,
+        candidate_speech,
+        channel_aware_time_aligned_paired,
     )
     channel_summary = channel_accuracy_summary(paired)
     time_aligned_channel_summary = channel_accuracy_summary(time_aligned_paired)
@@ -76,6 +85,7 @@ def evaluate_transcripts(reference: MasterDocument, candidate: MasterDocument) -
         "text_practical_channel_aware": channel_aware_practical_text,
         "timing": timing_errors,
         "timing_time_aligned": time_aligned_timing_errors,
+        "timing_time_aligned_channel_aware": channel_aware_time_aligned_timing_errors,
         "channel": channel_summary,
         "channel_time_aligned": time_aligned_channel_summary,
         "review": {
@@ -500,6 +510,11 @@ def eval_comparison_item(path: Path, report: dict[str, Any]) -> dict[str, Any]:
     text_practical_channel_aware = optional_report_mapping(metrics, "text_practical_channel_aware", path)
     text_japanese_relaxed = optional_report_mapping(metrics, "text_japanese_relaxed", path)
     timing_time_aligned = require_report_mapping(metrics, "timing_time_aligned", path)
+    timing_time_aligned_channel_aware = optional_report_mapping(
+        metrics,
+        "timing_time_aligned_channel_aware",
+        path,
+    )
     channel_time_aligned = require_report_mapping(metrics, "channel_time_aligned", path)
     review = optional_report_mapping(metrics, "review", path)
     review_effort = require_report_mapping(metrics, "review_effort", path)
@@ -516,6 +531,9 @@ def eval_comparison_item(path: Path, report: dict[str, Any]) -> dict[str, Any]:
         if text_japanese_relaxed is None
         else require_report_number(text_japanese_relaxed, "cer", path),
         "time_aligned_500ms_ratio": optional_report_number(timing_time_aligned, "within_500ms_ratio", path),
+        "channel_aware_time_aligned_500ms_ratio": None
+        if timing_time_aligned_channel_aware is None
+        else optional_report_number(timing_time_aligned_channel_aware, "within_500ms_ratio", path),
         "channel_time_aligned_accuracy": optional_report_number(channel_time_aligned, "accuracy", path),
         "channel_time_aligned_mix_ratio": require_report_number(channel_time_aligned, "candidate_mix_ratio", path),
         "candidate_review_ratio": None if review is None else require_report_number(review, "candidate_review_ratio", path),
@@ -846,6 +864,10 @@ def aggregate_eval_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
         ),
         "timing": aggregate_timing_reports(reports, "timing"),
         "timing_time_aligned": aggregate_timing_reports(reports, "timing_time_aligned"),
+        "timing_time_aligned_channel_aware": aggregate_timing_reports(
+            reports,
+            "timing_time_aligned_channel_aware",
+        ),
         "channel": aggregate_channel_reports(reports, "channel"),
         "channel_time_aligned": aggregate_channel_reports(reports, "channel_time_aligned"),
         "review": aggregate_review_reports(reports),
@@ -913,7 +935,7 @@ def aggregate_timing_reports(reports: list[dict[str, Any]], key: str) -> dict[st
             "within_500ms_count": 0,
             "within_500ms_ratio": None,
         }
-        if key == "timing_time_aligned":
+        if key in {"timing_time_aligned", "timing_time_aligned_channel_aware"}:
             summary.update(
                 {
                     "reference_segments": reference_segments,
@@ -946,7 +968,7 @@ def aggregate_timing_reports(reports: list[dict[str, Any]], key: str) -> dict[st
         "within_500ms_count": within_500ms_count,
         "within_500ms_ratio": within_500ms_count / max(1, boundary_samples),
     }
-    if key == "timing_time_aligned":
+    if key in {"timing_time_aligned", "timing_time_aligned_channel_aware"}:
         summary.update(
             {
                 "reference_segments": reference_segments,
@@ -1070,6 +1092,26 @@ def time_aligned_segment_pairs(
         best_candidate = None
         best_overlap = 0
         for candidate in candidate_segments:
+            current_overlap = overlap_ms(reference, candidate)
+            if current_overlap > best_overlap:
+                best_overlap = current_overlap
+                best_candidate = candidate
+        if best_candidate is not None:
+            pairs.append((reference, best_candidate))
+    return pairs
+
+
+def channel_aware_time_aligned_segment_pairs(
+    reference_segments: tuple[Segment, ...],
+    candidate_segments: tuple[Segment, ...],
+) -> list[tuple[Segment, Segment]]:
+    pairs: list[tuple[Segment, Segment]] = []
+    for reference in reference_segments:
+        best_candidate = None
+        best_overlap = 0
+        for candidate in candidate_segments:
+            if candidate.channel != reference.channel:
+                continue
             current_overlap = overlap_ms(reference, candidate)
             if current_overlap > best_overlap:
                 best_overlap = current_overlap
