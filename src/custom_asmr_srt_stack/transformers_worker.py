@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import socket
 import sys
 import tempfile
 import traceback
@@ -19,6 +20,8 @@ LOCAL_TRANSCRIPTION_PROMPT = (
 )
 QUANTIZATION_SKIP_MODULES = ["lm_head", "model.audio_tower"]
 DEFAULT_MAX_NEW_TOKENS = 256
+TRUE_ENV_VALUES = {"1", "true", "yes"}
+_NETWORK_DISABLED = False
 
 
 class TransformersRuntime:
@@ -77,11 +80,14 @@ class TransformersRuntime:
             return processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
     def load_model(self, model_id: str) -> tuple[Any, Any]:
-        loaded = self._loaded.get(model_id)
+        require_secure_runtime()
+        disable_python_network_if_requested()
+        checked_model_id = checked_model_path(model_id, "model_id")
+        loaded = self._loaded.get(checked_model_id)
         if loaded is not None:
             return loaded
 
-        log(f"loading local Transformers model: {model_id}")
+        log(f"loading local Transformers model: {checked_model_id}")
         try:
             import torch
             from transformers import AutoProcessor
@@ -93,27 +99,78 @@ class TransformersRuntime:
 
         model_class = import_model_class()
         log("loading processor")
-        processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+        processor = AutoProcessor.from_pretrained(
+            checked_model_id,
+            local_files_only=True,
+            trust_remote_code=False,
+        )
         log("loading model weights")
         model_kwargs = {
             "device_map": "auto",
             "torch_dtype": "auto",
-            "trust_remote_code": True,
+            "local_files_only": True,
+            "trust_remote_code": False,
+            "use_safetensors": True,
         }
         quantization = quantization_mode()
         if quantization:
             log(f"using {quantization} runtime quantization; skipping lm_head and audio tower")
             model_kwargs["quantization_config"] = quantization_config(quantization, torch, BitsAndBytesConfig)
         model = model_class.from_pretrained(
-            model_id,
+            checked_model_id,
             **model_kwargs,
         ).eval()
         del torch
 
         loaded = (processor, model)
-        self._loaded[model_id] = loaded
+        self._loaded[checked_model_id] = loaded
         log("model loaded")
         return loaded
+
+
+def require_secure_runtime() -> None:
+    if os.environ.get("CASRT_LOCAL_WORKER_ENV_MODE", "").strip().lower() != "offline":
+        raise ValueError("CASRT_LOCAL_WORKER_ENV_MODE=offline is required for local Transformers worker")
+    for name in (
+        "CASRT_TRANSFORMERS_REQUIRE_LOCAL_MODEL_PATH",
+        "CASRT_TRANSFORMERS_LOCAL_FILES_ONLY",
+        "CASRT_TRANSFORMERS_DISABLE_NETWORK",
+    ):
+        if os.environ.get(name, "").strip().lower() not in TRUE_ENV_VALUES:
+            raise ValueError(f"{name}=1 is required for local Transformers worker")
+
+
+def checked_model_path(value: str, name: str) -> str:
+    try:
+        path = Path(value).expanduser().resolve(strict=True)
+    except FileNotFoundError as error:
+        raise ValueError(f"{name} must be an existing local Transformers model directory") from error
+    if not path.is_dir():
+        raise ValueError(f"{name} must be an existing local Transformers model directory")
+    return str(path)
+
+
+def disable_python_network_if_requested() -> None:
+    global _NETWORK_DISABLED
+    if _NETWORK_DISABLED:
+        return
+    if os.environ.get("CASRT_TRANSFORMERS_DISABLE_NETWORK", "").strip().lower() not in TRUE_ENV_VALUES:
+        return
+
+    original_socket = socket.socket
+
+    class BlockedSocket(original_socket):  # type: ignore[misc, valid-type]
+        def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+            del args, kwargs
+            raise OSError("network access is disabled for local Transformers worker")
+
+    def blocked_create_connection(*args: Any, **kwargs: Any) -> Any:
+        del args, kwargs
+        raise OSError("network access is disabled for local Transformers worker")
+
+    socket.socket = BlockedSocket
+    socket.create_connection = blocked_create_connection  # type: ignore[assignment]
+    _NETWORK_DISABLED = True
 
 
 def quantization_config(mode: str, torch: Any, bits_and_bytes_config: Any) -> Any:

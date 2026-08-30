@@ -186,10 +186,11 @@ uv run casrt project transcribe PROJECT_ID \
 로컬 Transformers worker:
 
 ```bash
+CASRT_LOCAL_WORKER_ENV_MODE=offline \
 CASRT_TRANSFORMERS_QUANTIZATION=4bit \
   uv run casrt project transcribe PROJECT_ID \
   --adapter local-transformers \
-  --model-id google/gemma-4-E4B-it
+  --model-id .casrt/models/gemma-4-e4b-it-<revision>
 ```
 
 동작:
@@ -197,6 +198,9 @@ CASRT_TRANSFORMERS_QUANTIZATION=4bit \
 - `casrt`가 내부적으로 `python -m custom_asmr_srt_stack.transformers_worker` subprocess를 시작한다.
 - worker와 JSON Lines로 통신한다.
 - worker는 모델을 lazy load하고 같은 CLI/WebUI 프로세스 안에서 재사용한다.
+- worker는 `CASRT_LOCAL_WORKER_ENV_MODE=offline`, `CASRT_TRANSFORMERS_REQUIRE_LOCAL_MODEL_PATH=1`, `CASRT_TRANSFORMERS_LOCAL_FILES_ONLY=1`, `CASRT_TRANSFORMERS_DISABLE_NETWORK=1`이 모두 있어야 모델을 로드한다. `uv run casrt ...` parent process에서 `CASRT_LOCAL_WORKER_ENV_MODE=offline`을 쓰면 나머지 Transformers guard env는 worker에 자동 주입된다.
+- `model_id`는 실제 local snapshot directory여야 한다. Repo id 직접 로드나 network download는 worker 안에서 허용하지 않는다.
+- `AutoProcessor`와 model `from_pretrained`는 `local_files_only=True`, `trust_remote_code=False`, `use_safetensors=True`로만 호출한다.
 - `CASRT_TRANSFORMERS_QUANTIZATION=4bit` 또는 `8bit`가 설정되면 runtime quantization을 사용하고, Gemma 4 audio path가 깨지지 않도록 `lm_head`와 `model.audio_tower`는 quantization에서 제외한다.
 - 잘못된 quantization 값은 full precision fallback으로 넘기지 않고 오류로 표시한다.
 - worker generation은 기본 `max_new_tokens=256`으로 제한한다. `CASRT_TRANSFORMERS_MAX_NEW_TOKENS`로 조정할 수 있지만 WebUI 옵션으로 노출하지 않는다.

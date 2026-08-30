@@ -3,18 +3,24 @@ import io
 import json
 import os
 import struct
+import sys
+import tempfile
+import types
 import unittest
 import wave
+from pathlib import Path
 from unittest import mock
 
 from custom_asmr_srt_stack.transformers_worker import (
     DEFAULT_MAX_NEW_TOKENS,
     TransformersRuntime,
+    checked_model_path,
     clean_transcription_text,
     max_new_tokens,
     prepare_audio_for_asr,
     quantization_config,
     quantization_mode,
+    require_secure_runtime,
     response_for_line,
 )
 
@@ -56,6 +62,34 @@ class FakeBitsAndBytesConfig:
 
 class FakeTorch:
     bfloat16 = "bf16"
+
+    class cuda:
+        @staticmethod
+        def is_available():
+            return False
+
+
+class FakeProcessorLoader:
+    calls = []
+
+    @classmethod
+    def from_pretrained(cls, model_id, **kwargs):
+        cls.calls.append((model_id, kwargs))
+        return "processor"
+
+
+class FakeModel:
+    def eval(self):
+        return self
+
+
+class FakeModelLoader:
+    calls = []
+
+    @classmethod
+    def from_pretrained(cls, model_id, **kwargs):
+        cls.calls.append((model_id, kwargs))
+        return FakeModel()
 
 
 class TransformersWorkerTests(unittest.TestCase):
@@ -158,6 +192,79 @@ class TransformersWorkerTests(unittest.TestCase):
     def test_quantization_mode_reads_normalized_environment_value(self):
         with mock.patch.dict(os.environ, {"CASRT_TRANSFORMERS_QUANTIZATION": " 8BIT "}):
             self.assertEqual(quantization_mode(), "8bit")
+
+    def test_secure_runtime_requires_offline_local_transformers_environment(self):
+        secure_env = {
+            "CASRT_LOCAL_WORKER_ENV_MODE": "offline",
+            "CASRT_TRANSFORMERS_REQUIRE_LOCAL_MODEL_PATH": "1",
+            "CASRT_TRANSFORMERS_LOCAL_FILES_ONLY": "1",
+            "CASRT_TRANSFORMERS_DISABLE_NETWORK": "1",
+        }
+
+        with mock.patch.dict(os.environ, secure_env, clear=True):
+            require_secure_runtime()
+
+        for missing_name in secure_env:
+            incomplete = dict(secure_env)
+            incomplete.pop(missing_name)
+            with self.subTest(missing=missing_name):
+                with mock.patch.dict(os.environ, incomplete, clear=True):
+                    with self.assertRaisesRegex(ValueError, "local Transformers worker"):
+                        require_secure_runtime()
+
+    def test_checked_model_path_requires_existing_local_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_dir = Path(tmpdir) / "model"
+            model_dir.mkdir()
+
+            self.assertEqual(checked_model_path(str(model_dir), "model_id"), str(model_dir.resolve()))
+
+            with self.assertRaisesRegex(ValueError, "existing local Transformers model directory"):
+                checked_model_path(str(model_dir / "missing"), "model_id")
+
+    def test_load_model_uses_local_files_without_remote_code(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            FakeProcessorLoader.calls.clear()
+            FakeModelLoader.calls.clear()
+            model_dir = Path(tmpdir) / "model"
+            model_dir.mkdir()
+            secure_env = {
+                "CASRT_LOCAL_WORKER_ENV_MODE": "offline",
+                "CASRT_TRANSFORMERS_REQUIRE_LOCAL_MODEL_PATH": "1",
+                "CASRT_TRANSFORMERS_LOCAL_FILES_ONLY": "1",
+                "CASRT_TRANSFORMERS_DISABLE_NETWORK": "1",
+            }
+            fake_transformers = types.SimpleNamespace(
+                AutoProcessor=FakeProcessorLoader,
+                BitsAndBytesConfig=FakeBitsAndBytesConfig,
+            )
+
+            with (
+                mock.patch.dict(os.environ, secure_env, clear=True),
+                mock.patch.dict(sys.modules, {"torch": FakeTorch, "transformers": fake_transformers}),
+                mock.patch(
+                    "custom_asmr_srt_stack.transformers_worker.import_model_class",
+                    return_value=FakeModelLoader,
+                ),
+                mock.patch("custom_asmr_srt_stack.transformers_worker.disable_python_network_if_requested"),
+            ):
+                processor, model = TransformersRuntime().load_model(str(model_dir))
+
+        self.assertEqual(processor, "processor")
+        self.assertIsInstance(model, FakeModel)
+        self.assertEqual(
+            FakeProcessorLoader.calls,
+            [
+                (
+                    str(model_dir.resolve()),
+                    {"local_files_only": True, "trust_remote_code": False},
+                )
+            ],
+        )
+        self.assertEqual(FakeModelLoader.calls[0][0], str(model_dir.resolve()))
+        self.assertEqual(FakeModelLoader.calls[0][1]["local_files_only"], True)
+        self.assertEqual(FakeModelLoader.calls[0][1]["trust_remote_code"], False)
+        self.assertEqual(FakeModelLoader.calls[0][1]["use_safetensors"], True)
 
     def test_max_new_tokens_defaults_and_reads_environment_override(self):
         with mock.patch.dict(os.environ, {}, clear=True):

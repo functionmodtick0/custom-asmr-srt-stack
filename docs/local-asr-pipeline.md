@@ -138,10 +138,21 @@ worker는 `AutoProcessor`와 `AutoModelForMultimodalLM`을 사용하고, model l
 - 01/04/07 front120 pseudo-gold benchmark: practical CER 29.4%, time-aligned 500ms ratio 27.3%, channel time-aligned accuracy 68.2%, review effort 75/75 segments. Output dir: `/tmp/casrt-quality.Q5OdDf/qwen-hf-asr-transformers-main`, report: `/tmp/casrt-quality.Q5OdDf/qwen-hf-asr-transformers-main-3case-report.json`, review pack: `/tmp/casrt-quality.Q5OdDf/review-pack-qwen-hf-asr-transformers-main`.
 - 결정: HF-native Qwen3-ASR는 local adapter로 유지하지만 기본 ASMR 경로로 승격하지 않는다. Timestamp 없는 full-chunk output 때문에 alignment/review burden이 크고, text도 기존 Qwen/Neosophie 계열을 이기지 못했다.
 
+2026-08-30 latest local ASR 후보 분류:
+
+- 바로 adapter가 있는 후보: `Qwen/Qwen3-ASR-1.7B`와 `neosophie/Qwen3-ASR-1.7B-JA`는 기존 Qwen worker/HF Qwen worker 평가 경로가 있고, `ibm-granite/granite-speech-4.1-2b`와 `CohereLabs/cohere-transcribe-03-2026`은 전용 local worker가 있다. Qwen model card는 Japanese ASR와 forced alignment 지원을 명시하고, Neosophie는 Qwen3-ASR 기반 일본어 fine-tune이 Whisper/ReazonSpeech/Granite와의 자체 비교에서 낮은 CER를 보였다고 설명한다. Granite 4.1 2B model card는 Japanese ASR와 keyword-biased ASR용 synthetic data를 포함했다고 설명한다. Cohere Transcribe 03-2026 model card는 2B audio-in/text-out ASR와 14개 언어 지원을 명시한다.
+- 검토 후 adapter가 필요한 후보: `Audio8/ARK-ASR-3B`는 Japanese를 지원하고 3B audio-capable ASR지만 model card가 `trust_remote_code=True`와 custom `arkasr` remote code를 요구하므로 현 local-only 기본 경로에는 바로 넣지 않는다. `Atotti/llm-jp-4-8b-speech-asr`는 Japanese speech-language ASR지만 별도 `speech_llm_ja` package/class 경로가 필요하다. `Junlaii/Bro-ASR-1.7B`는 Qwen3-ASR-1.7B-hf 파생 Japanese noisy-recording/domain adaptation 모델이며 model card상 offline Japanese ASR 용도와 base 대비 소폭 CER 개선을 주장하지만, 현재 worker 호환성은 아직 실데이터로 검증하지 않았다.
+- 판단: 모델 후보 선정은 최신성/leaderboard 주장만으로 승격하지 않고, local snapshot digest, offline worker 실행, all8 front120 또는 human-reviewed manifest 평가, review-effort pack 생성까지 같은 루프로 통과해야 한다.
+
+Sources checked on 2026-08-30: Qwen3-ASR model card `https://huggingface.co/Qwen/Qwen3-ASR-1.7B`, Neosophie Qwen3-ASR-JA blog `https://neosophie.com/en/blog/20260427-qwen-finetuned-model`, Granite Speech 4.1 2B model card `https://huggingface.co/ibm-granite/granite-speech-4.1-2b`, Cohere Transcribe 03-2026 model card `https://huggingface.co/CohereLabs/cohere-transcribe-03-2026`, ARK-ASR-3B model card `https://huggingface.co/Audio8/ARK-ASR-3B`, LLM-jp 4 8B speech ASR model card `https://huggingface.co/Atotti/llm-jp-4-8b-speech-asr`, Bro-ASR-1.7B model card `https://huggingface.co/Junlaii/Bro-ASR-1.7B`.
+
 외부 runtime benchmark의 local-only 실행 조건:
 
 ```text
 CASRT_LOCAL_WORKER_ENV_MODE=offline
+CASRT_TRANSFORMERS_REQUIRE_LOCAL_MODEL_PATH=1
+CASRT_TRANSFORMERS_LOCAL_FILES_ONLY=1
+CASRT_TRANSFORMERS_DISABLE_NETWORK=1
 CASRT_COHERE_ASR_DISABLE_NETWORK=1
 CASRT_QWEN_ASR_REQUIRE_LOCAL_MODEL_PATH=1
 CASRT_QWEN_ASR_LOCAL_FILES_ONLY=1

@@ -59,10 +59,10 @@ CASRT_QWEN_ASR_WORKER_COMMAND='.casrt/qwen-asr-venv/bin/python -m custom_asmr_sr
 
 2026-07-01 all8 front120 batch CLI 평가에서 official Qwen3-ASR 1.7B local snapshot은 practical CER 59.7%, time-aligned 500ms 16.0%, review effort 100%로 실패했습니다. Granite base보다 text CER는 낮지만 product gate에는 한참 못 미칩니다. 2026-07-02 energy VAD t54/pad800/max30s sweep 후보는 coverage recall을 99.5%까지 올렸지만 실제 Qwen ASR에서는 practical CER 60.2%, time-aligned 500ms 15.2%로 baseline보다 악화되어 기본값으로 승격하지 않습니다. 같은 all8 set에서 `neosophie/Qwen3-ASR-1.7B-JA` local snapshot은 practical CER 59.4%, time-aligned 500ms 16.0%, review effort 100%로 Qwen official보다 text만 아주 조금 낫지만 product gate를 통과하지 못했습니다. Qwen3-ForcedAligner context 500/2000ms 실험도 Qwen official all8의 time-aligned 500ms를 각각 11.1%/6.9%로 낮춰 기본값으로 승격하지 않습니다. 같은 aligner를 reference-copy oracle에 적용했을 때도 time-aligned 500ms가 95.1%에서 51.2%로 떨어졌으므로, 현재 Qwen3-ForcedAligner는 기본 alignment 계층으로 승격하지 않습니다. 현 최선 alignment 정책은 no-op baseline이며, reference-copy oracle 비교에서는 time-aligned 500ms 95.1%로 alignment gate를 통과합니다. `th2_quietnone` channel attribution 후보는 candidate energy audit에서 energy-labeled 64개를 모두 맞춰 energy-proxy channel gate를 통과하지만, reference L/R label은 energy와 30개 mismatch/18개 uncertain이므로 human review 전에는 reference blocker로 남습니다. 따라서 현재 상태는 VAD/chunk/alignment/channel이 모두 실패하고 ASR text만 남은 것이 아니라, VAD는 gate pass, alignment는 no-op pass, channel attribution은 energy-proxy pass, reference human review가 ASR-only blocker로 남고 text ASR은 product quality blocker로 남은 상태입니다.
 
-Gemma 4 E4B는 full checkpoint를 다운로드하더라도 로딩은 4-bit runtime quantization을 켜는 구성을 권장합니다. VRAM 여유가 있으면 품질 비교용으로 `CASRT_TRANSFORMERS_QUANTIZATION=8bit`도 사용할 수 있습니다.
+Gemma 4 E4B는 full checkpoint를 다운로드하더라도 로딩은 4-bit runtime quantization을 켜는 구성을 권장합니다. `local-transformers`는 repo id가 아니라 local snapshot directory를 `--model-id`로 받고, offline worker mode에서 `local_files_only=True`, `trust_remote_code=False`, `use_safetensors=True`로 로드합니다. VRAM 여유가 있으면 품질 비교용으로 `CASRT_TRANSFORMERS_QUANTIZATION=8bit`도 사용할 수 있습니다.
 
 ```bash
-CASRT_TRANSFORMERS_QUANTIZATION=4bit uv run casrt serve
+CASRT_LOCAL_WORKER_ENV_MODE=offline CASRT_TRANSFORMERS_QUANTIZATION=4bit uv run casrt serve
 ```
 
 필요하면 worker generation 상한을 환경변수로 조정할 수 있습니다.
@@ -269,7 +269,7 @@ uv run casrt model validate \
 ```bash
 uv run casrt model validate \
   --adapter local-transformers \
-  --model-id google/gemma-4-E4B-it
+  --model-id .casrt/models/gemma-4-e4b-it-<revision>
 ```
 
 전체 project 전사:
@@ -284,10 +284,11 @@ uv run casrt project transcribe PROJECT_ID \
 로컬 Transformers worker로 전사:
 
 ```bash
+CASRT_LOCAL_WORKER_ENV_MODE=offline \
 CASRT_TRANSFORMERS_QUANTIZATION=4bit \
   uv run casrt project transcribe PROJECT_ID \
   --adapter local-transformers \
-  --model-id google/gemma-4-E4B-it
+  --model-id .casrt/models/gemma-4-e4b-it-<revision>
 ```
 
 로컬 Qwen ASR worker로 전사:
@@ -298,7 +299,7 @@ uv run casrt project transcribe PROJECT_ID \
   --model-id Qwen/Qwen3-ASR-1.7B
 ```
 
-전사는 `project analyze`가 저장한 L/R 또는 MIX 채널을 chunk 단위로 잘라 모델에 보낸 뒤, 결과 타임스탬프를 원본 timeline으로 되돌려 저장합니다. `local-transformers`, `local-qwen-asr`, `local-qwen-hf-asr`, `local-cohere-asr`는 로컬 ASMR 경로로서 L/R이 있어도 MIX-first로 전사하고, L/R은 channel attribution에만 사용합니다.
+전사는 `project analyze`가 저장한 L/R 또는 MIX 채널을 chunk 단위로 잘라 모델에 보낸 뒤, 결과 타임스탬프를 원본 timeline으로 되돌려 저장합니다. `local-transformers`, `local-qwen-asr`, `local-qwen-hf-asr`, `local-cohere-asr`, `local-granite-asr`는 로컬 ASMR 경로로서 L/R이 있어도 MIX-first로 전사하고, L/R은 channel attribution에만 사용합니다.
 
 로컬 ASR 경로는 MIX-first 전사, energy-based speech chunking, L/R energy 기반 channel attribution을 사용합니다. 세부 값과 실험 결과는 [docs/local-asr-pipeline.md](docs/local-asr-pipeline.md)에 기록합니다.
 
