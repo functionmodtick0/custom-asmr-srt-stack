@@ -665,6 +665,7 @@ class WebAppBehaviorTests(unittest.TestCase):
                 assert.strictEqual(payload.case_id, "front-a");
                 assert.strictEqual(payload.master.segments[0].channel, "R");
                 assert.strictEqual(payload.master.segments[0].needs_review, true);
+                assert.strictEqual(payload.master.segments[0].channel_reviewed, false);
                 return {
                   ok: true,
                   async json() {
@@ -692,6 +693,115 @@ class WebAppBehaviorTests(unittest.TestCase):
                 elements.get("statusText").textContent,
                 "원래 review pack 목록으로 돌아왔습니다.",
               );
+            })().catch((error) => {
+              console.error(error);
+              process.exit(1);
+            });
+        """,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_channel_audit_review_can_accept_existing_reference_channel(self):
+        result = self.run_app_assertions(
+            r"""
+            (async () => {
+              const pathInput = elements.get("reviewPackPathInput");
+              pathInput.value = "/packs/channel-audit-pack";
+              context.fetch = async () => ({
+                ok: true,
+                async json() {
+                  return {
+                    kind: "review-pack",
+                    source_case_index: "/cases/case-index.json",
+                    items: [
+                      {
+                        priority_rank: 1,
+                        case_id: "front-a",
+                        reference_id: "seg_000001",
+                        start_ms: 0,
+                        end_ms: 1000,
+                        reasons: ["reference-channel-energy-mismatch"],
+                        reference_channel: "L",
+                        candidate_channel: "R",
+                        left_dbfs: -32,
+                        right_dbfs: -28,
+                        delta_db: -4,
+                        clip_url: "/api/review-pack/clip?x=1",
+                      },
+                    ],
+                  };
+                },
+              });
+              await context.loadReviewPath();
+              context.selectReviewPackItem(0, false);
+
+              context.fetch = async () => ({
+                ok: true,
+                async json() {
+                  return {
+                    kind: "review-case-set",
+                    case_index_path: "/cases/case-index.json",
+                    items: [
+                      {
+                        id: "front-a",
+                        audio_url: "/api/review-case/audio?x=1",
+                        reference_master: {
+                          format: "custom-asmr-master-v1",
+                          source_language: "ja",
+                          audio: { source_file: "front-a.wav", duration_ms: 1000 },
+                          segments: [
+                            {
+                              id: "seg_000001",
+                              start_ms: 0,
+                              end_ms: 1000,
+                              channel: "L",
+                              kind: "speech",
+                              text: "確認",
+                              needs_review: false,
+                              channel_reviewed: false,
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  };
+                },
+              });
+              await context.openSelectedReviewPackSourceCase();
+
+              const doneButton = elements.get("reviewDoneButton");
+              assert.strictEqual(doneButton.hidden, false);
+              assert.strictEqual(doneButton.disabled, false);
+              assert.strictEqual(doneButton.textContent, "Channel 검수 완료");
+
+              context.fetch = async (path, options) => {
+                assert.strictEqual(path, "/api/review-case/save-reference");
+                const payload = JSON.parse(options.body);
+                const segment = payload.master.segments[0];
+                assert.strictEqual(segment.channel, "L");
+                assert.strictEqual(segment.needs_review, false);
+                assert.strictEqual(segment.channel_reviewed, true);
+                return {
+                  ok: true,
+                  async json() {
+                    return { segments: 1, review_count: 0, review_duration_ms: 0 };
+                  },
+                };
+              };
+
+              await context.markSelectedReviewDone();
+              assert.strictEqual(doneButton.disabled, true);
+              assert.strictEqual(elements.get("statusLabel").textContent, "Channel 검수 저장됨");
+              assert.strictEqual(
+                elements.get("statusText").textContent,
+                "seg_000001 channel 판정을 저장했습니다.",
+              );
+
+              const segment = context.selectedSegment();
+              context.commitSegmentTime(segment, "start_ms", { value: "100" });
+              assert.strictEqual(segment.start_ms, 100);
+              assert.strictEqual(segment.channel_reviewed, false);
             })().catch((error) => {
               console.error(error);
               process.exit(1);

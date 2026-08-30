@@ -721,6 +721,7 @@ function renderSegment(segment) {
   channel.addEventListener("change", () => {
     selectSegment(segment.id, false);
     segment.channel = channel.value;
+    segment.channel_reviewed = false;
     scheduleSaveMaster();
     drawWaveform();
   });
@@ -787,7 +788,10 @@ function commitSegmentTime(segment, key, input) {
     setStatus("시간 오류", "start/end ms를 확인하세요.", true);
     return;
   }
-  segment[key] = nextValue;
+  if (segment[key] !== nextValue) {
+    segment[key] = nextValue;
+    segment.channel_reviewed = false;
+  }
   scheduleSaveMaster();
   drawWaveform();
 }
@@ -840,13 +844,24 @@ function syncSelectedSegment() {
 function updateSelectedActionState() {
   const segment = selectedSegment();
   els.retranscribeButton.disabled = !segment;
-  els.reviewDoneButton.disabled = !state.reviewCaseReference || !segment?.needs_review;
+  const channelReviewTarget = isChannelReviewTarget(segment);
+  els.reviewDoneButton.disabled =
+    !state.reviewCaseReference || (!segment?.needs_review && (!channelReviewTarget || segment.channel_reviewed));
+  els.reviewDoneButton.textContent = channelReviewTarget ? "Channel 검수 완료" : "검수 완료";
   const energyChannel = state.reviewCaseReference?.energyChannel || null;
   const energySegmentId = state.reviewCaseReference?.energyChannelSegmentId || null;
   const canShowEnergyAction = Boolean(energyChannel && segment?.id === energySegmentId);
   els.applyEnergyChannelButton.hidden = !canShowEnergyAction;
   els.applyEnergyChannelButton.disabled = !canShowEnergyAction || segment.channel === energyChannel;
   els.applyEnergyChannelButton.textContent = energyChannel ? `ENERGY ${energyChannel} 적용` : "ENERGY 적용";
+}
+
+function isChannelReviewTarget(segment) {
+  return Boolean(
+    segment &&
+      state.reviewCaseReference?.channelAudit &&
+      segment.id === state.reviewCaseReference.channelReviewSegmentId,
+  );
 }
 
 function selectedSegment() {
@@ -993,7 +1008,12 @@ function syncReviewCaseItemAfterSave(result) {
 async function markSelectedReviewDone() {
   const segment = selectedSegment();
   if (!segment || !state.reviewCaseReference) return;
+  const channelReviewTarget = isChannelReviewTarget(segment);
+  if (!segment.needs_review && (!channelReviewTarget || segment.channel_reviewed)) return;
   segment.needs_review = false;
+  if (channelReviewTarget) {
+    segment.channel_reviewed = true;
+  }
   const nextReviewId = nextReviewSegmentId(segment.id);
   if (nextReviewId !== null) {
     state.selectedId = nextReviewId;
@@ -1002,10 +1022,19 @@ async function markSelectedReviewDone() {
   drawWaveform();
   const result = await saveCurrentMasterNow();
   const remaining = result?.review_count ?? countReviewSegments();
-  setStatus(
-    remaining > 0 ? "검수 저장됨" : "case 검수 완료",
-    remaining > 0 ? `${remaining}개 검수 flag가 남았습니다.` : "이 case의 검수 flag를 모두 처리했습니다.",
-  );
+  if (channelReviewTarget) {
+    setStatus(
+      "Channel 검수 저장됨",
+      remaining > 0
+        ? `${segment.id} channel 판정을 저장했습니다. ${remaining}개 검수 flag가 남았습니다.`
+        : `${segment.id} channel 판정을 저장했습니다.`,
+    );
+  } else {
+    setStatus(
+      remaining > 0 ? "검수 저장됨" : "case 검수 완료",
+      remaining > 0 ? `${remaining}개 검수 flag가 남았습니다.` : "이 case의 검수 flag를 모두 처리했습니다.",
+    );
+  }
 }
 
 async function applyEnergyChannelToSelectedSegment() {
@@ -1014,6 +1043,7 @@ async function applyEnergyChannelToSelectedSegment() {
   const energySegmentId = state.reviewCaseReference?.energyChannelSegmentId || null;
   if (!segment || !energyChannel || segment.id !== energySegmentId || segment.channel === energyChannel) return;
   segment.channel = energyChannel;
+  segment.channel_reviewed = false;
   render();
   drawWaveform();
   await saveCurrentMasterNow();
@@ -1134,6 +1164,8 @@ function loadReviewCaseItem(
     secondarySegmentId,
     energyChannel: reviewPackEnergyChannelSuggestion(sourceReviewItem),
     energyChannelSegmentId: sourceReviewItem?.reference_id || null,
+    channelAudit: reviewPackIsReferenceChannelAuditItem(sourceReviewItem),
+    channelReviewSegmentId: sourceReviewItem?.reference_id || null,
     focusSegmentId: sourceReviewItem?.reference_id || null,
     focusStartMs: focusRange?.startMs ?? null,
     focusEndMs: focusRange?.endMs ?? null,
