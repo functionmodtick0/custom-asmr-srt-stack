@@ -6,7 +6,12 @@ from typing import Any
 
 from custom_asmr_srt_stack.candidate_channel_audit import CANDIDATE_CHANNEL_AUDIT_SUITE_FORMAT
 from custom_asmr_srt_stack.channel_reference_audit import REFERENCE_CHANNEL_AUDIT_SUITE_FORMAT
-from custom_asmr_srt_stack.evaluation import EVAL_COMPARISON_FORMAT
+from custom_asmr_srt_stack.evaluation import (
+    EVAL_COMPARISON_FORMAT,
+    EVAL_FORMAT,
+    EVAL_SUITE_FORMAT,
+    eval_comparison_item,
+)
 from custom_asmr_srt_stack.reference_audit import REFERENCE_AUDIT_FORMAT, REFERENCE_AUDIT_SUITE_FORMAT
 from custom_asmr_srt_stack.vad import VAD_COVERAGE_COMPARISON_FORMAT
 
@@ -24,6 +29,16 @@ ASR_ONLY_STAGE_ORDER = (
     "alignment",
     "channel_attribution",
 )
+VAD_DOWNSTREAM_METRICS = (
+    ("practical_cer", "practical CER", "lower"),
+    ("channel_aware_practical_cer", "channel-aware practical CER", "lower"),
+    ("time_aligned_500ms_ratio", "time-aligned 500ms ratio", "higher"),
+    ("channel_aware_time_aligned_500ms_ratio", "same-channel time-aligned 500ms ratio", "higher"),
+    ("channel_time_aligned_accuracy", "channel time-aligned accuracy", "higher"),
+    ("channel_time_aligned_mix_ratio", "channel time-aligned MIX ratio", "lower"),
+    ("segments_needing_edit_ratio", "segments needing edit ratio", "lower"),
+    ("candidate_review_ratio", "candidate review ratio", "lower"),
+)
 
 
 def build_pipeline_readiness(
@@ -31,6 +46,8 @@ def build_pipeline_readiness(
     reference_audit_file: Path | None = None,
     reference_channel_audit_file: Path | None = None,
     vad_comparison_file: Path | None = None,
+    vad_baseline_eval_file: Path | None = None,
+    vad_candidate_eval_file: Path | None = None,
     eval_comparison_file: Path | None = None,
     alignment_comparison_file: Path | None = None,
     channel_comparison_file: Path | None = None,
@@ -45,7 +62,12 @@ def build_pipeline_readiness(
             quality_gate=quality_gate,
             reference_type=reference_type,
         ),
-        "vad_chunking": vad_stage(vad_comparison_file),
+        "vad_chunking": vad_stage(
+            vad_comparison_file,
+            baseline_eval_file=vad_baseline_eval_file,
+            candidate_eval_file=vad_candidate_eval_file,
+            require_downstream=bool(quality_gate and quality_gate.get("preset") == "local-asmr-v1"),
+        ),
     }
     stages.update(eval_stages(eval_comparison_file, quality_gate=quality_gate))
     if alignment_comparison_file is not None:
@@ -245,7 +267,15 @@ def reference_exact_boundary_blocking_count(path: Path, metrics: dict[str, Any])
     )
 
 
-def vad_stage(path: Path | None) -> dict[str, Any]:
+def vad_stage(
+    path: Path | None,
+    *,
+    baseline_eval_file: Path | None = None,
+    candidate_eval_file: Path | None = None,
+    require_downstream: bool = False,
+) -> dict[str, Any]:
+    if (baseline_eval_file is None) != (candidate_eval_file is None):
+        raise ValueError("VAD baseline and candidate eval reports must be provided together")
     if path is None:
         return unknown_stage("vad_chunking", "VAD coverage comparison report was not provided")
     report = read_json_report(path)
@@ -273,32 +303,124 @@ def vad_stage(path: Path | None) -> dict[str, Any]:
         for failure in require_string_list(chosen.get("gate_failures"), f"{path}: VAD gate_failures"):
             reasons.append(f"chosen VAD candidate gate failure: {failure}")
 
+    warnings = []
+    downstream_validation = None
+    if baseline_eval_file is None:
+        message = "VAD downstream ASR validation reports were not provided"
+        if require_downstream:
+            reasons.append(message)
+        else:
+            warnings.append(message + "; coverage alone does not promote the VAD candidate")
+    else:
+        downstream_validation = vad_downstream_validation(
+            baseline_eval_file,
+            candidate_eval_file,
+        )
+        reasons.extend(downstream_validation["regressions"])
+
+    metrics = {
+        "report": str(path),
+        "chosen_label": require_string(chosen.get("label"), f"{path}: VAD chosen label"),
+        "gated": gated,
+        "missed_reference_duration_ms": missed_reference_duration_ms,
+        "extra_detected_duration_ms": require_int(
+            chosen.get("extra_detected_duration_ms"),
+            f"{path}: VAD chosen extra_detected_duration_ms",
+        ),
+        "reference_recall": optional_number(
+            chosen.get("reference_recall"),
+            f"{path}: VAD chosen reference_recall",
+        ),
+        "detected_precision": optional_number(
+            chosen.get("detected_precision"),
+            f"{path}: VAD chosen detected_precision",
+        ),
+        "detected_max_interval_ms": optional_number(
+            chosen.get("detected_max_interval_ms"),
+            f"{path}: VAD chosen detected_max_interval_ms",
+        ),
+    }
+    if downstream_validation is not None:
+        metrics["downstream_validation"] = downstream_validation
+
     return stage_report(
         "vad_chunking",
         reasons=reasons,
-        metrics={
-            "report": str(path),
-            "chosen_label": require_string(chosen.get("label"), f"{path}: VAD chosen label"),
-            "gated": gated,
-            "missed_reference_duration_ms": missed_reference_duration_ms,
-            "extra_detected_duration_ms": require_int(
-                chosen.get("extra_detected_duration_ms"),
-                f"{path}: VAD chosen extra_detected_duration_ms",
-            ),
-            "reference_recall": optional_number(
-                chosen.get("reference_recall"),
-                f"{path}: VAD chosen reference_recall",
-            ),
-            "detected_precision": optional_number(
-                chosen.get("detected_precision"),
-                f"{path}: VAD chosen detected_precision",
-            ),
-            "detected_max_interval_ms": optional_number(
-                chosen.get("detected_max_interval_ms"),
-                f"{path}: VAD chosen detected_max_interval_ms",
-            ),
-        },
+        warnings=warnings,
+        metrics=metrics,
+        quality_gate={"requires_downstream_no_regression": True} if require_downstream else None,
     )
+
+
+def vad_downstream_validation(baseline_path: Path, candidate_path: Path) -> dict[str, Any]:
+    baseline_report = read_json_report(baseline_path)
+    candidate_report = read_json_report(candidate_path)
+    validate_vad_downstream_scope(baseline_path, baseline_report, candidate_path, candidate_report)
+    baseline = eval_comparison_item(baseline_path, baseline_report)
+    candidate = eval_comparison_item(candidate_path, candidate_report)
+    regressions = []
+    metrics = {}
+    tolerance = 1e-12
+    for key, label, direction in VAD_DOWNSTREAM_METRICS:
+        baseline_value = baseline.get(key)
+        candidate_value = candidate.get(key)
+        metrics[key] = {
+            "baseline": baseline_value,
+            "candidate": candidate_value,
+            "delta": None
+            if baseline_value is None or candidate_value is None
+            else candidate_value - baseline_value,
+            "better": direction,
+        }
+        if baseline_value is None and candidate_value is None:
+            continue
+        if baseline_value is None or candidate_value is None:
+            regressions.append(f"downstream {label} availability differs between baseline and candidate")
+            continue
+        regressed = (
+            candidate_value > baseline_value + tolerance
+            if direction == "lower"
+            else candidate_value < baseline_value - tolerance
+        )
+        if regressed:
+            regressions.append(
+                f"downstream {label} regressed: {baseline_value:.4f} -> {candidate_value:.4f}"
+            )
+    return {
+        "baseline_report": str(baseline_path),
+        "candidate_report": str(candidate_path),
+        "case_count": baseline["case_count"],
+        "passed": not regressions,
+        "regressions": regressions,
+        "metrics": metrics,
+    }
+
+
+def validate_vad_downstream_scope(
+    baseline_path: Path,
+    baseline: dict[str, Any],
+    candidate_path: Path,
+    candidate: dict[str, Any],
+) -> None:
+    baseline_format = baseline.get("format")
+    candidate_format = candidate.get("format")
+    if baseline_format != candidate_format:
+        raise ValueError("VAD downstream baseline and candidate eval report formats must match")
+    if baseline_format == EVAL_FORMAT:
+        return
+    if baseline_format != EVAL_SUITE_FORMAT:
+        raise ValueError(f"{baseline_path}: unsupported VAD downstream eval format {baseline_format!r}")
+    baseline_ids = vad_downstream_case_ids(baseline_path, baseline)
+    candidate_ids = vad_downstream_case_ids(candidate_path, candidate)
+    if baseline_ids != candidate_ids:
+        raise ValueError("VAD downstream baseline and candidate eval reports must cover the same case ids")
+    if baseline.get("reference_type") != candidate.get("reference_type"):
+        raise ValueError("VAD downstream baseline and candidate reference_type must match")
+
+
+def vad_downstream_case_ids(path: Path, report: dict[str, Any]) -> tuple[str, ...]:
+    cases = require_non_empty_mapping_list(report.get("cases"), f"{path}: eval suite cases")
+    return tuple(require_string(case.get("id"), f"{path}: eval suite case id") for case in cases)
 
 
 def eval_stages(path: Path | None, *, quality_gate: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:

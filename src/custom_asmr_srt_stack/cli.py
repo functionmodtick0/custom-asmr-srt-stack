@@ -821,6 +821,8 @@ def pipeline_readiness_command(args: argparse.Namespace) -> None:
         reference_audit_file=args.reference_audit,
         reference_channel_audit_file=args.reference_channel_audit,
         vad_comparison_file=args.vad_comparison,
+        vad_baseline_eval_file=args.vad_baseline_eval,
+        vad_candidate_eval_file=args.vad_candidate_eval,
         eval_comparison_file=args.eval_comparison,
         alignment_comparison_file=args.alignment_comparison,
         channel_comparison_file=args.channel_comparison,
@@ -2157,6 +2159,16 @@ def build_parser() -> argparse.ArgumentParser:
     pipeline_readiness_parser.add_argument("--reference-audit", type=Path)
     pipeline_readiness_parser.add_argument("--reference-channel-audit", type=Path)
     pipeline_readiness_parser.add_argument("--vad-comparison", type=Path)
+    pipeline_readiness_parser.add_argument(
+        "--vad-baseline-eval",
+        type=Path,
+        help="Baseline eval report for downstream VAD no-regression validation.",
+    )
+    pipeline_readiness_parser.add_argument(
+        "--vad-candidate-eval",
+        type=Path,
+        help="Candidate eval report for downstream VAD no-regression validation.",
+    )
     pipeline_readiness_parser.add_argument("--eval-comparison", type=Path)
     pipeline_readiness_parser.add_argument(
         "--alignment-comparison",

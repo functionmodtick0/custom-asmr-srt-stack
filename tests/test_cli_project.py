@@ -48,6 +48,32 @@ def write_stereo_samples(path: Path, samples: list[tuple[int, int]]) -> None:
         wav.writeframes(bytes(frames))
 
 
+def write_pipeline_vad_eval(path: Path) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "format": "custom-asmr-eval-v1",
+                "text_practical": {"cer": 0.1},
+                "text_practical_channel_aware": {"cer": 0.1},
+                "timing_time_aligned": {"within_500ms_ratio": 0.9},
+                "timing_time_aligned_channel_aware": {"within_500ms_ratio": 0.9},
+                "channel_time_aligned": {"accuracy": 0.9, "candidate_mix_ratio": 0.1},
+                "review": {"candidate_review_ratio": 0.0},
+                "review_effort": {
+                    "segments_needing_edit": 0,
+                    "segments_needing_edit_ratio": 0.0,
+                    "text_edit_segment_ratio": 0.0,
+                    "channel_edit_segment_ratio": 0.0,
+                    "timing_edit_segment_ratio": 0.0,
+                    "missing_reference_segment_ratio": 0.0,
+                    "extra_candidate_segment_ratio": 0.0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 class ProjectCliTests(unittest.TestCase):
     def test_create_srt_show_and_export_project_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -4516,6 +4542,10 @@ class ProjectCliTests(unittest.TestCase):
             vad_comparison = root / "vad-comparison.json"
             eval_comparison = root / "eval-comparison.json"
             candidate_channel_audit = root / "candidate-channel-audit.json"
+            vad_baseline_eval = root / "vad-baseline-eval.json"
+            vad_candidate_eval = root / "vad-candidate-eval.json"
+            write_pipeline_vad_eval(vad_baseline_eval)
+            write_pipeline_vad_eval(vad_candidate_eval)
             reference_audit.write_text(
                 json.dumps(
                     {
@@ -4618,6 +4648,10 @@ class ProjectCliTests(unittest.TestCase):
                     str(reference_audit),
                     "--vad-comparison",
                     str(vad_comparison),
+                    "--vad-baseline-eval",
+                    str(vad_baseline_eval),
+                    "--vad-candidate-eval",
+                    str(vad_candidate_eval),
                     "--eval-comparison",
                     str(eval_comparison),
                     "--candidate-channel-audit",
@@ -4752,6 +4786,10 @@ class ProjectCliTests(unittest.TestCase):
             reference_audit = root / "reference-audit.json"
             vad_comparison = root / "vad-comparison.json"
             eval_comparison = root / "eval-comparison.json"
+            vad_baseline_eval = root / "vad-baseline-eval.json"
+            vad_candidate_eval = root / "vad-candidate-eval.json"
+            write_pipeline_vad_eval(vad_baseline_eval)
+            write_pipeline_vad_eval(vad_candidate_eval)
             reference_audit.write_text(
                 json.dumps(
                     {
@@ -4827,6 +4865,10 @@ class ProjectCliTests(unittest.TestCase):
                     str(reference_audit),
                     "--vad-comparison",
                     str(vad_comparison),
+                    "--vad-baseline-eval",
+                    str(vad_baseline_eval),
+                    "--vad-candidate-eval",
+                    str(vad_candidate_eval),
                     "--eval-comparison",
                     str(eval_comparison),
                 ]
@@ -4853,6 +4895,10 @@ class ProjectCliTests(unittest.TestCase):
             reference_audit = root / "reference-audit.json"
             vad_comparison = root / "vad-comparison.json"
             eval_comparison = root / "eval-comparison.json"
+            vad_baseline_eval = root / "vad-baseline-eval.json"
+            vad_candidate_eval = root / "vad-candidate-eval.json"
+            write_pipeline_vad_eval(vad_baseline_eval)
+            write_pipeline_vad_eval(vad_candidate_eval)
             reference_audit.write_text(
                 json.dumps(
                     {
@@ -4926,6 +4972,10 @@ class ProjectCliTests(unittest.TestCase):
                     str(reference_audit),
                     "--vad-comparison",
                     str(vad_comparison),
+                    "--vad-baseline-eval",
+                    str(vad_baseline_eval),
+                    "--vad-candidate-eval",
+                    str(vad_candidate_eval),
                     "--eval-comparison",
                     str(eval_comparison),
                 ]
@@ -4949,6 +4999,10 @@ class ProjectCliTests(unittest.TestCase):
             reference_channel_audit = root / "reference-channel-audit.json"
             vad_comparison = root / "vad-comparison.json"
             eval_comparison = root / "eval-comparison.json"
+            vad_baseline_eval = root / "vad-baseline-eval.json"
+            vad_candidate_eval = root / "vad-candidate-eval.json"
+            write_pipeline_vad_eval(vad_baseline_eval)
+            write_pipeline_vad_eval(vad_candidate_eval)
             reference_audit.write_text(
                 json.dumps(
                     {
@@ -5051,6 +5105,10 @@ class ProjectCliTests(unittest.TestCase):
                     str(reference_channel_audit),
                     "--vad-comparison",
                     str(vad_comparison),
+                    "--vad-baseline-eval",
+                    str(vad_baseline_eval),
+                    "--vad-candidate-eval",
+                    str(vad_candidate_eval),
                     "--eval-comparison",
                     str(eval_comparison),
                 ]
