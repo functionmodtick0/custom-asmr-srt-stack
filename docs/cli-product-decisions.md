@@ -833,6 +833,8 @@ uv run casrt pipeline-readiness \
   --reference-audit cases/reference-audit.json \
   --reference-channel-audit cases/reference-channel-audit.json \
   --vad-comparison cases/vad-coverage-comparison.json \
+  --vad-baseline-eval cases/default-vad-eval.json \
+  --vad-candidate-eval cases/tuned-vad-eval.json \
   --eval-comparison cases/eval-comparison.json \
   --alignment-comparison cases/alignment-comparison.json \
   --channel-comparison cases/channel-sweep/comparison.json \
@@ -848,7 +850,8 @@ uv run casrt pipeline-readiness \
 - output format은 `custom-asmr-pipeline-readiness-v1`이다.
 - `reference`, `vad_chunking`, `alignment`, `channel_attribution`, `text_asr` stage별 `pass`/`fail`/`unknown`, reason, 핵심 metric을 저장한다.
 - `asr_only_ready`는 `reference`, `vad_chunking`, `alignment`, `channel_attribution`이 모두 pass일 때만 true다. `text_asr` 실패는 제품 품질 blocker지만 ASR-only readiness blocker로 세지 않는다.
-- `vad_chunking`은 `quality_gate`가 있는 VAD comparison에서는 통과 후보가 있으면 pass로 보고, gate가 없는 comparison에서는 chosen candidate의 missed reference speech가 남으면 fail로 본다.
+- `vad_chunking`은 `quality_gate`가 있는 VAD comparison에서 coverage 통과 후보를 선택하고, gate가 없는 comparison에서는 chosen candidate의 missed reference speech가 남으면 fail로 본다. Coverage report만 준 일반 진단에는 downstream validation이 없다는 warning을 남긴다.
+- `--product-gate`에서는 `--vad-baseline-eval`과 `--vad-candidate-eval`을 함께 요구한다. 두 report는 같은 format/case ids/reference type이어야 하고, practical CER, optional channel-aware CER, timing 500ms, optional same-channel timing 500ms, channel accuracy, MIX ratio, review effort, candidate review ratio 중 양쪽에서 관측 가능한 metric 하나라도 candidate가 악화되면 `vad_chunking=fail`이다. 둘 중 하나만 지정하면 fail-fast한다.
 - `--reference-channel-audit`을 지정하면 raw reference L/R energy mismatch/uncertain count는 metrics에 보존하고, `unresolved_*` count만 `reference` stage blocker로 사용한다. `unresolved_*`가 없는 이전 report는 raw count를 unresolved로 해석한다.
 - `--alignment-comparison`을 지정하면 `alignment` stage만 해당 eval comparison에서 읽고, `channel_attribution`과 `text_asr`는 `--eval-comparison`에서 계속 읽는다. Reference-copy oracle처럼 alignment만 따로 평가한 report를 readiness에 반영하기 위한 CLI-only override다.
 - `--channel-comparison`을 지정하면 `channel_attribution` stage만 해당 eval comparison에서 읽고, `alignment`와 `text_asr`는 `--eval-comparison`에서 계속 읽는다. Reference-copy channel sweep처럼 channel만 따로 평가한 report를 readiness에 반영하기 위한 CLI-only override다.
