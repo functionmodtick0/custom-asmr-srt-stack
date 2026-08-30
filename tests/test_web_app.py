@@ -516,6 +516,65 @@ class WebAppBehaviorTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_review_pack_next_clip_button_advances_priority_items(self):
+        result = self.run_app_assertions(
+            r"""
+            (async () => {
+              const pathInput = elements.get("reviewPackPathInput");
+              pathInput.value = "/packs/review-pack";
+              context.fetch = async (path, options) => {
+                assert.strictEqual(path, "/api/review/load");
+                assert.deepStrictEqual(JSON.parse(options.body), { path: "/packs/review-pack" });
+                return {
+                  ok: true,
+                  async json() {
+                    return {
+                      kind: "review-pack",
+                      items: [
+                        {
+                          priority_rank: 1,
+                          start_ms: 0,
+                          end_ms: 1000,
+                          reasons: ["reference-channel-energy-mismatch"],
+                          clip_url: "/api/review-pack/clip?x=1",
+                        },
+                        {
+                          priority_rank: 2,
+                          start_ms: 2000,
+                          end_ms: 3000,
+                          reasons: ["reference-needs-review"],
+                          clip_url: "/api/review-pack/clip?x=2",
+                        },
+                      ],
+                    };
+                  },
+                };
+              };
+
+              await context.loadReviewPath();
+              assert.strictEqual(elements.get("segmentCount").textContent, "2 review clips");
+              assert.strictEqual(elements.get("nextCaseButton").hidden, false);
+              assert.strictEqual(elements.get("nextCaseButton").textContent, "다음 clip");
+              assert.strictEqual(elements.get("nextCaseButton").disabled, false);
+
+              await context.openNextAction();
+              assert.strictEqual(elements.get("selectedLabel").textContent, "#1 0:00.000 - 0:01.000");
+              assert.strictEqual(elements.get("audioPlayer").src, "/api/review-pack/clip?x=1");
+              assert.strictEqual(elements.get("nextCaseButton").disabled, false);
+
+              await context.openNextAction();
+              assert.strictEqual(elements.get("selectedLabel").textContent, "#2 0:02.000 - 0:03.000");
+              assert.strictEqual(elements.get("audioPlayer").src, "/api/review-pack/clip?x=2");
+              assert.strictEqual(elements.get("nextCaseButton").disabled, true);
+            })().catch((error) => {
+              console.error(error);
+              process.exit(1);
+            });
+        """,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_review_pack_source_case_keeps_channel_audit_status_hint(self):
         result = self.run_app_assertions(
             r"""

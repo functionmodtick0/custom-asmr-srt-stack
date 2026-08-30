@@ -324,6 +324,7 @@ function render() {
   els.caseListButton.hidden = !state.reviewCaseReference;
   els.caseListButton.textContent = state.reviewCaseReference?.returnReviewPack ? "pack 목록" : "case 목록";
   els.nextCaseButton.hidden = !state.reviewCaseReference;
+  els.nextCaseButton.textContent = "다음 case";
   els.nextCaseButton.disabled = nextReviewCaseIndex() === null;
   updateSelectedActionState();
   els.exportMasterButton.disabled = !state.master;
@@ -364,7 +365,9 @@ function renderReviewPack() {
   els.reviewDoneButton.hidden = true;
   els.reviewDoneButton.disabled = true;
   els.caseListButton.hidden = true;
-  els.nextCaseButton.hidden = true;
+  els.nextCaseButton.hidden = false;
+  els.nextCaseButton.textContent = "다음 clip";
+  els.nextCaseButton.disabled = nextReviewPackIndex() === null;
   els.exportMasterButton.disabled = true;
   els.exportTranslationButton.disabled = true;
   els.exportSrtButton.disabled = true;
@@ -393,6 +396,7 @@ function renderReviewCaseSet() {
   els.reviewDoneButton.disabled = true;
   els.caseListButton.hidden = true;
   els.nextCaseButton.hidden = true;
+  els.nextCaseButton.textContent = "다음 case";
   els.exportMasterButton.disabled = true;
   els.exportTranslationButton.disabled = true;
   els.exportSrtButton.disabled = true;
@@ -817,6 +821,7 @@ function syncSelectedReviewPackItem() {
   const item = state.reviewPack?.items?.[state.reviewPackSelectedIndex];
   els.selectedLabel.textContent = reviewPackSelectedLabel(item);
   els.sourceCaseButton.disabled = !reviewPackSourceTarget(reviewPackSelectedOrDefaultSourceItem());
+  els.nextCaseButton.disabled = nextReviewPackIndex() === null;
   for (const row of els.segmentList.querySelectorAll(".review-pack-row")) {
     row.classList.toggle("is-selected", Number(row.dataset.index) === state.reviewPackSelectedIndex);
   }
@@ -1194,6 +1199,28 @@ async function openNextReviewCase() {
   loadReviewCaseItem(nextIndex);
 }
 
+async function openNextAction() {
+  if (state.reviewPack) {
+    openNextReviewPackItem();
+    return;
+  }
+  await openNextReviewCase();
+}
+
+function openNextReviewPackItem() {
+  const nextIndex = nextReviewPackIndex();
+  if (nextIndex === null) return;
+  selectReviewPackItem(nextIndex, true);
+}
+
+function nextReviewPackIndex() {
+  const items = state.reviewPack?.items || [];
+  if (!items.length) return null;
+  if (state.reviewPackSelectedIndex === null || state.reviewPackSelectedIndex === undefined) return 0;
+  const nextIndex = state.reviewPackSelectedIndex + 1;
+  return nextIndex < items.length ? nextIndex : null;
+}
+
 function nextReviewCaseIndex() {
   const items = state.reviewCaseSet?.items || [];
   const currentIndex = state.reviewCaseReference?.itemIndex;
@@ -1261,7 +1288,7 @@ els.sourceCaseButton.addEventListener("click", () => safeRun(openSelectedReviewP
 els.applyEnergyChannelButton.addEventListener("click", () => safeRun(applyEnergyChannelToSelectedSegment));
 els.reviewDoneButton.addEventListener("click", () => safeRun(markSelectedReviewDone));
 els.caseListButton.addEventListener("click", () => safeRun(returnToReviewCases));
-els.nextCaseButton.addEventListener("click", () => safeRun(openNextReviewCase));
+els.nextCaseButton.addEventListener("click", () => safeRun(openNextAction));
 els.reviewPackPathInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
