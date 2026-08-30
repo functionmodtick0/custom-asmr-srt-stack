@@ -128,7 +128,7 @@ CASRT_VAD_COMMAND='/tmp/casrt-vad-venv/bin/casrt vad whisper-asmr-onnx --model /
 
 이 command는 전용 venv에 `.[vad-onnx]`만 설치해서 사용합니다. 모델 디렉터리는 `model.onnx`와 `model_metadata.json` 두 파일만 포함해야 하며, subprocess는 timeout과 최소 환경 변수로 실행됩니다.
 
-내장 energy splitter는 `CASRT_QWEN_ENERGY_*` env로 내부 튜닝할 수 있지만 WebUI 옵션으로 노출하지 않습니다. `CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 긴 interval을 자르는 실험 옵션이며 현재 실데이터 평가에서는 기본값으로 켜지 않습니다. `CASRT_QWEN_ENERGY_CHUNK_CONTEXT_MS`는 max chunk가 설정된 실험에서 VAD/core 경계 바깥 audio context를 추가하고 core midpoint ownership으로 중복 결과를 거릅니다.
+내장 energy splitter는 `CASRT_QWEN_ENERGY_*` env로 내부 튜닝할 수 있지만 WebUI 옵션으로 노출하지 않습니다. `CASRT_QWEN_ENERGY_MAX_CHUNK_MS`는 긴 interval을 자르는 실험 옵션이며 현재 실데이터 평가에서는 기본값으로 켜지 않습니다.
 
 VAD/chunking 후보의 reference speech coverage는 CLI에서만 비교합니다.
 

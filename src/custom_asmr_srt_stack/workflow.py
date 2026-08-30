@@ -7,7 +7,6 @@ from typing import Any
 
 from custom_asmr_srt_stack.alignment import apply_alignment_review_flags, run_alignment_command
 from custom_asmr_srt_stack.audio import (
-    analyze_wav,
     chunk_intervals,
     normalize_audio_to_wav,
     slice_wav,
@@ -89,21 +88,21 @@ def transcribe_project(
         chunks = transcription_chunks(metadata, model_endpoint, channel_audio)
         for chunk in chunks:
             clip = slice_wav(channel_audio, start_ms=chunk["start_ms"], end_ms=chunk["end_ms"])
-            for segment in transcribe_audio_func(
-                model_endpoint,
-                clip,
-                mime_type=mime_type,
-                channel=channel,
-                source_language=source_language,
-            ):
-                absolute_segment = replace(
+            raw_segments.extend(
+                replace(
                     segment,
                     channel=channel,
                     start_ms=chunk["start_ms"] + segment.start_ms,
                     end_ms=chunk["start_ms"] + segment.end_ms,
                 )
-                if chunk_owns_segment(chunk, absolute_segment):
-                    raw_segments.append(absolute_segment)
+                for segment in transcribe_audio_func(
+                    model_endpoint,
+                    clip,
+                    mime_type=mime_type,
+                    channel=channel,
+                    source_language=source_language,
+                )
+            )
 
     attributed_segments = apply_channel_attribution(raw_segments, store, project_id, metadata, model_endpoint)
     segments = tuple(
@@ -169,8 +168,6 @@ def transcription_chunks(
     max_chunk_ms = adapter_max_chunk_ms(model_endpoint)
     if max_chunk_ms is None:
         return chunks
-    if any("accept_start_ms" in chunk or "accept_end_ms" in chunk for chunk in chunks):
-        raise ValueError("overlap-context energy chunks cannot be combined with the adapter chunk limit")
     split_chunks: list[dict[str, int]] = []
     for chunk in chunks:
         split_chunks.extend(split_interval(chunk["start_ms"], chunk["end_ms"], max_chunk_ms))
@@ -181,22 +178,14 @@ def local_asr_chunks(model_endpoint: ModelEndpoint, audio_bytes: bytes | None) -
     if model_endpoint.adapter not in MIX_FIRST_LOCAL_ASR_ADAPTERS or audio_bytes is None:
         return None
     vad_command = os.environ.get("CASRT_VAD_COMMAND", "").strip()
-    max_energy_chunk_ms = qwen_energy_max_chunk_ms()
-    chunk_context_ms = qwen_energy_chunk_context_ms(max_energy_chunk_ms)
     if vad_command:
-        if chunk_context_ms > 0:
-            raise ValueError("CASRT_QWEN_ENERGY_CHUNK_CONTEXT_MS only supports the built-in energy VAD")
         chunks = run_vad_command(audio_bytes, command=shlex.split(vad_command))
     else:
         chunks = speech_intervals_by_energy(audio_bytes, **qwen_energy_chunk_kwargs())
+        max_energy_chunk_ms = qwen_energy_max_chunk_ms()
         if max_energy_chunk_ms is not None:
-            chunks = split_long_chunks(
-                chunks,
-                max_energy_chunk_ms,
-                context_ms=chunk_context_ms,
-                audio_duration_ms=analyze_wav(audio_bytes).duration_ms,
-            )
-    return tuple(dict(chunk) for chunk in chunks)
+            chunks = split_long_chunks(chunks, max_energy_chunk_ms)
+    return tuple({"start_ms": chunk["start_ms"], "end_ms": chunk["end_ms"]} for chunk in chunks)
 
 
 def qwen_energy_chunk_kwargs() -> dict[str, float | int]:
@@ -219,67 +208,17 @@ def qwen_energy_max_chunk_ms() -> int | None:
     return max_chunk_ms
 
 
-def qwen_energy_chunk_context_ms(max_chunk_ms: int | None) -> int:
-    value = os.environ.get("CASRT_QWEN_ENERGY_CHUNK_CONTEXT_MS", "").strip()
-    if not value:
-        return 0
-    context_ms = int(value)
-    if context_ms < 0:
-        raise ValueError("CASRT_QWEN_ENERGY_CHUNK_CONTEXT_MS must be non-negative")
-    if context_ms > 0 and max_chunk_ms is None:
-        raise ValueError("CASRT_QWEN_ENERGY_CHUNK_CONTEXT_MS requires CASRT_QWEN_ENERGY_MAX_CHUNK_MS")
-    if max_chunk_ms is not None and context_ms >= max_chunk_ms:
-        raise ValueError("CASRT_QWEN_ENERGY_CHUNK_CONTEXT_MS must be smaller than the max chunk")
-    return context_ms
-
-
 def split_long_chunks(
     chunks: tuple[dict[str, int], ...] | list[dict[str, int]],
     max_chunk_ms: int,
-    *,
-    context_ms: int = 0,
-    audio_duration_ms: int | None = None,
 ) -> tuple[dict[str, int], ...]:
-    if max_chunk_ms <= 0:
-        raise ValueError("max_chunk_ms must be positive")
-    if context_ms < 0:
-        raise ValueError("context_ms must be non-negative")
-    if context_ms >= max_chunk_ms:
-        raise ValueError("context_ms must be smaller than max_chunk_ms")
-    if context_ms > 0 and audio_duration_ms is None:
-        raise ValueError("audio_duration_ms is required when context_ms is positive")
-    if audio_duration_ms is not None and audio_duration_ms < 0:
-        raise ValueError("audio_duration_ms must be non-negative")
     split_chunks: list[dict[str, int]] = []
     for chunk in chunks:
-        cores = split_interval(chunk["start_ms"], chunk["end_ms"], max_chunk_ms)
-        if context_ms == 0:
-            split_chunks.extend(cores)
-            continue
-        for core in cores:
-            split_chunks.append(
-                {
-                    "start_ms": max(0, core["start_ms"] - context_ms),
-                    "end_ms": min(audio_duration_ms, core["end_ms"] + context_ms),
-                    "accept_start_ms": core["start_ms"],
-                    "accept_end_ms": core["end_ms"],
-                }
-            )
+        split_chunks.extend(split_interval(chunk["start_ms"], chunk["end_ms"], max_chunk_ms))
     return tuple(
-        {"index": index, **chunk}
+        {"index": index, "start_ms": chunk["start_ms"], "end_ms": chunk["end_ms"]}
         for index, chunk in enumerate(split_chunks)
     )
-
-
-def chunk_owns_segment(chunk: dict[str, int], segment: Segment) -> bool:
-    accept_start_ms = chunk.get("accept_start_ms")
-    accept_end_ms = chunk.get("accept_end_ms")
-    if accept_start_ms is None and accept_end_ms is None:
-        return True
-    if accept_start_ms is None or accept_end_ms is None:
-        raise ValueError("overlap-context chunk must include both accept bounds")
-    midpoint_ms = (segment.start_ms + segment.end_ms) / 2
-    return accept_start_ms <= midpoint_ms < accept_end_ms
 
 
 def transcription_channel_names(channels: Any, model_endpoint: ModelEndpoint) -> list[str]:
