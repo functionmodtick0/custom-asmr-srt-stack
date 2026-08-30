@@ -16,8 +16,11 @@ from custom_asmr_srt_stack.review_pack import (
     DEFAULT_REVIEW_CONTEXT_MS,
     REVIEW_AUDIO_MAP_FORMAT,
     REVIEW_PACK_FORMAT,
+    empty_review_pack_duration_summary,
     sanitize_clip_name,
+    update_review_pack_duration_summary,
 )
+from custom_asmr_srt_stack.review_effort import review_case_summaries, review_reason_counts
 
 CASE_SLICE_PLAN_FORMAT = "custom-asmr-case-slice-plan-v1"
 CASE_CANDIDATE_ATTACH_PLAN_FORMAT = "custom-asmr-case-candidate-attach-plan-v1"
@@ -315,6 +318,7 @@ def build_review_case_pack(
     clips_dir.mkdir()
 
     packed_items: list[dict[str, Any]] = []
+    duration_summary = empty_review_pack_duration_summary()
     for source in case_sources:
         case_id = source["case_id"]
         audio_value = source["audio"]
@@ -329,6 +333,16 @@ def build_review_case_pack(
             clip_end_ms = min(audio_duration_ms, segment.end_ms + context_ms)
             if clip_end_ms <= clip_start_ms:
                 raise ValueError(f"review case segment {case_id}/{segment.id} selects an empty audio range")
+            update_review_pack_duration_summary(
+                duration_summary,
+                item={},
+                start_ms=segment.start_ms,
+                end_ms=segment.end_ms,
+                focus_start_ms=segment.start_ms,
+                focus_end_ms=segment.end_ms,
+                clip_start_ms=clip_start_ms,
+                clip_end_ms=clip_end_ms,
+            )
             rank = len(packed_items) + 1
             clip_file = str(Path("clips") / review_case_clip_name(rank, case_id, segment.id))
             (output_dir / clip_file).write_bytes(slice_wav(audio_bytes, start_ms=clip_start_ms, end_ms=clip_end_ms))
@@ -356,10 +370,17 @@ def build_review_case_pack(
                 }
             )
 
+    case_summaries = review_case_summaries(packed_items)
     result = {
         "format": REVIEW_PACK_FORMAT,
         "source_case_index": str(case_index_file),
         "clip_count": len(packed_items),
+        "item_count": len(packed_items),
+        "reason_counts": review_reason_counts(packed_items),
+        "case_count": len(case_summaries),
+        "next_case_id": case_summaries[0]["case_id"] if case_summaries else None,
+        "case_summaries": case_summaries,
+        "duration_summary": duration_summary,
         "context_ms": context_ms,
         "items": packed_items,
     }

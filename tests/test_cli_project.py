@@ -5396,6 +5396,8 @@ class ProjectCliTests(unittest.TestCase):
             report = json.loads(output)
             self.assertEqual(report["format"], "custom-asmr-review-pack-v1")
             self.assertEqual(report["clip_count"], 2)
+            self.assertEqual(report["item_count"], 2)
+            self.assertEqual(report["reason_counts"], {"text": 2})
             self.assertEqual(report["source_case_index"], str(case_index))
             self.assertEqual(report["case_count"], 1)
             self.assertEqual(report["next_case_id"], "front-a")
@@ -5725,6 +5727,35 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["format"], "custom-asmr-review-pack-v1")
             self.assertEqual(report["source_case_index"], str(case_index_path))
             self.assertEqual(report["clip_count"], 2)
+            self.assertEqual(report["item_count"], 2)
+            self.assertEqual(report["reason_counts"], {"reference-needs-review": 2})
+            self.assertEqual(report["case_count"], 1)
+            self.assertEqual(report["next_case_id"], "front-a")
+            self.assertEqual(
+                report["duration_summary"],
+                {
+                    "source_item_duration_ms_sum": 4,
+                    "effective_item_duration_ms_sum": 4,
+                    "clip_duration_ms_sum": 7,
+                    "clip_duration_ms_max": 4,
+                    "focus_item_count": 0,
+                },
+            )
+            self.assertEqual(
+                report["case_summaries"],
+                [
+                    {
+                        "case_id": "front-a",
+                        "item_count": 2,
+                        "reason_counts": {"reference-needs-review": 2},
+                        "review_duration_ms": 4,
+                        "first_start_ms": 2,
+                        "last_end_ms": 8,
+                        "top_priority_score": 2.0,
+                        "top_priority_rank": 1,
+                    }
+                ],
+            )
             self.assertEqual([item["reference_id"] for item in report["items"]], ["seg_000002", "seg_000003"])
             self.assertEqual([item["priority_rank"] for item in report["items"]], [1, 2])
             self.assertEqual(report["items"][0]["reasons"], ["reference-needs-review"])

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from custom_asmr_srt_stack.audio import analyze_wav, slice_wav
+from custom_asmr_srt_stack.review_effort import review_reason_counts
 
 REVIEW_PACK_FORMAT = "custom-asmr-review-pack-v1"
 REVIEW_AUDIO_MAP_FORMAT = "custom-asmr-review-audio-map-v1"
@@ -85,6 +86,8 @@ def build_review_pack(
         "format": REVIEW_PACK_FORMAT,
         "source_report": review_effort_report.get("source_report"),
         "clip_count": len(packed_items),
+        "item_count": len(packed_items),
+        "reason_counts": review_reason_counts(packed_items),
         "duration_summary": duration_summary,
         "items": packed_items,
     }
