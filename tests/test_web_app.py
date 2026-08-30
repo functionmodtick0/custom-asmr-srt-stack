@@ -249,6 +249,37 @@ class WebAppBehaviorTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_segment_playback_waits_for_audio_metadata(self):
+        result = self.run_app_assertions(
+            r"""
+            const player = elements.get("audioPlayer");
+            let loadedData = null;
+            let playCount = 0;
+            player.readyState = 0;
+            player.currentTime = 0;
+            player.addEventListener = (type, callback, options) => {
+              assert.strictEqual(type, "loadeddata");
+              assert.strictEqual(options.once, true);
+              loadedData = callback;
+            };
+            player.play = () => { playCount += 1; };
+
+            context.playSegment({ id: "seg_000001", start_ms: 98513, end_ms: 120000 });
+
+            assert.strictEqual(player.currentTime, 0);
+            assert.strictEqual(playCount, 0);
+            assert.ok(loadedData);
+
+            player.readyState = 2;
+            loadedData();
+
+            assert.strictEqual(player.currentTime, 98.513);
+            assert.strictEqual(playCount, 1);
+        """,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_review_case_editor_shows_overlapping_candidate_context(self):
         result = self.run_app_assertions(
             r"""

@@ -6,6 +6,7 @@ const state = {
   audioUrl: null,
   hasAudio: false,
   stopTimer: null,
+  playbackRequestId: 0,
   audioBuffer: null,
   saveTimer: null,
   reviewPack: null,
@@ -968,11 +969,21 @@ function selectedSegment() {
 function playSegment(segment) {
   window.clearTimeout(state.stopTimer);
   const range = playbackRangeForSegment(segment);
-  els.audioPlayer.currentTime = range.startMs / 1000;
-  els.audioPlayer.play();
-  state.stopTimer = window.setTimeout(() => {
-    els.audioPlayer.pause();
-  }, Math.max(0, range.endMs - range.startMs));
+  const requestId = state.playbackRequestId + 1;
+  state.playbackRequestId = requestId;
+  const startPlayback = () => {
+    if (requestId !== state.playbackRequestId) return;
+    els.audioPlayer.currentTime = range.startMs / 1000;
+    els.audioPlayer.play();
+    state.stopTimer = window.setTimeout(() => {
+      els.audioPlayer.pause();
+    }, Math.max(0, range.endMs - range.startMs));
+  };
+  if (els.audioPlayer.readyState < 2) {
+    els.audioPlayer.addEventListener("loadeddata", startPlayback, { once: true });
+    return;
+  }
+  startPlayback();
 }
 
 function playbackRangeForSegment(segment) {

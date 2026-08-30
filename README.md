@@ -98,7 +98,7 @@ translated.json 가져오기
 SRT 내보내기
 ```
 
-검수 큐를 볼 때는 CLI로 만든 `review-pack` directory, `index.json`, review case directory, `case-index.json` 경로를 WebUI의 Review path 입력에 넣고 엽니다. Review pack은 priority 순서, reason, reference/candidate text와 `clips/*.wav`를 보여줍니다. `case_summaries`와 `next_case_id`가 있는 pack은 clip을 고르기 전에도 `case 열기`로 다음 검수 case를 바로 엽니다. Review case set은 case를 클릭하면 audio와 reference master를 편집 화면에 붙이고, 수정 내용을 reference file과 `case-index.json` count에 자동 저장합니다. Channel audit item에서 연 case는 `ENERGY L/R 적용`으로 제안을 반영하거나 `Channel 검수 완료`로 기존 L/R이 맞다는 사람 판정을 저장할 수 있습니다.
+검수 큐를 볼 때는 CLI로 만든 `review-pack` directory, `index.json`, review case directory, `case-index.json` 경로를 WebUI의 Review path 입력에 넣고 엽니다. Review pack은 priority 순서와 evidence를 보여주고 `case 열기`로 source reference를 편집합니다. Audio API는 HTTP byte Range를 지원하므로 긴 WAV의 선택 segment로 바로 seek합니다. Content/channel 검수 상태는 reference file과 `case-index.json` count에 자동 저장됩니다.
 
 모델 설정은 UI에서 직접 입력합니다.
 오디오를 먼저 연 뒤 SRT 또는 `master.json`을 열면, 아직 transcript가 없는 현재 오디오 project에 해당 transcript를 연결합니다.
@@ -693,7 +693,7 @@ Review path: /path/to/review-pack
 Review path: /path/to/review-cases
 ```
 
-WebUI는 review pack을 새 project로 저장하지 않고, priority item을 클릭할 때 해당 clip만 재생하는 검수 큐 보기 모드로 다룹니다. `review-effort`에서 만든 후보 수정 pack과 `review-case-pack`에서 만든 reference 검수 pack은 같은 loader를 사용합니다. Candidate가 없는 reference-only pack은 segment id를 표시하고 빈 `CAND` 줄은 숨깁니다. Reference overlap audit은 두 번째 segment를 `REF2`로 표시하고, reference channel energy audit은 `ENERGY` verdict와 L/R dBFS/delta evidence를 표시합니다. Pack item 또는 root의 source case 정보로 `case 열기`, `pack 목록`, `다음 issue`를 사용할 수 있습니다. Review case 목록은 전체 content pending 수와 duration, 자동 review flag 수, 첫 미검수 segment를 표시합니다. 기존 `검수 완료`가 `content_reviewed=true`를 저장하고 다음 내용 미검수 segment로 이동하며, text/time을 다시 편집하면 이 증거가 무효화됩니다. Channel-only `Channel 검수 완료`는 `channel_reviewed=true`만 저장하므로 내용 검수를 대신하지 않습니다. 모델/VAD/threshold 옵션은 추가하지 않습니다.
+WebUI는 review pack을 priority clip queue로 다루고 source case 정보로 `case 열기`, `pack 목록`, `다음 issue`를 제공합니다. Review case 목록은 content pending 수/duration, 자동 flag 수, 첫 미검수 segment를 표시합니다. `검수 완료`가 content evidence를 저장하고 text/time 재편집은 이를 무효화합니다. Channel-only 완료는 channel evidence만 저장합니다. Audio Range/206 지원으로 120초 source case에서도 선택 segment timestamp로 즉시 seek합니다. 모델/VAD/threshold 옵션은 추가하지 않습니다.
 
 ## 테스트
 

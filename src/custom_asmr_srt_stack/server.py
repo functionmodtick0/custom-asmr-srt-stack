@@ -399,16 +399,34 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        write_response_body(self.wfile, body)
 
     def do_GET(self) -> None:
         if self.path.startswith("/api/"):
             status, content_type, body = handle_api_get_request(self.path)
+            extra_headers: dict[str, str] = {}
+            if content_type.startswith("audio/"):
+                extra_headers["Accept-Ranges"] = "bytes"
+                range_value = self.headers.get("Range")
+                if range_value is not None and status == HTTPStatus.OK.value:
+                    total_size = len(body)
+                    try:
+                        start, end = parse_http_byte_range(range_value, total_size)
+                    except ValueError:
+                        status = HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE.value
+                        body = b""
+                        extra_headers["Content-Range"] = f"bytes */{total_size}"
+                    else:
+                        status = HTTPStatus.PARTIAL_CONTENT.value
+                        body = body[start : end + 1]
+                        extra_headers["Content-Range"] = f"bytes {start}-{end}/{total_size}"
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
+            for name, value in extra_headers.items():
+                self.send_header(name, value)
             self.end_headers()
-            self.wfile.write(body)
+            write_response_body(self.wfile, body)
             return
         super().do_GET()
 
@@ -417,3 +435,43 @@ def run_server(host: str = "127.0.0.1", port: int = 5173) -> None:
     server = ThreadingHTTPServer((host, port), AppRequestHandler)
     print(f"Serving custom ASMR SRT stack on http://{host}:{port}", flush=True)
     server.serve_forever()
+
+
+def parse_http_byte_range(value: str, total_size: int) -> tuple[int, int]:
+    if total_size <= 0:
+        raise ValueError("byte range requires a non-empty response")
+    unit, separator, raw_spec = value.partition("=")
+    spec = raw_spec.strip()
+    if unit.strip().lower() != "bytes" or separator != "=" or not spec or "," in spec:
+        raise ValueError("only one bytes range is supported")
+    raw_start, dash, raw_end = spec.partition("-")
+    if dash != "-":
+        raise ValueError("byte range must contain a dash")
+    start_text = raw_start.strip()
+    end_text = raw_end.strip()
+
+    if not start_text:
+        if not end_text.isdigit():
+            raise ValueError("byte range suffix must be an integer")
+        suffix_size = int(end_text)
+        if suffix_size <= 0:
+            raise ValueError("byte range suffix must be positive")
+        return max(0, total_size - suffix_size), total_size - 1
+
+    if not start_text.isdigit() or (end_text and not end_text.isdigit()):
+        raise ValueError("byte range bounds must be integers")
+    start = int(start_text)
+    if start >= total_size:
+        raise ValueError("byte range starts past the response")
+    end = total_size - 1 if not end_text else min(int(end_text), total_size - 1)
+    if end < start:
+        raise ValueError("byte range end must not precede start")
+    return start, end
+
+
+def write_response_body(stream: Any, body: bytes) -> bool:
+    try:
+        stream.write(body)
+    except (BrokenPipeError, ConnectionResetError):
+        return False
+    return True

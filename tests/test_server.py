@@ -8,11 +8,41 @@ import wave
 from pathlib import Path
 
 from custom_asmr_srt_stack.projects import ProjectStore
-from custom_asmr_srt_stack.server import handle_api_get_request, handle_api_request
+from custom_asmr_srt_stack.server import (
+    handle_api_get_request,
+    handle_api_request,
+    parse_http_byte_range,
+    write_response_body,
+)
 from custom_asmr_srt_stack.models import Segment
 
 
 class ServerApiTests(unittest.TestCase):
+    def test_http_byte_ranges_support_seek_and_reject_invalid_requests(self):
+        self.assertEqual(parse_http_byte_range("bytes=10-19", 100), (10, 19))
+        self.assertEqual(parse_http_byte_range("bytes=90-", 100), (90, 99))
+        self.assertEqual(parse_http_byte_range("bytes=-10", 100), (90, 99))
+        self.assertEqual(parse_http_byte_range("bytes=0-999", 100), (0, 99))
+
+        for value, length in (
+            ("items=0-9", 100),
+            ("bytes=10-5", 100),
+            ("bytes=100-", 100),
+            ("bytes=0-1,5-6", 100),
+            ("bytes=-0", 100),
+            ("bytes=0-", 0),
+        ):
+            with self.subTest(value=value, length=length):
+                with self.assertRaises(ValueError):
+                    parse_http_byte_range(value, length)
+
+    def test_response_body_write_treats_client_disconnect_as_completed_request(self):
+        class DisconnectedStream:
+            def write(self, body):
+                raise ConnectionResetError("client closed the range request")
+
+        self.assertFalse(write_response_body(DisconnectedStream(), b"audio"))
+
     def post_json(self, path, payload, project_store=None, transcribe_audio_func=None):
         kwargs = {"project_store": project_store}
         if transcribe_audio_func is not None:
