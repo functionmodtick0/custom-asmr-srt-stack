@@ -26,6 +26,8 @@
 
 번역 기능은 제공하지 않습니다.
 
+모델 fine-tuning, LoRA/adapter training과 사용자별 checkpoint 생성도 제공하지 않습니다. 공개된 pretrained 또는 third-party fine-tuned checkpoint는 로컬 snapshot으로 평가할 수 있지만, 제품 품질은 학습 없이 local inference pipeline과 필요한 사람 검수량으로 판단합니다.
+
 SRT import는 선두의 `[L]`, `[R]`, `[LR]`, `[MIX]`, `[L:SPEAKER_00]`, `[R:SPEAKER_00]`, `[SPEAKER_00]` 같은 channel/speaker metadata label을 본문 텍스트에서 제거합니다. 채널은 `segment.channel`에만 저장합니다.
 
 ## 요구 사항

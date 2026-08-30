@@ -19,9 +19,12 @@
 - 연구용 모델 튜닝 옵션을 기본 화면에 노출하지 않는다.
 - WhisperX를 핵심 파이프라인으로 쓰지 않는다.
 - 외부 프론티어 API를 고품질 기본 경로로 사용하지 않는다.
+- 사용자 데이터나 별도 corpus로 모델을 fine-tuning, LoRA, adapter training하지 않는다.
 - 같은 목적에 사용할 수 있는 최신 로컬 ASR/aligner 모델이 있다면 구형/소형 ASR 모델을 추천하지 않는다.
 
 번역은 명시적으로 범위 밖이다. 번역은 외부 번역 도구가 담당한다.
+
+학습은 명시적으로 범위 밖이다. 다른 주체가 공개한 pretrained/fine-tuned checkpoint를 exact local snapshot으로 평가하고 사용하는 것은 허용하지만, 이 프로젝트는 학습 dataset 구축, training loop, checkpoint 생성이나 사용자별 adapter 최적화를 제공하지 않는다. 공개 모델과 inference-time pipeline이 product gate를 만족하지 못하면 학습을 다음 단계로 제안하지 않고 관측된 품질 ceiling과 사람 검수 비용을 그대로 보고한다.
 
 ## 기본 산출물
 
