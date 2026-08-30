@@ -5897,7 +5897,7 @@ class ProjectCliTests(unittest.TestCase):
                                 "channel": "R",
                                 "kind": "speech",
                                 "text": "後半確認",
-                                "needs_review": True,
+                                "needs_review": False,
                             },
                         ],
                     }
@@ -5943,7 +5943,7 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["item_count"], 2)
             self.assertEqual(
                 report["reason_counts"],
-                {"reference-content-unreviewed": 2, "reference-needs-review": 2},
+                {"reference-content-unreviewed": 2, "reference-needs-review": 1},
             )
             self.assertEqual(report["case_count"], 1)
             self.assertEqual(report["next_case_id"], "front-a")
@@ -5963,7 +5963,7 @@ class ProjectCliTests(unittest.TestCase):
                     {
                         "case_id": "front-a",
                         "item_count": 2,
-                        "reason_counts": {"reference-content-unreviewed": 2, "reference-needs-review": 2},
+                        "reason_counts": {"reference-content-unreviewed": 2, "reference-needs-review": 1},
                         "review_duration_ms": 4,
                         "first_start_ms": 2,
                         "last_end_ms": 8,
@@ -5983,6 +5983,8 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["items"][0]["candidate_text"], "")
             self.assertEqual(report["items"][0]["clip_start_ms"], 1)
             self.assertEqual(report["items"][0]["clip_end_ms"], 5)
+            self.assertEqual(report["items"][1]["reasons"], ["reference-content-unreviewed"])
+            self.assertIn("__reference-content-unreviewed__", report["items"][1]["clip_file"])
             first_clip = pack_dir / report["items"][0]["clip_file"]
             second_clip = pack_dir / report["items"][1]["clip_file"]
             self.assertTrue(first_clip.exists())

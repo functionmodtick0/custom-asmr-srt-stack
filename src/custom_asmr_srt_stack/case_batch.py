@@ -370,7 +370,8 @@ def build_review_case_pack(
                 clip_end_ms=clip_end_ms,
             )
             rank = len(packed_items) + 1
-            clip_file = str(Path("clips") / review_case_clip_name(rank, case_id, segment.id))
+            clip_reason = "reference-needs-review" if segment.needs_review else "reference-content-unreviewed"
+            clip_file = str(Path("clips") / review_case_clip_name(rank, case_id, segment.id, clip_reason))
             (output_dir / clip_file).write_bytes(slice_wav(audio_bytes, start_ms=clip_start_ms, end_ms=clip_end_ms))
             packed_items.append(
                 {
@@ -414,8 +415,8 @@ def build_review_case_pack(
     return result
 
 
-def review_case_clip_name(index: int, case_id: str, segment_id: str) -> str:
-    value = f"{index:06d}__{case_id}__reference-needs-review__{segment_id}__no-cand"
+def review_case_clip_name(index: int, case_id: str, segment_id: str, reason: str) -> str:
+    value = f"{index:06d}__{case_id}__{reason}__{segment_id}__no-cand"
     return sanitize_clip_name(value) + ".wav"
 
 
