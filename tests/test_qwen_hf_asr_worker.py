@@ -8,6 +8,7 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import custom_asmr_srt_stack.qwen_hf_asr_worker as qwen_hf_asr_worker
@@ -17,6 +18,7 @@ from custom_asmr_srt_stack.qwen_hf_asr_worker import (
     checked_model_path,
     disable_python_network_if_requested,
     qwen_language,
+    qwen_hf_num_beams,
     require_secure_runtime,
     response_for_line,
 )
@@ -100,6 +102,67 @@ class QwenHfAsrWorkerTests(unittest.TestCase):
         self.assertEqual(qwen_language("ja"), "Japanese")
         with mock.patch.dict(os.environ, {"CASRT_QWEN_HF_ASR_FORCE_LANGUAGE": "0"}):
             self.assertIsNone(qwen_language("ja"))
+
+    def test_num_beams_defaults_to_greedy_and_accepts_explicit_beam_search(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(qwen_hf_num_beams(), 1)
+        with mock.patch.dict(os.environ, {"CASRT_QWEN_HF_ASR_NUM_BEAMS": "5"}, clear=True):
+            self.assertEqual(qwen_hf_num_beams(), 5)
+        with mock.patch.dict(os.environ, {"CASRT_QWEN_HF_ASR_NUM_BEAMS": "0"}, clear=True):
+            with self.assertRaisesRegex(ValueError, "must be a positive integer"):
+                qwen_hf_num_beams()
+
+    def test_generate_result_passes_configured_beam_count_to_model(self):
+        class FakeInputs(dict):
+            def to(self, _device, _dtype):
+                return self
+
+        class FakeOutput:
+            def __getitem__(self, key):
+                self.key = key
+                return "generated-only"
+
+        class FakeProcessor:
+            def apply_transcription_request(self, **kwargs):
+                self.request = kwargs
+                return FakeInputs(input_ids=SimpleNamespace(shape=(1, 3)))
+
+            def decode(self, generated_ids, **kwargs):
+                self.decode_call = (generated_ids, kwargs)
+                return ["確認"]
+
+        class FakeModel:
+            device = "cuda:0"
+            dtype = "bfloat16"
+
+            def generate(self, **kwargs):
+                self.generate_kwargs = kwargs
+                return FakeOutput()
+
+        processor = FakeProcessor()
+        model = FakeModel()
+        runtime = QwenHfAsrRuntime()
+
+        with (
+            mock.patch.object(runtime, "load_model", return_value=(processor, model)),
+            mock.patch.dict(
+                os.environ,
+                {
+                    "CASRT_QWEN_HF_ASR_NUM_BEAMS": "5",
+                    "CASRT_QWEN_HF_ASR_MAX_NEW_TOKENS": "128",
+                },
+                clear=True,
+            ),
+        ):
+            result = runtime.generate_result("/models/qwen-hf", mono_wav_bytes(), "ja", 7)
+
+        self.assertEqual(result.text, "確認")
+        self.assertEqual(processor.request["language"], "Japanese")
+        self.assertEqual(model.generate_kwargs["num_beams"], 5)
+        self.assertEqual(model.generate_kwargs["max_new_tokens"], 128)
+        self.assertFalse(model.generate_kwargs["do_sample"])
+        self.assertEqual(processor.decode_call[0], "generated-only")
+        self.assertEqual(processor.decode_call[1], {"return_format": "transcription_only"})
 
     def test_network_guard_blocks_python_socket_creation(self):
         original_socket = socket.socket

@@ -124,6 +124,8 @@ CASRT_QWEN_HF_ASR_DISABLE_NETWORK=1
 
 worker는 `AutoProcessor`와 `AutoModelForMultimodalLM`을 사용하고, model load는 local snapshot path + `local_files_only=True` + `trust_remote_code=False` + `use_safetensors=True`로 고정한다. Qwen HF ASR는 transcript text만 반환하므로 chunk 전체 timing과 `needs_review=true`를 반환하고, timing 품질은 후속 VAD/alignment 평가에서 본다.
 
+`CASRT_QWEN_HF_ASR_NUM_BEAMS`는 Qwen HF generation beam count를 지정하는 CLI/runtime 실험 env다. 양의 정수만 허용하고 기본값은 `1`(greedy)이며 WebUI 옵션으로 노출하지 않는다. Model card가 beam 5 결과를 보고한 후보는 `CASRT_QWEN_HF_ASR_NUM_BEAMS=5`를 명시하고, base와 fine-tune 모두 같은 값으로 재평가해야 model weight 효과와 decoding 효과를 분리할 수 있다. `CASRT_QWEN_HF_ASR_MAX_NEW_TOKENS` 기본값은 계속 `256`이다.
+
 2026-06-30 최신 후보 상태:
 
 - 모델: `Qwen/Qwen3-ASR-1.7B-hf`

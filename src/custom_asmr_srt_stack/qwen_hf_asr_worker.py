@@ -71,7 +71,12 @@ class QwenHfAsrRuntime:
             inputs = processor.apply_transcription_request(**kwargs)
             if hasattr(inputs, "to"):
                 inputs = inputs.to(model.device, model.dtype)
-            output_ids = model.generate(**inputs, max_new_tokens=qwen_hf_max_new_tokens(), do_sample=False)
+            output_ids = model.generate(
+                **inputs,
+                max_new_tokens=qwen_hf_max_new_tokens(),
+                num_beams=qwen_hf_num_beams(),
+                do_sample=False,
+            )
             input_length = inputs["input_ids"].shape[-1]
             generated_ids = output_ids[:, input_length:]
             text = processor.decode(generated_ids, return_format="transcription_only")[0]
@@ -183,6 +188,17 @@ def qwen_hf_max_new_tokens() -> int:
         raise ValueError("CASRT_QWEN_HF_ASR_MAX_NEW_TOKENS must be a positive integer") from error
     if value <= 0:
         raise ValueError("CASRT_QWEN_HF_ASR_MAX_NEW_TOKENS must be a positive integer")
+    return value
+
+
+def qwen_hf_num_beams() -> int:
+    raw_value = os.environ.get("CASRT_QWEN_HF_ASR_NUM_BEAMS", "1").strip()
+    try:
+        value = int(raw_value)
+    except ValueError as error:
+        raise ValueError("CASRT_QWEN_HF_ASR_NUM_BEAMS must be a positive integer") from error
+    if value <= 0:
+        raise ValueError("CASRT_QWEN_HF_ASR_NUM_BEAMS must be a positive integer")
     return value
 
 
