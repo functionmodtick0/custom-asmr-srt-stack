@@ -28,7 +28,7 @@
 
 학습은 명시적으로 범위 밖이다. 다른 주체가 공개한 pretrained/fine-tuned checkpoint를 exact local snapshot으로 평가하고 사용하는 것은 허용하지만, 이 프로젝트는 학습 dataset 구축, training loop, checkpoint 생성이나 사용자별 adapter 최적화를 제공하지 않는다. 공개 모델과 inference-time pipeline이 product gate를 만족하지 못하면 학습을 다음 단계로 제안하지 않고 관측된 품질 ceiling과 사람 검수 비용을 그대로 보고한다.
 
-Runtime human adjudication도 범위 밖이다. 여러 로컬 모델 후보가 다르면 deterministic consensus/MBR, calibrated confidence가 있는 acoustic score, 또는 audio-conditioned local verifier가 자동으로 선택해야 하며 transcript-only fluency judge를 음성 정답 판정자로 간주하지 않는다. 자동 판정이 불확실해도 사용자 승인을 요구하지 않고 최선 후보와 machine uncertainty를 저장한다. `content_reviewed`/`channel_reviewed`와 Review UI는 평가·감사 도구로 유지하되 정상 전사 완료 조건이 아니다.
+Runtime human adjudication도 범위 밖이다. 정상 제품 실행은 사용자가 선택한 메인 모델 하나와 고정 pipeline만 사용해 숨은 추가 ASR/verifier 비용 없이 완료한다. Multi-model consensus/MBR와 audio-conditioned verifier는 모델·pipeline을 고르는 개발/benchmark 도구일 뿐 production WebUI 기본 경로나 자동 fallback에 넣지 않는다. Transcript-only fluency judge를 음성 정답 판정자로 간주하지 않으며, 단일 모델 결과가 불확실해도 사용자 승인을 요구하지 않고 결과와 machine uncertainty를 저장한다. `content_reviewed`/`channel_reviewed`와 Review UI는 평가·감사 도구로 유지하되 정상 전사 완료 조건이 아니다.
 
 사람을 runtime에서 배제하는 것과 absolute quality 검증은 별개다. 독립 human-reviewed gold가 전혀 없으면 model agreement, proxy reference, energy consistency만 보고할 수 있으며 실제 CER나 정답률을 증명했다고 표현하지 않는다.
 
