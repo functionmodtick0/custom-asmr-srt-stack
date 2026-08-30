@@ -263,6 +263,9 @@ def load_review_case_set_response(path: Path) -> dict[str, Any]:
         normalized_item["audio_url"] = review_case_audio_url(case_index_path, audio)
         normalized_item["reference_master"] = reference_master
         normalized_item["review_duration_ms"] = master_review_duration_ms(reference_master)
+        normalized_item["content_reviewed_count"] = master_content_reviewed_count(reference_master)
+        normalized_item["content_unreviewed_count"] = master_content_unreviewed_count(reference_master)
+        normalized_item["content_unreviewed_duration_ms"] = master_content_unreviewed_duration_ms(reference_master)
         candidate = item_mapping.get("candidate")
         if candidate is not None:
             candidate_value = require_string(candidate, f"review case item {index}.candidate")
@@ -348,6 +351,35 @@ def master_review_duration_ms(master: dict[str, Any]) -> int:
     total = 0
     for segment in segments:
         if not isinstance(segment, dict) or not segment.get("needs_review"):
+            continue
+        start_ms = segment.get("start_ms")
+        end_ms = segment.get("end_ms")
+        if isinstance(start_ms, int) and isinstance(end_ms, int):
+            total += max(0, end_ms - start_ms)
+    return total
+
+
+def master_content_reviewed_count(master: dict[str, Any]) -> int:
+    segments = master.get("segments")
+    if not isinstance(segments, list):
+        return 0
+    return sum(1 for segment in segments if isinstance(segment, dict) and segment.get("content_reviewed") is True)
+
+
+def master_content_unreviewed_count(master: dict[str, Any]) -> int:
+    segments = master.get("segments")
+    if not isinstance(segments, list):
+        return 0
+    return sum(1 for segment in segments if isinstance(segment, dict) and segment.get("content_reviewed") is not True)
+
+
+def master_content_unreviewed_duration_ms(master: dict[str, Any]) -> int:
+    segments = master.get("segments")
+    if not isinstance(segments, list):
+        return 0
+    total = 0
+    for segment in segments:
+        if not isinstance(segment, dict) or segment.get("content_reviewed") is True:
             continue
         start_ms = segment.get("start_ms")
         end_ms = segment.get("end_ms")

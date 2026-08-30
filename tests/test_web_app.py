@@ -138,8 +138,8 @@ class WebAppBehaviorTests(unittest.TestCase):
             const item = {
               reference_master: {
                 segments: [
-                  { id: "seg_000001", start_ms: 0, end_ms: 500, channel: "MIX", text: "済み", needs_review: false },
-                  { id: "seg_000002", start_ms: 1234, end_ms: 3456, channel: "L", text: "確認する", needs_review: true },
+                  { id: "seg_000001", start_ms: 0, end_ms: 500, channel: "MIX", text: "済み", needs_review: false, content_reviewed: true },
+                  { id: "seg_000002", start_ms: 1234, end_ms: 3456, channel: "L", text: "確認する", needs_review: false, content_reviewed: false },
                   { id: "seg_000003", start_ms: 5000, end_ms: 6000, channel: "R", text: "後", needs_review: true },
                 ],
               },
@@ -148,7 +148,102 @@ class WebAppBehaviorTests(unittest.TestCase):
             const first = context.firstReviewSegment(item);
             assert.strictEqual(first.id, "seg_000002");
             assert.strictEqual(context.reviewSegmentPreview(first), "0:01.234 - 0:03.456 · 確認する");
-            assert.strictEqual(context.reviewSegmentPreview(null), "검수 flag 없음");
+            assert.strictEqual(context.reviewSegmentPreview(null), "미검수 없음");
+        """,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_content_review_completion_and_edits_update_review_evidence(self):
+        result = self.run_app_assertions(
+            r"""
+            (async () => {
+              const segment = {
+                id: "seg_000001",
+                start_ms: 0,
+                end_ms: 1000,
+                channel: "L",
+                kind: "speech",
+                text: "確認",
+                needs_review: false,
+                content_reviewed: false,
+                channel_reviewed: true,
+              };
+              const master = {
+                format: "custom-asmr-master-v1",
+                source_language: "ja",
+                audio: { source_file: "front.wav", duration_ms: 2000 },
+                segments: [segment],
+              };
+              elements.get("reviewPackPathInput").value = "/cases";
+              context.fetch = async () => ({
+                ok: true,
+                async json() {
+                  return {
+                    kind: "review-case-set",
+                    case_index_path: "/cases/case-index.json",
+                    items: [
+                      {
+                        id: "front",
+                        audio_url: "/api/review-case/audio?x=1",
+                        reference_master: master,
+                      },
+                    ],
+                  };
+                },
+              });
+              await context.loadReviewPath();
+              context.loadReviewCaseItem(0);
+              assert.strictEqual(elements.get("reviewDoneButton").disabled, false);
+
+              context.fetch = async (path, options) => {
+                assert.strictEqual(path, "/api/review-case/save-reference");
+                const payload = JSON.parse(options.body);
+                assert.strictEqual(payload.master.segments[0].needs_review, false);
+                assert.strictEqual(payload.master.segments[0].content_reviewed, true);
+                assert.strictEqual(payload.master.segments[0].channel_reviewed, true);
+                return {
+                  ok: true,
+                  async json() {
+                    return {
+                      segments: 1,
+                      review_count: 0,
+                      review_duration_ms: 0,
+                      content_reviewed_count: 1,
+                      content_unreviewed_count: 0,
+                      content_unreviewed_duration_ms: 0,
+                    };
+                  },
+                };
+              };
+
+              await context.markSelectedReviewDone();
+              assert.strictEqual(segment.content_reviewed, true);
+              assert.strictEqual(elements.get("reviewDoneButton").disabled, true);
+
+              context.commitSegmentTime(segment, "start_ms", { value: "100" });
+              assert.strictEqual(segment.content_reviewed, false);
+              assert.strictEqual(segment.channel_reviewed, false);
+
+              segment.content_reviewed = true;
+              assert.strictEqual(context.commitSegmentText(segment, "修正"), true);
+              assert.strictEqual(segment.text, "修正");
+              assert.strictEqual(segment.content_reviewed, false);
+
+              segment.content_reviewed = true;
+              segment.channel_reviewed = true;
+              assert.strictEqual(context.commitSegmentChannel(segment, "R"), true);
+              assert.strictEqual(segment.channel, "R");
+              assert.strictEqual(segment.content_reviewed, true);
+              assert.strictEqual(segment.channel_reviewed, false);
+
+              context.setSegmentReviewFlag(segment, true);
+              assert.strictEqual(segment.needs_review, true);
+              assert.strictEqual(segment.content_reviewed, false);
+            })().catch((error) => {
+              console.error(error);
+              process.exit(1);
+            });
         """,
         )
 
@@ -240,6 +335,8 @@ class WebAppBehaviorTests(unittest.TestCase):
                           segments: 3,
                           review_count: 2,
                           review_duration_ms: 3222,
+                          content_unreviewed_count: 2,
+                          content_unreviewed_duration_ms: 3222,
                           audio: "audio/front-a.wav",
                           reference: "references/front-a.master.json",
                           reference_master: {
@@ -256,6 +353,8 @@ class WebAppBehaviorTests(unittest.TestCase):
                           segments: 1,
                           review_count: 0,
                           review_duration_ms: 0,
+                          content_unreviewed_count: 0,
+                          content_unreviewed_duration_ms: 0,
                           audio: "audio/front-b.wav",
                           reference: "references/front-b.master.json",
                           reference_master: { segments: [] },
@@ -268,12 +367,16 @@ class WebAppBehaviorTests(unittest.TestCase):
 
               await context.loadReviewPath();
 
-              assert.strictEqual(elements.get("segmentCount").textContent, "2 review cases · 2 flags · 0:03.222");
+              assert.strictEqual(
+                elements.get("segmentCount").textContent,
+                "2 review cases · 2 content pending · 2 flags · 0:03.222",
+              );
               const firstRow = elements.get("segmentList").children[0];
               const counts = firstRow.children[1];
               assert.strictEqual(counts.children[0].textContent, "3 segments");
-              assert.strictEqual(counts.children[1].textContent, "2 review flags");
-              assert.strictEqual(counts.children[2].textContent, "0:03.222");
+              assert.strictEqual(counts.children[1].textContent, "2 content pending");
+              assert.strictEqual(counts.children[2].textContent, "2 review flags");
+              assert.strictEqual(counts.children[3].textContent, "0:03.222");
             })().catch((error) => {
               console.error(error);
               process.exit(1);
@@ -934,6 +1037,7 @@ class WebAppBehaviorTests(unittest.TestCase):
                               kind: "speech",
                               text: "確認",
                               needs_review: false,
+                              content_reviewed: false,
                               channel_reviewed: false,
                             },
                           ],
@@ -956,6 +1060,7 @@ class WebAppBehaviorTests(unittest.TestCase):
                 const segment = payload.master.segments[0];
                 assert.strictEqual(segment.channel, "L");
                 assert.strictEqual(segment.needs_review, false);
+                assert.strictEqual(segment.content_reviewed, false);
                 assert.strictEqual(segment.channel_reviewed, true);
                 return {
                   ok: true,

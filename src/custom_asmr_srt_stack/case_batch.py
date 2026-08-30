@@ -101,6 +101,12 @@ def prepare_review_cases(
             "duration_ms": case["end_ms"] - case["start_ms"],
             "segments": len(sliced_reference.segments),
             "review_count": sum(1 for segment in sliced_reference.segments if segment.needs_review),
+            "content_reviewed_count": sum(
+                1 for segment in sliced_reference.segments if segment.content_reviewed
+            ),
+            "content_unreviewed_count": sum(
+                1 for segment in sliced_reference.segments if not segment.content_reviewed
+            ),
             "reference_type": reference_type,
         }
         if reference_notes is not None:
@@ -198,6 +204,9 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
     missing_file_count = 0
     reference_review_count = 0
     reference_review_duration_ms = 0
+    reference_content_reviewed_count = 0
+    reference_content_unreviewed_count = 0
+    reference_content_unreviewed_duration_ms = 0
     reference_review_clear_case_count = 0
     candidate_case_count = 0
     candidate_review_count = 0
@@ -205,6 +214,7 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
     candidate_review_clear_case_count = 0
     cases_missing_candidate: list[str] = []
     cases_needing_review: list[str] = []
+    cases_content_unreviewed: list[str] = []
     cases_with_candidate_review: list[str] = []
     cases_with_issues: list[str] = []
 
@@ -223,6 +233,9 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
         missing_file_count += item["missing_file_count"]
         reference_review_count += item["reference_review_count"]
         reference_review_duration_ms += item["reference_review_duration_ms"]
+        reference_content_reviewed_count += item["reference_content_reviewed_count"]
+        reference_content_unreviewed_count += item["reference_content_unreviewed_count"]
+        reference_content_unreviewed_duration_ms += item["reference_content_unreviewed_duration_ms"]
         if item.get("candidate") is not None:
             candidate_case_count += 1
             item_candidate_review_count = item.get("candidate_review_count")
@@ -239,6 +252,8 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
             cases_needing_review.append(item["id"])
         elif reference_loaded_without_issues(item):
             reference_review_clear_case_count += 1
+        if item["reference_content_unreviewed_count"] > 0:
+            cases_content_unreviewed.append(item["id"])
         if item["issues"]:
             cases_with_issues.append(item["id"])
 
@@ -261,6 +276,12 @@ def review_case_status(case_index_file: Path, *, source_language: str = "ja") ->
         "case_issue_count": len(cases_with_issues),
         "reference_review_count": reference_review_count,
         "reference_review_duration_ms": reference_review_duration_ms,
+        "reference_content_reviewed_count": reference_content_reviewed_count,
+        "reference_content_unreviewed_count": reference_content_unreviewed_count,
+        "reference_content_unreviewed_duration_ms": reference_content_unreviewed_duration_ms,
+        "reference_content_unreviewed_case_count": len(cases_content_unreviewed),
+        "cases_content_unreviewed": cases_content_unreviewed,
+        "next_content_unreviewed_case_id": cases_content_unreviewed[0] if cases_content_unreviewed else None,
         "reference_review_case_count": len(cases_needing_review),
         "reference_review_clear_case_count": reference_review_clear_case_count,
         "cases_needing_review": cases_needing_review,
@@ -327,8 +348,13 @@ def build_review_case_pack(
         audio_duration_ms = source["audio_duration_ms"]
         master = source["master"]
         for segment in master.segments:
-            if not segment.needs_review:
+            if not segment.needs_review and segment.content_reviewed:
                 continue
+            reasons = []
+            if segment.needs_review:
+                reasons.append("reference-needs-review")
+            if not segment.content_reviewed:
+                reasons.append("reference-content-unreviewed")
             clip_start_ms = max(0, segment.start_ms - context_ms)
             clip_end_ms = min(audio_duration_ms, segment.end_ms + context_ms)
             if clip_end_ms <= clip_start_ms:
@@ -353,7 +379,7 @@ def build_review_case_pack(
                     "candidate_id": None,
                     "start_ms": segment.start_ms,
                     "end_ms": segment.end_ms,
-                    "reasons": ["reference-needs-review"],
+                    "reasons": reasons,
                     "reference_channel": segment.channel,
                     "reference_text": segment.text,
                     "candidate_channel": None,
@@ -436,6 +462,8 @@ def save_review_case_reference(
         reference_path.write_text(json.dumps(master.to_json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         raw_item["segments"] = len(master.segments)
         raw_item["review_count"] = sum(1 for segment in master.segments if segment.needs_review)
+        raw_item["content_reviewed_count"] = sum(1 for segment in master.segments if segment.content_reviewed)
+        raw_item["content_unreviewed_count"] = sum(1 for segment in master.segments if not segment.content_reviewed)
         resolved_index_path.write_text(json.dumps(case_index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         review_duration_ms = review_duration_ms_for_segments(master.segments)
         return {
@@ -446,6 +474,9 @@ def save_review_case_reference(
             "segments": raw_item["segments"],
             "review_count": raw_item["review_count"],
             "review_duration_ms": review_duration_ms,
+            "content_reviewed_count": raw_item["content_reviewed_count"],
+            "content_unreviewed_count": raw_item["content_unreviewed_count"],
+            "content_unreviewed_duration_ms": content_unreviewed_duration_ms_for_segments(master.segments),
         }
     raise ValueError(f"review case id is missing: {case_id}")
 
@@ -882,6 +913,21 @@ def build_eval_manifest_from_case_index(
         raise ValueError(f"review case index still has reference review_count={status['reference_review_count']}")
 
     selected_reference_type = reference_type or optional_index_string(case_index, "reference_type") or "unspecified"
+    if reference_type == "human-reviewed":
+        content_unreviewed_count = status["reference_content_unreviewed_count"]
+    elif reference_type is not None:
+        content_unreviewed_count = 0
+    else:
+        content_unreviewed_count = sum(
+            item["reference_content_unreviewed_count"]
+            for item in status["items"]
+            if item["reference_type"] == "human-reviewed"
+        )
+    if content_unreviewed_count > 0:
+        raise ValueError(
+            "human-reviewed eval manifest requires explicit content review evidence: "
+            f"content_unreviewed_count={content_unreviewed_count}"
+        )
     selected_reference_notes = reference_notes
     if selected_reference_notes is None:
         selected_reference_notes = optional_index_string(case_index, "reference_notes")
@@ -992,6 +1038,17 @@ def freeze_case_references(
     )
     if fail_on_review and reference_review_count > 0:
         raise ValueError(f"review case index still has reference review_count={reference_review_count}")
+    reference_content_unreviewed_count = sum(
+        1
+        for item in prepared_items
+        for segment in item["reference_master"].segments
+        if not segment.content_reviewed
+    )
+    if reference_type == "human-reviewed" and reference_content_unreviewed_count > 0:
+        raise ValueError(
+            "human-reviewed reference freeze requires explicit content review evidence: "
+            f"content_unreviewed_count={reference_content_unreviewed_count}"
+        )
 
     prepare_output_dir(output_dir)
     reference_dir = output_dir / "references"
@@ -1015,6 +1072,12 @@ def freeze_case_references(
             "source_reference": str(item["reference_path"]),
             "segments": len(frozen_reference.segments),
             "review_count": 0,
+            "content_reviewed_count": sum(
+                1 for segment in frozen_reference.segments if segment.content_reviewed
+            ),
+            "content_unreviewed_count": sum(
+                1 for segment in frozen_reference.segments if not segment.content_reviewed
+            ),
             "reference_type": reference_type,
         }
         if reference_notes is not None:
@@ -1124,6 +1187,9 @@ def review_case_status_item(
     reference_segments = 0
     reference_review_count = 0
     reference_review_duration_ms = 0
+    reference_content_reviewed_count = 0
+    reference_content_unreviewed_count = 0
+    reference_content_unreviewed_duration_ms = 0
     first_review_segment = None
     if reference["exists"]:
         reference_counts, reference_issue = transcript_status(
@@ -1133,6 +1199,9 @@ def review_case_status_item(
         reference_segments = reference_counts["segments"]
         reference_review_count = reference_counts["review_count"]
         reference_review_duration_ms = reference_counts["review_duration_ms"]
+        reference_content_reviewed_count = reference_counts["content_reviewed_count"]
+        reference_content_unreviewed_count = reference_counts["content_unreviewed_count"]
+        reference_content_unreviewed_duration_ms = reference_counts["content_unreviewed_duration_ms"]
         first_review_segment = reference_counts["first_review_segment"]
         if reference_issue is not None:
             issues.append(f"reference {reference_issue}")
@@ -1144,6 +1213,26 @@ def review_case_status_item(
             if isinstance(index_review_count, int) and index_review_count != reference_review_count:
                 issues.append(
                     f"reference review count {reference_review_count} != index review_count {index_review_count}"
+                )
+            index_content_reviewed_count = raw_item.get("content_reviewed_count")
+            if (
+                isinstance(index_content_reviewed_count, int)
+                and index_content_reviewed_count != reference_content_reviewed_count
+            ):
+                issues.append(
+                    "reference content reviewed count "
+                    f"{reference_content_reviewed_count} != index content_reviewed_count "
+                    f"{index_content_reviewed_count}"
+                )
+            index_content_unreviewed_count = raw_item.get("content_unreviewed_count")
+            if (
+                isinstance(index_content_unreviewed_count, int)
+                and index_content_unreviewed_count != reference_content_unreviewed_count
+            ):
+                issues.append(
+                    "reference content unreviewed count "
+                    f"{reference_content_unreviewed_count} != index content_unreviewed_count "
+                    f"{index_content_unreviewed_count}"
                 )
 
     candidate = None
@@ -1181,6 +1270,9 @@ def review_case_status_item(
         "reference_segments": reference_segments,
         "reference_review_count": reference_review_count,
         "reference_review_duration_ms": reference_review_duration_ms,
+        "reference_content_reviewed_count": reference_content_reviewed_count,
+        "reference_content_unreviewed_count": reference_content_unreviewed_count,
+        "reference_content_unreviewed_duration_ms": reference_content_unreviewed_duration_ms,
         "first_review_segment": first_review_segment,
         "candidate_segments": candidate_segments,
         "candidate_review_count": candidate_review_count,
@@ -1207,20 +1299,38 @@ def transcript_status(path: Path, *, source_language: str) -> tuple[dict[str, An
             "segments": 0,
             "review_count": 0,
             "review_duration_ms": 0,
+            "content_reviewed_count": 0,
+            "content_unreviewed_count": 0,
+            "content_unreviewed_duration_ms": 0,
             "first_review_segment": None,
         }, f"cannot be loaded: {error}"
-    first_review_segment = next((segment.to_json() for segment in master.segments if segment.needs_review), None)
+    first_review_segment = next(
+        (
+            segment.to_json()
+            for segment in master.segments
+            if segment.needs_review or not segment.content_reviewed
+        ),
+        None,
+    )
     review_segments = [segment for segment in master.segments if segment.needs_review]
+    content_unreviewed_segments = [segment for segment in master.segments if not segment.content_reviewed]
     return {
         "segments": len(master.segments),
         "review_count": len(review_segments),
         "review_duration_ms": review_duration_ms_for_segments(review_segments),
+        "content_reviewed_count": len(master.segments) - len(content_unreviewed_segments),
+        "content_unreviewed_count": len(content_unreviewed_segments),
+        "content_unreviewed_duration_ms": content_unreviewed_duration_ms_for_segments(content_unreviewed_segments),
         "first_review_segment": first_review_segment,
     }, None
 
 
 def review_duration_ms_for_segments(segments: tuple[Segment, ...] | list[Segment]) -> int:
     return sum(max(0, segment.end_ms - segment.start_ms) for segment in segments if segment.needs_review)
+
+
+def content_unreviewed_duration_ms_for_segments(segments: tuple[Segment, ...] | list[Segment]) -> int:
+    return sum(max(0, segment.end_ms - segment.start_ms) for segment in segments if not segment.content_reviewed)
 
 
 def validate_case_slice_plan(plan: dict[str, Any]) -> list[dict[str, Any]]:

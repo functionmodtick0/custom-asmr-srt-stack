@@ -239,6 +239,9 @@ class ServerApiTests(unittest.TestCase):
             self.assertEqual(response["case_index_path"], str((case_dir / "case-index.json").resolve()))
             self.assertEqual(response["items"][0]["reference_master"]["segments"][0]["text"], "ねえ")
             self.assertEqual(response["items"][0]["review_duration_ms"], 1000)
+            self.assertEqual(response["items"][0]["content_reviewed_count"], 0)
+            self.assertEqual(response["items"][0]["content_unreviewed_count"], 1)
+            self.assertEqual(response["items"][0]["content_unreviewed_duration_ms"], 1000)
             self.assertEqual(audio_status, 200)
             self.assertEqual(content_type, "audio/wav")
             self.assertEqual(body, b"RIFFcaseWAVE")
@@ -426,6 +429,7 @@ class ServerApiTests(unittest.TestCase):
                         "kind": "speech",
                         "text": "修正",
                         "needs_review": False,
+                        "content_reviewed": True,
                     }
                 ],
             }
@@ -442,9 +446,14 @@ class ServerApiTests(unittest.TestCase):
             self.assertEqual(response["segments"], 1)
             self.assertEqual(response["review_count"], 0)
             self.assertEqual(response["review_duration_ms"], 0)
+            self.assertEqual(response["content_reviewed_count"], 1)
+            self.assertEqual(response["content_unreviewed_count"], 0)
+            self.assertEqual(response["content_unreviewed_duration_ms"], 0)
             self.assertEqual(saved_master["segments"][0]["text"], "修正")
             self.assertEqual(saved_index["items"][0]["segments"], 1)
             self.assertEqual(saved_index["items"][0]["review_count"], 0)
+            self.assertEqual(saved_index["items"][0]["content_reviewed_count"], 1)
+            self.assertEqual(saved_index["items"][0]["content_unreviewed_count"], 0)
 
     def test_import_srt_route_persists_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:

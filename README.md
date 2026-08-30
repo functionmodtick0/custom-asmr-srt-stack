@@ -395,7 +395,7 @@ uv run casrt prepare-review-cases plan.json -o cases --json
 
 `plan.json`은 `custom-asmr-case-slice-plan-v1` 형식이며 각 case의 `id`, `audio`, `reference`, `start_ms`, `end_ms`를 담습니다. 모든 case에 `candidate`가 있으면 `eval-manifest.json`도 함께 생성합니다. 출력에는 `audio-map.json`, `case-index.json`, `audio/*.wav`, `references/*.master.json`이 포함됩니다.
 
-현재 durable human-review 시작점은 `.casrt/experiments/all8-front120-review-cases/case-index.json`입니다. `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/uploads` 01~08 WAV와 2025-12-22 stable-ts draft SRT에서 만든 120초 pseudo-gold set이며, `review-case-status` 기준 `case_count=8`, `reference_review_count=15`, `reference_review_duration_ms=163066`, `case_issue_count=0`입니다. 현재 Bro stereo 후보 350개 segment를 이 canonical case set의 candidate draft로 연결했으며 reference 파일 digest는 연결 전후 동일합니다. 구조 검수와 channel 검수를 함께 보는 WebUI queue는 `.casrt/experiments/all8-front120-bro-stereo-human-reference-review-pack-canonical`입니다. 이 pack은 중복 제거된 issue 55개와 약 356초의 실제 listening clip을 담고, `case 열기`에서 canonical reference와 Bro stereo 후보를 함께 엽니다. WebUI Review path로 이 pack이나 `case-index.json`을 열고 reference를 검수한 뒤 `freeze-case-references --reference-type human-reviewed`로 승격합니다. 2026-08-30 human-review-aware 재평가에서도 아직 명시적 channel 검수는 `0`, unresolved channel item은 `48`(mismatch `30`, uncertain `18`)입니다. 현재 best readiness 기준 ASR-only blocker는 reference와 VAD/chunking이고, product quality blocker는 reference, VAD/chunking, text ASR입니다. Alignment/channel pass는 automatic proxy 기준의 조건부 판정이며 human-reviewed 기준으로 재평가하기 전에는 최종 완료 판정이 아닙니다.
+현재 durable human-review 시작점은 `.casrt/experiments/all8-front120-review-cases/case-index.json`입니다. `/home/brain-offloaded/vscode/asmr/whisperx-webui/data/uploads` 01~08 WAV와 2025-12-22 stable-ts draft SRT에서 만든 120초 pseudo-gold set이며, 82개 reference segment 모두 아직 명시적 `content_reviewed` 증거가 없습니다. Bro stereo 후보 350개 segment는 canonical case set의 candidate draft로 연결되어 있고 reference digest는 연결 전후 동일합니다. 기존 구조/channel issue pack 55개만 처리해서는 나머지 segment의 text/timing을 들었다는 증거가 없으므로, `review-case-pack`은 이제 자동 flag가 없더라도 `content_reviewed!=true`인 모든 segment를 포함합니다. WebUI Review path에서 전체 content-review pack 또는 `case-index.json`을 열고 기존 `검수 완료` 버튼으로 reference를 검수한 뒤 `freeze-case-references --reference-type human-reviewed`로 승격합니다. 명시적 channel 검수도 아직 `0`, unresolved channel item은 `48`입니다. 현재 best readiness 기준 ASR-only blocker는 reference와 VAD/chunking이고, product quality blocker는 reference, VAD/chunking, text ASR입니다. Alignment/channel pass는 automatic proxy 기준의 조건부 판정이며 human-reviewed 기준으로 재평가하기 전에는 최종 완료 판정이 아닙니다.
 
 준비된 case set 상태 확인:
 
@@ -458,7 +458,7 @@ uv run casrt review-pack cases/reference-audit-review-effort.json \
 uv run casrt review-case-pack cases/case-index.json -o cases/review-case-pack --json
 ```
 
-`review-case-pack`은 각 reference master의 `needs_review=true` segment를 기존 `custom-asmr-review-pack-v1` 형식으로 잘라냅니다. Root에는 `item_count`, `reason_counts`, `case_count`, `next_case_id`, `case_summaries`, `duration_summary`를 포함해 WebUI가 첫 검수 case 이동과 listening duration 표시를 `review-pack`과 같은 방식으로 처리합니다. 생성된 `index.json`은 WebUI Review path에서 열 수 있고, 사람이 pseudo-gold reference를 human-reviewed로 올리기 전에 남은 구간만 빠르게 들을 때 사용합니다.
+`review-case-pack`은 각 reference master에서 `needs_review=true` 또는 `content_reviewed!=true`인 segment를 기존 `custom-asmr-review-pack-v1` 형식으로 잘라냅니다. Reasons는 `reference-needs-review`와 `reference-content-unreviewed`를 구분해 보존합니다. 생성된 `index.json`은 WebUI Review path에서 열 수 있고, 자동 flag가 없던 segment까지 빠짐없이 듣고 human-reviewed 증거를 남길 때 사용합니다.
 
 편집한 단일 case reference를 저장하고 `case-index.json` count를 갱신:
 
@@ -466,7 +466,7 @@ uv run casrt review-case-pack cases/case-index.json -o cases/review-case-pack --
 uv run casrt save-review-case-reference cases/case-index.json case-id edited.master.json --json
 ```
 
-`save-review-case-reference`는 master JSON 또는 SRT 입력을 받아 해당 case의 reference 파일을 교체하고 `segments`/`review_count`를 다시 기록합니다. 검수 완료 여부나 `reference_type`은 바꾸지 않습니다.
+`save-review-case-reference`는 master JSON 또는 SRT 입력을 받아 해당 case의 reference 파일을 교체하고 segment/review/content-review count를 다시 기록합니다. 검수 완료 여부나 `reference_type`은 바꾸지 않습니다.
 
 이미 준비된 case set에 case-local candidate transcript를 붙이기:
 
@@ -500,7 +500,7 @@ uv run casrt freeze-case-references cases/case-index.json \
   --json
 ```
 
-`freeze-case-references`는 reference id를 안정화하고 `needs_review=false`로 저장한 새 case set을 만듭니다. 사람이 실제로 검수한 경우에만 `--reference-type human-reviewed`를 사용합니다. `--fail-on-review`를 같이 쓰면 검수 flag가 남아 있을 때 output을 만들기 전에 실패하고, `--fail-on-reference-audit`은 기본 100ms 이상 same-channel overlap, same-channel exact-boundary duplicate, 31초 이상 long segment 같은 구조 검수 항목이 남아 있을 때 output을 만들기 전에 실패합니다. `--fail-on-reference-channel-audit`은 reference L/R label의 unresolved stereo energy mismatch/uncertain queue가 남을 때 output을 만들기 전에 실패합니다. 사람이 듣고 energy proxy와 다른 기존 channel이 맞다고 확인했다면 해당 segment의 `channel_reviewed=true`를 보존해 이 queue를 해결할 수 있습니다. 이 gate는 energy를 정답으로 승격하지 않고, human-reviewed 표시 전에 channel label 검수 누락을 막는 CLI-only 보호 장치입니다. 입력 case set에 candidate가 있으면 `eval-manifest.json`도 함께 생성합니다.
+`freeze-case-references`는 reference id를 안정화하고 `needs_review=false`로 저장한 새 case set을 만듭니다. `--reference-type human-reviewed`이면 모든 reference segment의 `content_reviewed=true`를 필수로 확인하고, 하나라도 없으면 output을 만들기 전에 실패합니다. `--fail-on-review`를 같이 쓰면 검수 flag도 별도로 막습니다. `--fail-on-reference-audit`과 `--fail-on-reference-channel-audit`은 구조 문제와 unresolved channel 판정을 각각 막습니다. 사람이 듣고 energy proxy와 다른 기존 channel이 맞다고 확인했다면 해당 segment의 `channel_reviewed=true`를 보존해 channel queue를 해결할 수 있습니다. 입력 case set에 candidate가 있으면 `eval-manifest.json`도 함께 생성합니다.
 
 candidate가 포함된 case set에서 평가 manifest 재생성:
 
@@ -516,7 +516,7 @@ uv run casrt build-eval-manifest cases/case-index.json \
   --json
 ```
 
-`build-eval-manifest`는 파일 누락이나 stale count가 있으면 manifest를 쓰지 않고 실패합니다. 사람이 검수한 기준본을 모델 승격에 쓸 때는 `--reference-type human-reviewed`, `--fail-on-review`, `--fail-on-reference-audit`, `--fail-on-reference-channel-audit`, `eval-manifest --require-reference-type human-reviewed`를 함께 사용합니다.
+`build-eval-manifest`는 파일 누락이나 stale count가 있으면 manifest를 쓰지 않고 실패합니다. Effective reference type이 `human-reviewed`이면 모든 reference segment의 `content_reviewed=true`도 필수입니다. 모델 승격에는 `--fail-on-review`, reference structure/channel audit gate, `eval-manifest --require-reference-type human-reviewed`를 함께 사용합니다.
 
 기존 SRT 또는 master JSON을 고정 aligner로 재정렬:
 
@@ -693,7 +693,7 @@ Review path: /path/to/review-pack
 Review path: /path/to/review-cases
 ```
 
-WebUI는 review pack을 새 project로 저장하지 않고, priority item을 클릭할 때 해당 clip만 재생하는 검수 큐 보기 모드로 다룹니다. `review-effort`에서 만든 후보 수정 pack과 `review-case-pack`에서 만든 reference 검수 pack은 같은 loader를 사용합니다. Candidate가 없는 reference-only pack은 segment id를 표시하고 빈 `CAND` 줄은 숨깁니다. Reference overlap audit은 두 번째 segment를 `REF2`로 표시하고, reference channel energy audit은 `ENERGY` verdict와 L/R dBFS/delta evidence를 표시합니다. Pack root에 `case_count`, `next_case_id`, `duration_summary`가 있으면 header에 case 수, 다음 검수 case, 실제 listening duration과 focus/source duration을 표시하고, item에 `review_clip_*`가 있으면 row에 focus time range를 표시합니다. `다음 clip`으로 priority 순서의 다음 item을 바로 재생할 수 있습니다. Pack item 또는 pack root에 source case 정보가 있으면 `case 열기`로 해당 case editor와 reference segment를 바로 열고, reference audit/channel audit item은 같은 구조 또는 energy evidence를 status에 유지합니다. Source case가 focus range가 있는 pack item에서 열렸다면 해당 segment를 재생할 때 원 segment timing은 유지하면서 focus range만 재생합니다. Channel audit source segment는 사람이 `ENERGY L/R 적용`을 눌러 reference channel을 바꾸거나 `Channel 검수 완료`로 기존 channel을 유지하는 판정을 저장할 수 있습니다. Energy 적용은 `needs_review`/channel 검수를 자동 완료하지 않고, channel 또는 timing을 다시 편집하면 저장된 channel 판정도 무효화됩니다. Pack에서 연 source case는 `pack 목록`으로 원래 review pack queue에 돌아가거나 `다음 issue`로 현재 저장을 flush한 뒤 다음 priority source issue를 바로 열 수 있습니다. Reference overlap audit에서 source case를 열면 `REF2` segment row도 함께 표시해 두 segment를 빠르게 비교할 수 있습니다. Review case set은 사람이 reference를 고치는 편집 모드로 열며, 목록에서 전체 `needs_review` flag 수, 남은 review duration, flag가 남은 case, 각 case의 첫 미검수 segment 시간/텍스트를 표시합니다. `검수 완료`로 현재 `needs_review` segment를 처리하고 다음 검수 segment로 이동할 수 있습니다. `case 목록`과 `다음 case`로 검수 case 사이를 이동할 수 있습니다. 모델/VAD/threshold 옵션은 추가하지 않습니다.
+WebUI는 review pack을 새 project로 저장하지 않고, priority item을 클릭할 때 해당 clip만 재생하는 검수 큐 보기 모드로 다룹니다. `review-effort`에서 만든 후보 수정 pack과 `review-case-pack`에서 만든 reference 검수 pack은 같은 loader를 사용합니다. Candidate가 없는 reference-only pack은 segment id를 표시하고 빈 `CAND` 줄은 숨깁니다. Reference overlap audit은 두 번째 segment를 `REF2`로 표시하고, reference channel energy audit은 `ENERGY` verdict와 L/R dBFS/delta evidence를 표시합니다. Pack item 또는 root의 source case 정보로 `case 열기`, `pack 목록`, `다음 issue`를 사용할 수 있습니다. Review case 목록은 전체 content pending 수와 duration, 자동 review flag 수, 첫 미검수 segment를 표시합니다. 기존 `검수 완료`가 `content_reviewed=true`를 저장하고 다음 내용 미검수 segment로 이동하며, text/time을 다시 편집하면 이 증거가 무효화됩니다. Channel-only `Channel 검수 완료`는 `channel_reviewed=true`만 저장하므로 내용 검수를 대신하지 않습니다. 모델/VAD/threshold 옵션은 추가하지 않습니다.
 
 ## 테스트
 

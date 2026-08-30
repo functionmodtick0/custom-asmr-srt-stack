@@ -184,7 +184,11 @@ function setMaster(master, label, projectId = state.projectId, hasAudio = state.
 }
 
 function firstReviewOrFirstSegmentId(master) {
-  return master.segments.find((segment) => segment.needs_review)?.id || master.segments[0]?.id || null;
+  return master.segments.find(segmentNeedsContentReview)?.id || master.segments[0]?.id || null;
+}
+
+function segmentNeedsContentReview(segment) {
+  return Boolean(segment && (segment.needs_review || segment.content_reviewed !== true));
 }
 
 async function handleFile(file) {
@@ -388,8 +392,12 @@ function renderReviewPack() {
 function renderReviewCaseSet() {
   const items = state.reviewCaseSet.items || [];
   const reviewFlagCount = items.reduce((total, item) => total + (item.review_count || 0), 0);
-  const reviewDurationMs = items.reduce((total, item) => total + (item.review_duration_ms || 0), 0);
-  els.segmentCount.textContent = `${items.length} review cases · ${reviewFlagCount} flags · ${formatDuration(reviewDurationMs)}`;
+  const contentUnreviewedCount = items.reduce((total, item) => total + reviewCaseContentUnreviewedCount(item), 0);
+  const contentUnreviewedDurationMs = items.reduce(
+    (total, item) => total + reviewCaseContentUnreviewedDurationMs(item),
+    0,
+  );
+  els.segmentCount.textContent = `${items.length} review cases · ${contentUnreviewedCount} content pending · ${reviewFlagCount} flags · ${formatDuration(contentUnreviewedDurationMs)}`;
   els.selectedLabel.textContent = "case 선택";
   els.retranscribeButton.disabled = true;
   els.retranscribeButton.hidden = false;
@@ -460,7 +468,8 @@ function renderReviewPackItem(item, index) {
 
 function renderReviewCaseItem(item, index) {
   const row = document.createElement("div");
-  row.className = `review-case-row${(item.review_count || 0) > 0 ? " needs-review" : ""}`;
+  const contentUnreviewedCount = reviewCaseContentUnreviewedCount(item);
+  row.className = `review-case-row${(item.review_count || 0) > 0 || contentUnreviewedCount > 0 ? " needs-review" : ""}`;
   row.dataset.index = String(index);
 
   const meta = document.createElement("div");
@@ -475,8 +484,9 @@ function renderReviewCaseItem(item, index) {
   counts.className = "review-reasons";
   counts.append(
     textBlock("review-detail", `${item.segments ?? 0} segments`),
+    textBlock("reason-list", `${contentUnreviewedCount} content pending`),
     textBlock("reason-list", `${item.review_count ?? 0} review flags`),
-    textBlock("review-detail", formatDuration(item.review_duration_ms)),
+    textBlock("review-detail", formatDuration(reviewCaseContentUnreviewedDurationMs(item))),
   );
 
   const source = document.createElement("div");
@@ -496,12 +506,28 @@ function renderReviewCaseItem(item, index) {
 function firstReviewSegment(item) {
   const segments = item?.reference_master?.segments;
   if (!Array.isArray(segments)) return null;
-  return segments.find((segment) => segment?.needs_review) || null;
+  return segments.find(segmentNeedsContentReview) || null;
 }
 
 function reviewSegmentPreview(segment) {
-  if (!segment) return "검수 flag 없음";
+  if (!segment) return "미검수 없음";
   return `${formatMsRange(segment.start_ms, segment.end_ms)} · ${segment.text || "-"}`;
+}
+
+function reviewCaseContentUnreviewedCount(item) {
+  if (Number.isInteger(item?.content_unreviewed_count)) return item.content_unreviewed_count;
+  const segments = item?.reference_master?.segments;
+  return Array.isArray(segments) ? segments.filter(segmentNeedsContentReview).length : 0;
+}
+
+function reviewCaseContentUnreviewedDurationMs(item) {
+  if (Number.isInteger(item?.content_unreviewed_duration_ms)) return item.content_unreviewed_duration_ms;
+  const segments = item?.reference_master?.segments;
+  if (!Array.isArray(segments)) return 0;
+  return segments.reduce(
+    (total, segment) => total + (segmentNeedsContentReview(segment) ? Math.max(0, segment.end_ms - segment.start_ms) : 0),
+    0,
+  );
 }
 
 function reviewPackHasCandidate(item) {
@@ -699,7 +725,7 @@ function formatMs(value) {
 function renderSegment(segment) {
   const row = document.createElement("div");
   row.className = `segment-row${segment.id === state.selectedId ? " is-selected" : ""}${
-    segment.needs_review ? " needs-review" : ""
+    segmentNeedsContentReview(segment) ? " needs-review" : ""
   }${
     segment.id === state.reviewCaseReference?.secondarySegmentId ? " is-secondary-reference" : ""
   }`;
@@ -725,8 +751,7 @@ function renderSegment(segment) {
   channel.value = ["L", "R", "MIX"].includes(segment.channel) ? segment.channel : "MIX";
   channel.addEventListener("change", () => {
     selectSegment(segment.id, false);
-    segment.channel = channel.value;
-    segment.channel_reviewed = false;
+    commitSegmentChannel(segment, channel.value);
     scheduleSaveMaster();
     drawWaveform();
   });
@@ -740,8 +765,8 @@ function renderSegment(segment) {
   reviewInput.checked = Boolean(segment.needs_review);
   reviewInput.addEventListener("change", () => {
     selectSegment(segment.id, false);
-    segment.needs_review = reviewInput.checked;
-    row.classList.toggle("needs-review", segment.needs_review);
+    setSegmentReviewFlag(segment, reviewInput.checked);
+    row.classList.toggle("needs-review", segmentNeedsContentReview(segment));
     updateSelectedActionState();
     scheduleSaveMaster();
   });
@@ -754,7 +779,7 @@ function renderSegment(segment) {
   text.className = "segment-text";
   text.value = segment.text;
   text.addEventListener("input", () => {
-    segment.text = text.value;
+    commitSegmentText(segment, text.value);
     scheduleSaveMaster();
   });
   text.addEventListener("focus", () => selectSegment(segment.id, false));
@@ -774,6 +799,27 @@ function renderSegment(segment) {
 
   row.append(time, meta, textStack);
   return row;
+}
+
+function commitSegmentText(segment, value) {
+  if (segment.text === value) return false;
+  segment.text = value;
+  segment.content_reviewed = false;
+  return true;
+}
+
+function commitSegmentChannel(segment, value) {
+  if (segment.channel === value) return false;
+  segment.channel = value;
+  segment.channel_reviewed = false;
+  return true;
+}
+
+function setSegmentReviewFlag(segment, needsReview) {
+  segment.needs_review = Boolean(needsReview);
+  if (segment.needs_review) {
+    segment.content_reviewed = false;
+  }
 }
 
 function reviewCaseCandidateSegments() {
@@ -828,6 +874,7 @@ function commitSegmentTime(segment, key, input) {
   }
   if (segment[key] !== nextValue) {
     segment[key] = nextValue;
+    segment.content_reviewed = false;
     segment.channel_reviewed = false;
   }
   scheduleSaveMaster();
@@ -883,9 +930,12 @@ function updateSelectedActionState() {
   const segment = selectedSegment();
   els.retranscribeButton.disabled = !segment;
   const channelReviewTarget = isChannelReviewTarget(segment);
+  const contentReviewTarget = isContentReviewTarget(segment);
+  const contentReviewOutstanding = contentReviewTarget && segmentNeedsContentReview(segment);
+  const channelReviewOutstanding = channelReviewTarget && !segment?.channel_reviewed;
   els.reviewDoneButton.disabled =
-    !state.reviewCaseReference || (!segment?.needs_review && (!channelReviewTarget || segment.channel_reviewed));
-  els.reviewDoneButton.textContent = channelReviewTarget ? "Channel 검수 완료" : "검수 완료";
+    !state.reviewCaseReference || (!contentReviewOutstanding && !channelReviewOutstanding);
+  els.reviewDoneButton.textContent = channelReviewTarget && !contentReviewTarget ? "Channel 검수 완료" : "검수 완료";
   const energyChannel = state.reviewCaseReference?.energyChannel || null;
   const energySegmentId = state.reviewCaseReference?.energyChannelSegmentId || null;
   const canShowEnergyAction = Boolean(energyChannel && segment?.id === energySegmentId);
@@ -900,6 +950,15 @@ function isChannelReviewTarget(segment) {
       state.reviewCaseReference?.channelAudit &&
       segment.id === state.reviewCaseReference.channelReviewSegmentId,
   );
+}
+
+function isContentReviewTarget(segment) {
+  if (!segment || !state.reviewCaseReference) return false;
+  const targetId = state.reviewCaseReference.contentReviewSegmentId;
+  if (targetId) {
+    return state.reviewCaseReference.contentReview && segment.id === targetId;
+  }
+  return !state.reviewCaseReference.channelAudit;
 }
 
 function selectedSegment() {
@@ -1040,6 +1099,9 @@ function syncReviewCaseItemAfterSave(result) {
   item.segments = result.segments;
   item.review_count = result.review_count;
   item.review_duration_ms = result.review_duration_ms;
+  item.content_reviewed_count = result.content_reviewed_count;
+  item.content_unreviewed_count = result.content_unreviewed_count;
+  item.content_unreviewed_duration_ms = result.content_unreviewed_duration_ms;
   item.reference_master = state.master;
 }
 
@@ -1047,20 +1109,28 @@ async function markSelectedReviewDone() {
   const segment = selectedSegment();
   if (!segment || !state.reviewCaseReference) return;
   const channelReviewTarget = isChannelReviewTarget(segment);
-  if (!segment.needs_review && (!channelReviewTarget || segment.channel_reviewed)) return;
-  segment.needs_review = false;
+  const contentReviewTarget = isContentReviewTarget(segment);
+  const contentReviewOutstanding = contentReviewTarget && segmentNeedsContentReview(segment);
+  const channelReviewOutstanding = channelReviewTarget && !segment.channel_reviewed;
+  if (!contentReviewOutstanding && !channelReviewOutstanding) return;
+  if (contentReviewTarget) {
+    segment.needs_review = false;
+    segment.content_reviewed = true;
+  }
   if (channelReviewTarget) {
     segment.channel_reviewed = true;
   }
-  const nextReviewId = nextReviewSegmentId(segment.id);
+  const nextReviewId = contentReviewTarget ? nextReviewSegmentId(segment.id) : null;
   if (nextReviewId !== null) {
     state.selectedId = nextReviewId;
   }
   render();
   drawWaveform();
   const result = await saveCurrentMasterNow();
-  const remaining = result?.review_count ?? countReviewSegments();
-  if (channelReviewTarget) {
+  const remaining = contentReviewTarget
+    ? result?.content_unreviewed_count ?? countContentUnreviewedSegments()
+    : result?.review_count ?? countReviewSegments();
+  if (channelReviewTarget && !contentReviewTarget) {
     setStatus(
       "Channel 검수 저장됨",
       remaining > 0
@@ -1070,7 +1140,7 @@ async function markSelectedReviewDone() {
   } else {
     setStatus(
       remaining > 0 ? "검수 저장됨" : "case 검수 완료",
-      remaining > 0 ? `${remaining}개 검수 flag가 남았습니다.` : "이 case의 검수 flag를 모두 처리했습니다.",
+      remaining > 0 ? `${remaining}개 내용 검수가 남았습니다.` : "이 case의 내용 검수를 모두 처리했습니다.",
     );
   }
 }
@@ -1093,16 +1163,20 @@ function nextReviewSegmentId(currentId) {
   const currentIndex = segments.findIndex((segment) => segment.id === currentId);
   if (currentIndex < 0) return null;
   for (let index = currentIndex + 1; index < segments.length; index += 1) {
-    if (segments[index].needs_review) return segments[index].id;
+    if (segmentNeedsContentReview(segments[index])) return segments[index].id;
   }
   for (let index = 0; index < currentIndex; index += 1) {
-    if (segments[index].needs_review) return segments[index].id;
+    if (segmentNeedsContentReview(segments[index])) return segments[index].id;
   }
   return null;
 }
 
 function countReviewSegments() {
   return (state.master?.segments || []).filter((segment) => segment.needs_review).length;
+}
+
+function countContentUnreviewedSegments() {
+  return (state.master?.segments || []).filter(segmentNeedsContentReview).length;
 }
 
 async function startTranscription() {
@@ -1204,6 +1278,8 @@ function loadReviewCaseItem(
     energyChannelSegmentId: sourceReviewItem?.reference_id || null,
     channelAudit: reviewPackIsReferenceChannelAuditItem(sourceReviewItem),
     channelReviewSegmentId: sourceReviewItem?.reference_id || null,
+    contentReview: reviewPackIsContentReviewItem(sourceReviewItem),
+    contentReviewSegmentId: sourceReviewItem?.reference_id || null,
     focusSegmentId: sourceReviewItem?.reference_id || null,
     focusStartMs: focusRange?.startMs ?? null,
     focusEndMs: focusRange?.endMs ?? null,
@@ -1354,9 +1430,15 @@ function nextReviewCaseIndex() {
   const currentIndex = state.reviewCaseReference?.itemIndex;
   if (currentIndex === undefined || currentIndex === null) return null;
   for (let index = currentIndex + 1; index < items.length; index += 1) {
-    if ((items[index].review_count || 0) > 0) return index;
+    if (reviewCaseContentUnreviewedCount(items[index]) > 0 || (items[index].review_count || 0) > 0) return index;
   }
   return currentIndex + 1 < items.length ? currentIndex + 1 : null;
+}
+
+function reviewPackIsContentReviewItem(item) {
+  if (!item) return true;
+  if (!Array.isArray(item.reasons)) return false;
+  return item.reasons.includes("reference-content-unreviewed") || item.reasons.includes("reference-needs-review");
 }
 
 function segmentIdOrFirstReview(master, segmentId) {

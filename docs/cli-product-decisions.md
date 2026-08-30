@@ -359,12 +359,12 @@ uv run casrt prepare-review-cases plan.json -o cases --json
 - plan path는 plan 파일 위치 기준 상대 경로 또는 absolute path를 받는다.
 - output directory가 존재하고 비어 있지 않으면 실패한다.
 - 각 case는 `audio/<id>.wav`와 `references/<id>.master.json`으로 잘린다.
-- `case-index.json`은 `custom-asmr-review-case-set-v1`이고 원본 경로, slice range, output 경로, segment/review count를 보존한다.
+- `case-index.json`은 `custom-asmr-review-case-set-v1`이고 원본 경로, slice range, output 경로, segment/review/content-review count를 보존한다.
 - `audio-map.json`은 `custom-asmr-review-audio-map-v1`이며 `review-pack`에 바로 넣을 수 있다.
 - 모든 case가 `candidate`를 가지면 `candidates/<id>.master.json`과 `eval-manifest.json`을 함께 만든다.
 - candidate가 있는 case와 없는 case를 섞으면 실패한다. 검수 준비와 후보 평가를 같은 plan에서 섞지 않는다.
 - `prepare-review-cases`도 검수 완료 판정을 하지 않는다. 사람이 확인한 뒤 `freeze-reference`와 `reference_type=human-reviewed` manifest를 사용한다.
-- WebUI는 생성된 `case-index.json`을 Review path로 열어 case reference를 직접 편집할 수 있다. Case 목록은 첫 미검수 segment 시간/텍스트를 preview로 보여준다. 이 편집은 reference master JSON과 case-index count만 갱신하며, `검수 완료`는 현재 `needs_review` segment를 false로 바꾸고 다음 검수 segment로 이동한 뒤 저장한다. `case 목록`/`다음 case` 이동 전에도 저장을 flush한다. Human-reviewed 승격 판정은 CLI gate에 남긴다.
+- WebUI는 생성된 `case-index.json`을 Review path로 열어 case reference를 직접 편집할 수 있다. Case 목록은 `needs_review=true` 또는 `content_reviewed!=true`인 첫 segment를 preview로 보여준다. `검수 완료`는 현재 내용 검수 대상의 `needs_review=false`, `content_reviewed=true`를 함께 저장하고 다음 미검수 segment로 이동한다. Text/start/end 편집은 `content_reviewed=false`, channel 편집은 `channel_reviewed=false`로 해당 증거만 무효화한다. Channel-only audit의 완료 동작은 내용 검수를 자동 완료하지 않는다. 새 WebUI 옵션은 추가하지 않는다.
 
 준비된 case set의 파일 누락, stale count, 남은 reference review flag는 `review-case-status`로 확인한다.
 
@@ -384,13 +384,14 @@ uv run casrt review-case-status cases/case-index.json \
 - 입력은 `custom-asmr-review-case-set-v1` `case-index.json`이다.
 - `audio`, `reference`, optional `candidate` 경로는 `case-index.json` 위치 기준으로 해석한다.
 - output format은 `custom-asmr-review-case-status-v1`이다.
-- 각 case의 파일 존재 여부, reference/candidate segment count, reference/candidate review count를 실제 파일에서 다시 계산한다.
-- `case-index.json`에 기록된 `segments`/`review_count`와 실제 reference가 다르면 `issues`에 남긴다.
+- 각 case의 파일 존재 여부, reference/candidate segment count, reference/candidate review count와 reference content-review count를 실제 파일에서 다시 계산한다.
+- `case-index.json`에 기록된 `segments`/`review_count`/`content_reviewed_count`/`content_unreviewed_count`와 실제 reference가 다르면 `issues`에 남긴다. 이전 index에 content count가 없으면 실제 master를 기준으로 계산하되 stale issue를 만들지는 않는다.
 - `reference_review_duration_ms`, `reference_review_case_count`, `reference_review_clear_case_count`, `cases_needing_review`, `next_review_case_id`를 함께 남겨 검수 flag가 남은 case 진행률과 남은 audio 시간을 볼 수 있게 한다. Clear count는 reference가 실제로 읽혔고 `needs_review` flag가 없는 case만 세며, human-reviewed 판정은 아니다.
+- `reference_content_reviewed_count`, `reference_content_unreviewed_count`, `reference_content_unreviewed_duration_ms`, `reference_content_unreviewed_case_count`, `cases_content_unreviewed`, `next_content_unreviewed_case_id`를 별도로 남긴다. `needs_review=false`인 segment도 `content_reviewed=true`가 아니면 이 진행률에 포함한다.
 - `candidate_case_count`, `missing_candidate_case_count`, `cases_missing_candidate`, `next_missing_candidate_case_id`를 함께 남겨 eval manifest 준비 전 candidate attach 진행률을 볼 수 있게 한다. Candidate path가 아예 없는 case만 missing candidate로 센다. Candidate path가 있는데 파일이 없거나 읽을 수 없으면 기존 file/parse issue로 보고한다.
 - `candidate_review_count`, `candidate_review_duration_ms`, `candidate_review_case_count`, `candidate_review_clear_case_count`, `cases_with_candidate_review`, `next_candidate_review_case_id`를 함께 남겨 모델 승격 전 candidate `needs_review` flag 진행률과 미확정 candidate audio 시간을 볼 수 있게 한다. Candidate clear count는 candidate가 실제로 읽혔고 `needs_review` flag가 없는 case만 센다.
 - `--include-reference-audits`를 지정하면 reference structure audit summary와 reference channel audit summary를 root `reference_audit`, `reference_channel_audit`에 붙인다. 기본 status는 빠른 파일/flag check로 유지하고, audit 계산은 명시 옵션이나 audit fail gate가 있을 때만 실행한다.
-- 각 item의 `first_review_segment`는 reference에서 첫 `needs_review=true` segment의 `id`, `start_ms`, `end_ms`, `channel`, `kind`, `text`, `needs_review`를 담는다. 남은 review flag가 없거나 reference를 읽을 수 없으면 `null`이다.
+- 각 item의 `first_review_segment`는 reference에서 첫 `needs_review=true` 또는 `content_reviewed!=true` segment 전체 JSON을 담는다. 두 조건이 모두 없거나 reference를 읽을 수 없으면 `null`이다.
 - 기본 exit code는 report 생성을 우선해 성공이다. `--fail-on-issues`는 missing file, parse failure, stale count가 있을 때 report 출력/저장 후 실패한다.
 - `--fail-on-review`는 reference에 `needs_review=true`가 남아 있으면 report 출력/저장 후 실패한다.
 - `--fail-on-missing-candidates`는 candidate path가 없는 case가 있으면 report 출력/저장 후 실패한다. Candidate path가 있는데 파일이 없거나 읽을 수 없는 경우는 `--fail-on-issues`가 담당한다.
@@ -486,7 +487,7 @@ uv run casrt review-case-pack cases/case-index.json -o cases/review-case-pack --
 
 - 입력은 `custom-asmr-review-case-set-v1` `case-index.json`이다.
 - 출력은 기존 WebUI loader가 읽는 `custom-asmr-review-pack-v1`이다. 새 WebUI 모드나 옵션을 추가하지 않는다.
-- 각 reference master에서 `needs_review=true` segment만 잘라 `reasons=["reference-needs-review"]` item으로 만든다.
+- 각 reference master에서 `needs_review=true` 또는 `content_reviewed!=true`인 segment를 자른다. Reasons는 해당하는 `reference-needs-review`, `reference-content-unreviewed`를 모두 기록한다.
 - item에는 `case_id`, `reference_id`, reference channel/text, original `start_ms`/`end_ms`, clip file과 context bounds가 포함된다.
 - item은 `source_case_index`, `case_id`, `reference_id`를 보존하므로 WebUI에서 clip을 들은 뒤 `case 열기`로 source case editor의 해당 segment를 바로 열 수 있다.
 - Root에는 `item_count`, `reason_counts`, `case_count`, `next_case_id`, `case_summaries`, `duration_summary`가 포함된다. 이 값은 일반 `review-pack`과 같은 WebUI header와 첫 검수 case navigation 계약을 제공한다.
@@ -503,7 +504,7 @@ uv run casrt save-review-case-reference cases/case-index.json case-id edited.mas
 
 - 입력은 `custom-asmr-review-case-set-v1` `case-index.json`, case id, SRT 또는 master JSON transcript다.
 - 해당 case의 reference file을 입력 transcript로 교체한다.
-- `case-index.json` item의 `segments`와 `review_count`를 새 reference 기준으로 갱신한다.
+- `case-index.json` item의 `segments`, `review_count`, `content_reviewed_count`, `content_unreviewed_count`를 새 reference 기준으로 갱신한다.
 - output format은 `custom-asmr-review-case-reference-save-v1`이다.
 - 기존 reference file이 없거나 case id가 없으면 실패하며, 새 reference path를 조용히 만들지 않는다.
 - 이 명령은 `reference_type`을 변경하거나 human-reviewed 승격을 판정하지 않는다.
@@ -579,6 +580,7 @@ uv run casrt freeze-case-references cases/case-index.json \
 - output `case-index.json`의 audio/candidate path는 원본 case set 파일을 absolute path로 가리킨다. 큰 audio/candidate 파일을 다시 복사하지 않기 위한 결정이다.
 - audio/reference/candidate source file이 없거나 candidate가 있는 case와 없는 case가 섞이면 output directory를 만들기 전에 실패한다.
 - `--fail-on-review`를 지정하면 reference에 `needs_review=true`가 남아 있을 때 output directory를 만들기 전에 실패한다.
+- `--reference-type human-reviewed`는 옵션 유무와 관계없이 모든 reference segment에 `content_reviewed=true`를 요구한다. 누락되면 `content_unreviewed_count`를 표시하고 output directory를 만들기 전에 실패한다.
 - `--fail-on-reference-audit`를 지정하면 reference audit 구조 검수 queue가 남아 있을 때 output directory를 만들기 전에 실패한다. Gate 대상은 남은 review flag, 기본 100ms 이상 same-channel overlap, same-channel exact-boundary duplicate, 31초 이상 long segment 등 `audit-review-case-references --review-effort-output`과 같은 기준이다.
 - `--fail-on-reference-channel-audit`를 지정하면 reference L/R label이 stereo energy mismatch/uncertain review queue를 남길 때 output directory를 만들기 전에 실패한다. `--reference-channel-threshold-db`와 `--reference-channel-quiet-max-dbfs`는 이 gate의 energy 기준이다. 이 gate는 energy를 정답으로 승격하지 않고 human-reviewed 승격 전 channel label 검수 누락을 막는다.
 - 이 명령도 human-reviewed 여부를 추정하지 않는다. `--reference-type human-reviewed`는 사람이 실제 검수를 끝낸 reference에만 사용한다.
@@ -604,6 +606,7 @@ uv run casrt build-eval-manifest cases/case-index.json \
 - 모든 case에 `candidate`가 있어야 한다. candidate가 없는 검수 준비 set에서는 실패한다.
 - `review-case-status`와 같은 방식으로 파일 존재 여부와 stale count를 확인하고, 문제가 있으면 manifest를 쓰지 않고 실패한다.
 - `--fail-on-review`는 reference에 `needs_review=true`가 남아 있으면 manifest를 쓰지 않고 실패한다.
+- Effective reference type이 `human-reviewed`인 case는 모든 reference segment에 `content_reviewed=true`가 있어야 한다. Root override와 case별 reference type을 모두 적용하고, 누락되면 manifest를 쓰지 않는다.
 - `--fail-on-reference-audit`는 reference audit 구조 검수 queue가 남아 있으면 manifest를 쓰지 않고 실패한다.
 - `--fail-on-reference-channel-audit`는 사람 검수 예외를 제외한 reference channel audit unresolved mismatch/uncertain queue가 남아 있으면 manifest를 쓰지 않고 실패한다.
 - output file은 `custom-asmr-eval-manifest-v1`이다.

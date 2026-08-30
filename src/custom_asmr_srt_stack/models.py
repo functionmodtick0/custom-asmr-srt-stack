@@ -50,6 +50,7 @@ class Segment:
     kind: str
     text: str
     needs_review: bool = False
+    content_reviewed: bool = False
     channel_reviewed: bool = False
 
     def __post_init__(self) -> None:
@@ -75,6 +76,10 @@ class Segment:
             kind=require_string(data.get("kind"), "segment.kind"),
             text=require_string(data.get("text"), "segment.text"),
             needs_review=require_bool(data.get("needs_review", False), "segment.needs_review"),
+            content_reviewed=require_bool(
+                data.get("content_reviewed", False),
+                "segment.content_reviewed",
+            ),
             channel_reviewed=require_bool(
                 data.get("channel_reviewed", False),
                 "segment.channel_reviewed",
@@ -90,6 +95,7 @@ class Segment:
             "kind": self.kind,
             "text": self.text,
             "needs_review": self.needs_review,
+            "content_reviewed": self.content_reviewed,
             "channel_reviewed": self.channel_reviewed,
         }
 

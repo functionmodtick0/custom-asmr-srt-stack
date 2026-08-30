@@ -56,6 +56,7 @@ class SegmentModelTests(unittest.TestCase):
                     channel="L",
                     kind="speech",
                     text="ねえ、聞こえてる？",
+                    content_reviewed=True,
                     channel_reviewed=True,
                 ),
             ),
@@ -66,7 +67,22 @@ class SegmentModelTests(unittest.TestCase):
         self.assertEqual(parsed, master)
         self.assertEqual(parsed.to_json()["segments"][0]["channel"], "L")
         self.assertEqual(parsed.to_json()["segments"][0]["text"], "ねえ、聞こえてる？")
+        self.assertTrue(parsed.to_json()["segments"][0]["content_reviewed"])
         self.assertTrue(parsed.to_json()["segments"][0]["channel_reviewed"])
+
+    def test_missing_content_review_evidence_defaults_to_unreviewed(self):
+        segment = Segment.from_json(
+            {
+                "id": "seg_000001",
+                "start_ms": 0,
+                "end_ms": 1000,
+                "channel": "L",
+                "kind": "speech",
+                "text": "ねえ",
+            }
+        )
+
+        self.assertFalse(segment.content_reviewed)
 
     def test_segment_rejects_non_boolean_review_fields(self):
         segment = {
@@ -83,6 +99,11 @@ class SegmentModelTests(unittest.TestCase):
             Segment.from_json(segment)
 
         segment["needs_review"] = False
+        segment["content_reviewed"] = "true"
+        with self.assertRaisesRegex(ValueError, "segment.content_reviewed must be a boolean"):
+            Segment.from_json(segment)
+
+        segment["content_reviewed"] = False
         segment["channel_reviewed"] = 1
         with self.assertRaisesRegex(ValueError, "segment.channel_reviewed must be a boolean"):
             Segment.from_json(segment)

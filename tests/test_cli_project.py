@@ -1686,6 +1686,12 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["reference_type_counts"], {"pseudo-gold": 1})
             self.assertEqual(report["reference_review_count"], 1)
             self.assertEqual(report["reference_review_duration_ms"], 1)
+            self.assertEqual(report["reference_content_reviewed_count"], 0)
+            self.assertEqual(report["reference_content_unreviewed_count"], 2)
+            self.assertEqual(report["reference_content_unreviewed_duration_ms"], 3)
+            self.assertEqual(report["reference_content_unreviewed_case_count"], 1)
+            self.assertEqual(report["cases_content_unreviewed"], ["front-a"])
+            self.assertEqual(report["next_content_unreviewed_case_id"], "front-a")
             self.assertEqual(report["reference_review_case_count"], 1)
             self.assertEqual(report["reference_review_clear_case_count"], 0)
             self.assertEqual(report["cases_needing_review"], ["front-a"])
@@ -1693,6 +1699,8 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["items"][0]["reference_segments"], 2)
             self.assertEqual(report["items"][0]["reference_review_count"], 1)
             self.assertEqual(report["items"][0]["reference_review_duration_ms"], 1)
+            self.assertEqual(report["items"][0]["reference_content_reviewed_count"], 0)
+            self.assertEqual(report["items"][0]["reference_content_unreviewed_count"], 2)
             self.assertEqual(
                 {
                     key: report["items"][0]["first_review_segment"][key]
@@ -3354,6 +3362,15 @@ class ProjectCliTests(unittest.TestCase):
             )
             run_cli(["prepare-review-cases", str(plan), "-o", str(prepared_dir)])
 
+            prepared_reference_path = prepared_dir / "references" / "front-a.master.json"
+            prepared_reference = json.loads(prepared_reference_path.read_text(encoding="utf-8"))
+            for segment in prepared_reference["segments"]:
+                segment["content_reviewed"] = True
+            prepared_reference_path.write_text(
+                json.dumps(prepared_reference, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
             result, output, error = run_cli_with_stderr(
                 [
                     "freeze-case-references",
@@ -3521,6 +3538,36 @@ class ProjectCliTests(unittest.TestCase):
             )
             run_cli(["prepare-review-cases", str(plan), "-o", str(prepared_dir)])
 
+            unreviewed_result, _, unreviewed_error = run_cli_with_stderr(
+                [
+                    "freeze-case-references",
+                    str(prepared_dir / "case-index.json"),
+                    "-o",
+                    str(frozen_dir),
+                ]
+            )
+            self.assertEqual(unreviewed_result, 1)
+            self.assertIn("content_unreviewed_count=2", unreviewed_error)
+            self.assertFalse(frozen_dir.exists())
+
+            prepared_reference_path = prepared_dir / "references" / "front-a.master.json"
+            prepared_reference = json.loads(prepared_reference_path.read_text(encoding="utf-8"))
+            for segment in prepared_reference["segments"]:
+                segment["content_reviewed"] = True
+            prepared_reference_path.write_text(
+                json.dumps(prepared_reference, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            save_result, _ = run_cli(
+                [
+                    "save-review-case-reference",
+                    str(prepared_dir / "case-index.json"),
+                    "front-a",
+                    str(prepared_reference_path),
+                ]
+            )
+            self.assertEqual(save_result, 0)
+
             result, output = run_cli(
                 [
                     "freeze-case-references",
@@ -3546,6 +3593,7 @@ class ProjectCliTests(unittest.TestCase):
                 "seg_000002",
             ])
             self.assertFalse(any(segment["needs_review"] for segment in frozen_reference["segments"]))
+            self.assertTrue(all(segment["content_reviewed"] for segment in frozen_reference["segments"]))
             case_index = json.loads((frozen_dir / "case-index.json").read_text(encoding="utf-8"))
             self.assertEqual(case_index["reference_type"], "human-reviewed")
             self.assertEqual(case_index["items"][0]["review_count"], 0)
@@ -3769,6 +3817,37 @@ class ProjectCliTests(unittest.TestCase):
                 encoding="utf-8",
             )
             run_cli(["prepare-review-cases", str(plan), "-o", str(output_dir)])
+
+            unreviewed_result, _, unreviewed_error = run_cli_with_stderr(
+                [
+                    "build-eval-manifest",
+                    "--reference-type",
+                    "human-reviewed",
+                    str(output_dir / "case-index.json"),
+                    "-o",
+                    str(manifest_path),
+                ]
+            )
+            self.assertEqual(unreviewed_result, 1)
+            self.assertIn("content_unreviewed_count=1", unreviewed_error)
+            self.assertFalse(manifest_path.exists())
+
+            prepared_reference_path = output_dir / "references" / "front-a.master.json"
+            prepared_reference = json.loads(prepared_reference_path.read_text(encoding="utf-8"))
+            prepared_reference["segments"][0]["content_reviewed"] = True
+            prepared_reference_path.write_text(
+                json.dumps(prepared_reference, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            save_result, _ = run_cli(
+                [
+                    "save-review-case-reference",
+                    str(output_dir / "case-index.json"),
+                    "front-a",
+                    str(prepared_reference_path),
+                ]
+            )
+            self.assertEqual(save_result, 0)
 
             result, output = run_cli(
                 [
@@ -5800,6 +5879,7 @@ class ProjectCliTests(unittest.TestCase):
                                 "kind": "speech",
                                 "text": "確認済み",
                                 "needs_review": False,
+                                "content_reviewed": True,
                             },
                             {
                                 "id": "seg_000002",
@@ -5861,7 +5941,10 @@ class ProjectCliTests(unittest.TestCase):
             self.assertEqual(report["source_case_index"], str(case_index_path))
             self.assertEqual(report["clip_count"], 2)
             self.assertEqual(report["item_count"], 2)
-            self.assertEqual(report["reason_counts"], {"reference-needs-review": 2})
+            self.assertEqual(
+                report["reason_counts"],
+                {"reference-content-unreviewed": 2, "reference-needs-review": 2},
+            )
             self.assertEqual(report["case_count"], 1)
             self.assertEqual(report["next_case_id"], "front-a")
             self.assertEqual(
@@ -5880,7 +5963,7 @@ class ProjectCliTests(unittest.TestCase):
                     {
                         "case_id": "front-a",
                         "item_count": 2,
-                        "reason_counts": {"reference-needs-review": 2},
+                        "reason_counts": {"reference-content-unreviewed": 2, "reference-needs-review": 2},
                         "review_duration_ms": 4,
                         "first_start_ms": 2,
                         "last_end_ms": 8,
@@ -5891,7 +5974,10 @@ class ProjectCliTests(unittest.TestCase):
             )
             self.assertEqual([item["reference_id"] for item in report["items"]], ["seg_000002", "seg_000003"])
             self.assertEqual([item["priority_rank"] for item in report["items"]], [1, 2])
-            self.assertEqual(report["items"][0]["reasons"], ["reference-needs-review"])
+            self.assertEqual(
+                report["items"][0]["reasons"],
+                ["reference-needs-review", "reference-content-unreviewed"],
+            )
             self.assertEqual(report["items"][0]["reference_channel"], "L")
             self.assertEqual(report["items"][0]["reference_text"], "前半確認")
             self.assertEqual(report["items"][0]["candidate_text"], "")
