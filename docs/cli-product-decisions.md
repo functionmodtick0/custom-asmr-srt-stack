@@ -708,6 +708,7 @@ uv run casrt eval-transcript reference.srt candidate.json --json -o eval.json
 
 - reference와 candidate는 SRT 또는 `master.json`을 받을 수 있다.
 - speech text strict CER, practical CER, Japanese relaxed CER를 계산한다.
+- `text_practical_channel_aware`는 L/R/MIX별 practical text를 각각 이어 붙여 편집거리를 계산한 뒤 micro-average한다. 겹치는 L/R segment의 전역 시간순 interleave가 달라도 같은 채널 안의 문장 순서가 맞으면 불필요한 순서 벌점을 피한다. 반대로 같은 text를 잘못된 채널이나 MIX에 두면 원 채널 deletion과 잘못된 채널 insertion을 모두 반영하므로 1.0을 넘을 수 있다. 기존 `text_practical` product gate를 대체하지 않는 stereo/channel diagnostics다.
 - segment index 기준 mean start/end/boundary error를 계산한다.
 - segment 수나 split이 다른 후보를 평가하기 위해 time-overlap 기반 `timing_time_aligned`를 계산한다.
 - forced alignment 재평가를 위해 boundary sample 수, max/mean boundary delta, 250ms/500ms 이내 boundary ratio를 계산한다.

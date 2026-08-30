@@ -49,6 +49,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertAlmostEqual(report["text"]["cer"], 2 / 7)
         self.assertEqual(report["text_practical"]["mode"], "practical")
         self.assertEqual(report["text_japanese_relaxed"]["mode"], "japanese-relaxed")
+        self.assertEqual(report["text_practical_channel_aware"]["mode"], "practical")
         self.assertEqual(report["timing"]["paired_segments"], 2)
         self.assertEqual(report["timing"]["boundary_samples"], 4)
         self.assertEqual(report["timing"]["mean_start_error_ms"], 60)
@@ -183,6 +184,43 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(normalize_for_cer("ね、 魔女ちゃん！？", mode="practical"), "ね魔女ちゃん")
         self.assertEqual(normalize_for_cer("ABC１２３", mode="practical"), "ABC123")
 
+    def test_channel_aware_cer_preserves_l_r_order_independently(self):
+        reference = master_with_segments(
+            [
+                Segment("ref_l", 0, 2000, "L", "speech", "あい"),
+                Segment("ref_r", 100, 1000, "R", "speech", "か"),
+            ]
+        )
+        candidate = master_with_segments(
+            [
+                Segment("cand_r", 0, 1000, "R", "speech", "か"),
+                Segment("cand_l", 100, 2000, "L", "speech", "あい"),
+            ]
+        )
+
+        report = evaluate_transcripts(reference, candidate)
+
+        self.assertGreater(report["text_practical"]["cer"], 0)
+        channel_aware = report["text_practical_channel_aware"]
+        self.assertEqual(channel_aware["cer"], 0)
+        self.assertEqual(channel_aware["edit_distance"], 0)
+        self.assertEqual(channel_aware["reference_characters"], 3)
+        self.assertEqual(channel_aware["candidate_characters"], 3)
+        self.assertEqual(channel_aware["channels"]["L"]["cer"], 0)
+        self.assertEqual(channel_aware["channels"]["R"]["cer"], 0)
+        self.assertEqual(channel_aware["channels"]["MIX"]["cer"], 0)
+
+    def test_channel_aware_cer_penalizes_text_in_the_wrong_channel(self):
+        reference = master_with_segments([Segment("ref", 0, 1000, "L", "speech", "あ")])
+        candidate = master_with_segments([Segment("cand", 0, 1000, "MIX", "speech", "あ")])
+
+        channel_aware = evaluate_transcripts(reference, candidate)["text_practical_channel_aware"]
+
+        self.assertEqual(channel_aware["edit_distance"], 2)
+        self.assertEqual(channel_aware["reference_characters"], 1)
+        self.assertEqual(channel_aware["candidate_characters"], 1)
+        self.assertEqual(channel_aware["cer"], 2.0)
+
     def test_japanese_relaxed_cer_removes_prolonged_sound_marks(self):
         self.assertEqual(normalize_for_cer("おにいちゃーん〜～", mode="practical"), "おにいちゃーん")
         self.assertEqual(normalize_for_cer("おにいちゃーん〜～", mode="japanese-relaxed"), "おにいちゃん")
@@ -228,6 +266,8 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["reference_notes"], "stable-ts baseline")
         self.assertEqual(report["case_count"], 2)
         self.assertEqual(report["summary"]["text_japanese_relaxed"]["mode"], "japanese-relaxed")
+        self.assertEqual(report["summary"]["text_practical_channel_aware"]["mode"], "practical")
+        self.assertEqual(set(report["summary"]["text_practical_channel_aware"]["channels"]), {"L", "R", "MIX"})
         self.assertEqual(report["cases"][0]["candidate_id"], "a")
         self.assertEqual(report["cases"][0]["reference_type"], "pseudo-gold")
         self.assertEqual(report["cases"][0]["reference_notes"], "stable-ts baseline")
@@ -420,6 +460,7 @@ class EvaluationTests(unittest.TestCase):
             ],
         )
         self.assertIsNone(item["asr_artifact_segment_ratio"])
+        self.assertIsNone(item["channel_aware_practical_cer"])
 
     def test_compare_review_effort_reports_groups_candidate_failures_by_reference_segment(self):
         with tempfile.TemporaryDirectory() as tmpdir:

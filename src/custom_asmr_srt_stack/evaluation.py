@@ -47,6 +47,11 @@ def evaluate_transcripts(reference: MasterDocument, candidate: MasterDocument) -
     strict_text = text_error_summary(raw_reference_text, raw_candidate_text, mode="strict")
     practical_text = text_error_summary(raw_reference_text, raw_candidate_text, mode="practical")
     japanese_relaxed_text = text_error_summary(raw_reference_text, raw_candidate_text, mode="japanese-relaxed")
+    channel_aware_practical_text = channel_text_error_summary(
+        reference_speech,
+        candidate_speech,
+        mode="practical",
+    )
     paired = list(zip(reference_speech, candidate_speech))
     time_aligned_paired = time_aligned_segment_pairs(reference_speech, candidate_speech)
     timing_errors = timing_error_summary(paired)
@@ -68,6 +73,7 @@ def evaluate_transcripts(reference: MasterDocument, candidate: MasterDocument) -
         "text": strict_text,
         "text_practical": practical_text,
         "text_japanese_relaxed": japanese_relaxed_text,
+        "text_practical_channel_aware": channel_aware_practical_text,
         "timing": timing_errors,
         "timing_time_aligned": time_aligned_timing_errors,
         "channel": channel_summary,
@@ -491,6 +497,7 @@ def eval_comparison_item(path: Path, report: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"{path}: unsupported eval report format {report_format!r}")
 
     text_practical = require_report_mapping(metrics, "text_practical", path)
+    text_practical_channel_aware = optional_report_mapping(metrics, "text_practical_channel_aware", path)
     text_japanese_relaxed = optional_report_mapping(metrics, "text_japanese_relaxed", path)
     timing_time_aligned = require_report_mapping(metrics, "timing_time_aligned", path)
     channel_time_aligned = require_report_mapping(metrics, "channel_time_aligned", path)
@@ -502,6 +509,9 @@ def eval_comparison_item(path: Path, report: dict[str, Any]) -> dict[str, Any]:
         "report_format": report_format,
         "case_count": case_count,
         "practical_cer": require_report_number(text_practical, "cer", path),
+        "channel_aware_practical_cer": None
+        if text_practical_channel_aware is None
+        else require_report_number(text_practical_channel_aware, "cer", path),
         "japanese_relaxed_cer": None
         if text_japanese_relaxed is None
         else require_report_number(text_japanese_relaxed, "cer", path),
@@ -830,6 +840,10 @@ def aggregate_eval_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
         "text": aggregate_text_reports(reports, "text"),
         "text_practical": aggregate_text_reports(reports, "text_practical"),
         "text_japanese_relaxed": aggregate_text_reports(reports, "text_japanese_relaxed"),
+        "text_practical_channel_aware": aggregate_channel_text_reports(
+            reports,
+            "text_practical_channel_aware",
+        ),
         "timing": aggregate_timing_reports(reports, "timing"),
         "timing_time_aligned": aggregate_timing_reports(reports, "timing_time_aligned"),
         "channel": aggregate_channel_reports(reports, "channel"),
@@ -846,6 +860,31 @@ def aggregate_text_reports(reports: list[dict[str, Any]], key: str) -> dict[str,
     candidate_characters = sum(report[key]["candidate_characters"] for report in reports)
     return {
         "mode": reports[0][key]["mode"],
+        "cer": 0.0
+        if reference_characters == 0 and candidate_characters == 0
+        else edit_distance / max(1, reference_characters),
+        "edit_distance": edit_distance,
+        "reference_characters": reference_characters,
+        "candidate_characters": candidate_characters,
+    }
+
+
+def aggregate_channel_text_reports(reports: list[dict[str, Any]], key: str) -> dict[str, Any]:
+    channels = {
+        channel: aggregate_text_summaries([report[key]["channels"][channel] for report in reports])
+        for channel in EVAL_CHANNELS
+    }
+    summary = aggregate_text_summaries([report[key] for report in reports])
+    summary["channels"] = channels
+    return summary
+
+
+def aggregate_text_summaries(summaries: list[dict[str, Any]]) -> dict[str, Any]:
+    edit_distance = sum(summary["edit_distance"] for summary in summaries)
+    reference_characters = sum(summary["reference_characters"] for summary in summaries)
+    candidate_characters = sum(summary["candidate_characters"] for summary in summaries)
+    return {
+        "mode": summaries[0]["mode"],
         "cer": 0.0
         if reference_characters == 0 and candidate_characters == 0
         else edit_distance / max(1, reference_characters),
@@ -1075,6 +1114,25 @@ def text_error_summary(reference_text: str, candidate_text: str, *, mode: str) -
         "reference_characters": reference_chars,
         "candidate_characters": len(normalized_candidate),
     }
+
+
+def channel_text_error_summary(
+    reference_segments: tuple[Segment, ...],
+    candidate_segments: tuple[Segment, ...],
+    *,
+    mode: str,
+) -> dict[str, Any]:
+    channels = {
+        channel: text_error_summary(
+            "".join(segment.text for segment in reference_segments if segment.channel == channel),
+            "".join(segment.text for segment in candidate_segments if segment.channel == channel),
+            mode=mode,
+        )
+        for channel in EVAL_CHANNELS
+    }
+    summary = aggregate_text_summaries(list(channels.values()))
+    summary["channels"] = channels
+    return summary
 
 
 def review_effort_summary(
